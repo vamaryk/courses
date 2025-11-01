@@ -1,17 +1,22 @@
+import { ReactNode } from 'react';
 import Header from "@/widgets/navigation/Header/Header"
+import MenuSidebar from "@/widgets/navigation/MenuSidebar/MenuSidebar"
 
-interface Layout {
-    children: React.ReactNode
+interface LayoutProps {
+    children: ReactNode;
+    showSidebar?: boolean;
 }
 
-export default function AppLayout({ children }: Layout) {
+export default function AppLayout({ children, showSidebar = true }: LayoutProps) {
     return (
-        <div className="flex">
-                <Header />
-            <div>
-                {/* sidebar */}
-                <main className="flex-1">{children}</main>
+        <div>
+            <Header />
+            <div className="flex">
+                {showSidebar && <MenuSidebar />}
+                <main className="flex-1">
+                    {children}
+                </main>
             </div>
         </div>
     )
-}  
+}

@@ -1,7 +1,13 @@
-import { RouterProvider } from 'react-router-dom';
+import { BrowserRouter } from 'react-router-dom';
+import { AuthProvider } from './AuthProvider';
+import '../styles/global.css';
 
-export const Providers = ({ router }: any) => {
+export const Providers = ({ children }: { children: React.ReactNode }) => {
   return (
-    <RouterProvider router={router} />
+    <BrowserRouter>
+      <AuthProvider>
+        {children}
+      </AuthProvider>
+    </BrowserRouter>
   );
 };
