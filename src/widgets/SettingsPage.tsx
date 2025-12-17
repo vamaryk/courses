@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Calendar as CalendarIcon, Settings, Bell, Shield, Palette, Save } from 'lucide-react';
+import { Settings, Bell, Shield, Palette, Save } from 'lucide-react';
 
 export default function SettingsPage() {
   const [notifications, setNotifications] = useState({
@@ -31,20 +31,10 @@ export default function SettingsPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header аналогично календарю */}
-      <header className="h-16 flex items-center justify-between px-[40px] z-[10] bg-gray-50/90 sticky top-0">
-        <div className="flex items-center gap-4">
-          <div className="text-xl font-bold font-xolonium">LOGO</div>
-        </div>
-        <div className="flex items-center gap-4">
-          <CalendarIcon className="w-5 h-5 text-gray-600" />
-          <div className="w-8 h-8 bg-gray-200 rounded-full p-1"></div>
-        </div>
-      </header>
+    <div className="min-h-screen bg-background">
 
       <div className="flex">
-        <main className="flex-1 min-w-0 md:ml-[120px] px-[20px] md:px-0 mb-[20px]">
+        <main className="flex-1 min-w-0 px-[20px] mb-[20px]">
           <div className="flex gap-5 flex-col lg:flex-row">
             <div className="flex-1 min-w-0">
               <div className="rounded-xl shadow p-6" style={{ background: 'radial-gradient(circle, #F7C8FF, #D8E6FF)' }}>

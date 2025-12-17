@@ -10,7 +10,7 @@ const MenuSidebar = () => {
 
     const renderMenuItem = (item: MenuItem, isMobile = false) => {
         const Icon = item.icon;
-        const isActive = location.pathname === item.path;
+        const isActive = location.pathname === item.path || location.pathname.startsWith(`${item.path}/`);
 
         return (
             <Link
@@ -48,10 +48,10 @@ const MenuSidebar = () => {
     return (
         <>
             {/* Mobile Menu */}
-            <div className="md:hidden">
+            <div className="md:hidden z-101">
                 <button
                     onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                    className="fixed top-4 left-4 z-50 p-2 rounded-md bg-purple text-white"
+                    className="fixed top-4 left-4 z-50 ml-1 p-2 rounded-[10px] bg-purple text-white"
                 >
                     {isMobileMenuOpen ? <X className="w-6 h-6" /> : <MenuIcon className="w-6 h-6" />}
                 </button>

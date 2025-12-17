@@ -5,4 +5,5 @@ export enum Path {
     Gloassary = '/glossary',
     Profile = '/profile',
     Settings = '/settings',
+    Auth = '/auth',
 }

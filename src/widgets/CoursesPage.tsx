@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Calendar as CalendarIcon, BookOpen, Users, Clock, Plus, Edit, BarChart3 } from 'lucide-react';
+import { BookOpen, Clock, Plus, Edit, BarChart3 } from 'lucide-react';
 import { coursesApi, type Course } from '@/shared/api/courses';
 import { CourseCreateModal } from '@/components/CourseCreateModal';
 
@@ -66,20 +66,10 @@ export default function CoursesPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header аналогично календарю */}
-      <header className="h-16 flex items-center justify-between px-[40px] z-[10] bg-gray-50/90 sticky top-0">
-        <div className="flex items-center gap-4">
-          <div className="text-xl font-bold font-xolonium">LOGO</div>
-        </div>
-        <div className="flex items-center gap-4">
-          <CalendarIcon className="w-5 h-5 text-gray-600" />
-          <Users className="w-8 h-8 bg-gray-200 rounded-full p-1" />
-        </div>
-      </header>
+    <div className="bg-background">
 
       <div className="flex">
-        <main className="flex-1 min-w-0 md:ml-[120px] px-[20px] md:px-0 mb-[20px]">
+        <main className="flex-1 min-w-0 px-[20px] mb-[20px]">
           <div className="flex gap-5 flex-col lg:flex-row">
             <div className="flex-1 min-w-0 space-y-6">
               {/* My Courses Block */}

@@ -87,7 +87,7 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gray-50">
+      <div className="min-h-screen flex items-center justify-center bg-background">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500"></div>
       </div>
     );
@@ -98,35 +98,10 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header аналогично календарю */}
-      <header className="h-16 flex items-center justify-between px-[40px] z-[10] bg-gray-50/90 sticky top-0">
-        <div className="flex items-center gap-4">
-          <div className="text-xl font-bold font-xolonium">LOGO</div>
-        </div>
-        <div className="flex items-center gap-4">
-          <CalendarIcon className="w-5 h-5 text-gray-600" />
-          <div className="relative group">
-            <div className="w-8 h-8 bg-purple-100 rounded-full flex items-center justify-center text-purple-600 font-medium cursor-pointer">
-              {user.first_name?.[0]}{user.last_name?.[0]}
-            </div>
-            <div className="absolute right-0 mt-2 w-48 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 py-1 z-10 hidden group-hover:block">
-              <div className="px-4 py-2 text-sm text-gray-700 border-b">
-                {user.first_name} {user.last_name}
-              </div>
-              <button
-                onClick={handleLogout}
-                className="w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-gray-100"
-              >
-                Выйти
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
+    <div className="bg-background">
 
       <div className="flex">
-        <main className="flex-1 min-w-0 md:ml-[120px] px-[20px] md:px-0 mb-[20px]">
+        <main className="flex-1 min-w-0 px-[20px] mb-[20px]">
           <div className="flex gap-5 flex-col lg:flex-row">
             <div className="flex-1 min-w-0">
               <div className="rounded-xl shadow p-6" style={{ background: 'radial-gradient(circle, #F7C8FF, #D8E6FF)' }}>
@@ -134,19 +109,19 @@ export default function ProfilePage() {
                   <div className="flex items-center">
                     <button 
                       onClick={() => navigate('/')}
-                      className="flex items-center text-gray-600 text-[12px] font-montserrat hover:text-gray-900 mr-4"
+                      className="flex items-center text-gray-600 text-[12px] font-Montserrat hover:text-gray-900 mr-4"
                     >
                       ← На главную
                     </button>
                   </div>
-                  <button className="flex items-center gap-2 px-4 py-2 bg-[#B291FF] text-white font-montserrat rounded-lg hover:bg-purple-600 transition-colors">
+                  <button className="flex items-center gap-2 px-4 py-2 bg-[#B291FF] text-white font-Montserrat rounded-lg hover:bg-purple-600 transition-colors">
                     <Edit className="w-4 h-4" />
                     Редактировать
                   </button>
                 </div>
 
                 <div className="flex items-center gap-4 mb-8">
-                  <h1 className="text-[24px] font-xolonium">{user.first_name} {user.last_name}</h1>
+                  <h1 className="text-[24px] font-Xolonium">{user.first_name} {user.last_name}</h1>
                   <User className="w-5 h-5 text-gray-500" />
                 </div>
 
@@ -157,7 +132,7 @@ export default function ProfilePage() {
                     </div>
                     <div className="flex-1">
                       <h2 className="text-2xl font-semibold mb-2">
-                        {user.first_name} {user.last_name} {user.patronymic || ''}
+                        {user.last_name} {user.first_name} {user.patronymic || ''}
                       </h2>
                       <p className="text-gray-600 mb-2">Студент</p>
                       <p className="text-gray-500 text-sm">Активный пользователь</p>

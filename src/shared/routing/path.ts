@@ -4,5 +4,6 @@ export const Path = {
     Courses: '/courses',
     Gloassary: '/glossary',
     Profile: '/profile',
-    Settings: '/settings'
+    Settings: '/settings',
+    Auth: '/auth'
 } as const;

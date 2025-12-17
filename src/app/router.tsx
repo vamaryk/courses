@@ -23,7 +23,7 @@ export const Router = () => {
       <Route path="/profile" element={<AppLayout><ProfilePage /></AppLayout>} />
       <Route path="/settings" element={<AppLayout><SettingsPage /></AppLayout>} />
       <Route path="/glossary" element={<AppLayout><GlossaryPage /></AppLayout>} />
-      <Route path="/auth" element={<AppLayout showSidebar={false}><AuthPage /></AppLayout>} />
+      <Route path="/auth" element={<AppLayout><AuthPage /></AppLayout>} />
     </Routes>
   );
 };
