@@ -50,7 +50,8 @@ CREATE TABLE profiles (
     phone_number TEXT,
     address TEXT,
     occupation TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
 CREATE TABLE sessions (
@@ -65,7 +66,9 @@ CREATE TABLE student_metrics (
     user_id uuid PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
     courses_in_progress_count integer DEFAULT 0,
     achievements_count integer DEFAULT 0,
-    total_study_time interval DEFAULT '0 seconds'
+    total_study_time interval DEFAULT '0 seconds',
+    completed_courses_count integer DEFAULT 0,
+    subscriptions_count integer DEFAULT 0
 );
 
 

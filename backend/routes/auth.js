@@ -81,11 +81,63 @@ router.post('/signup', async (req, res) => {
     // 2. Create profile entry in the 'profiles' table
     logger('info', 'Inserting profile into profiles table for signup...', { userId, first_name, last_name });
     await pool.query(
-      `INSERT INTO profiles (id, first_name, last_name, patronymic, date_of_birth, phone_number, avatar_url, role)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+      `INSERT INTO profiles (id, first_name, last_name, patronymic, date_of_birth, phone_number, avatar_url, role, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW())`,
       [userId, first_name, last_name, patronymic, date_of_birth, phone_number, avatar_url, role]
     );
     logger('info', 'Profile inserted for signup.');
+
+    // 3. Create student_metrics entry for the new user
+    logger('info', 'Creating student_metrics entry for signup...', { userId });
+    // Check if additional columns exist before using them
+    const studentMetricsColumns = await pool.query(`
+      SELECT column_name 
+      FROM information_schema.columns 
+      WHERE table_name = 'student_metrics' AND table_schema = 'public'
+    `);
+    const hasCompletedCourses = studentMetricsColumns.rows.some(r => r.column_name === 'completed_courses_count');
+    const hasSubscriptions = studentMetricsColumns.rows.some(r => r.column_name === 'subscriptions_count');
+    
+    if (hasCompletedCourses && hasSubscriptions) {
+      await pool.query(
+        `INSERT INTO student_metrics (user_id, courses_in_progress_count, achievements_count, total_study_time, completed_courses_count, subscriptions_count)
+         VALUES ($1, 0, 0, '0 seconds'::interval, 0, 0)
+         ON CONFLICT (user_id) DO NOTHING`,
+        [userId]
+      );
+    } else {
+      // Fallback to basic fields if additional columns don't exist
+      await pool.query(
+        `INSERT INTO student_metrics (user_id, courses_in_progress_count, achievements_count, total_study_time)
+         VALUES ($1, 0, 0, '0 seconds'::interval)
+         ON CONFLICT (user_id) DO NOTHING`,
+        [userId]
+      );
+      // If columns exist separately, update them
+      if (hasCompletedCourses) {
+        await pool.query(
+          `UPDATE student_metrics SET completed_courses_count = 0 WHERE user_id = $1`,
+          [userId]
+        );
+      }
+      if (hasSubscriptions) {
+        await pool.query(
+          `UPDATE student_metrics SET subscriptions_count = 0 WHERE user_id = $1`,
+          [userId]
+        );
+      }
+    }
+    logger('info', 'Student metrics created for signup.');
+
+    // 4. Create instructor_metrics entry for the new user
+    logger('info', 'Creating instructor_metrics entry for signup...', { userId });
+    await pool.query(
+      `INSERT INTO instructor_metrics (user_id, courses_created_count, total_students_count, total_subscribers)
+       VALUES ($1, 0, 0, 0)
+       ON CONFLICT (user_id) DO NOTHING`,
+      [userId]
+    );
+    logger('info', 'Instructor metrics created for signup.');
 
     // Create a session
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
@@ -212,7 +264,7 @@ router.get('/me', authenticateSession, async (req, res) => {
 
     // req.user is populated by authenticateSession middleware
     if (req.user) {
-      // Return user profile data
+      // Return user profile data in the format expected by frontend
       const userProfile = {
         id: req.user.profile.id,
         email: req.user.email || req.user.profile.email,
@@ -221,6 +273,7 @@ router.get('/me', authenticateSession, async (req, res) => {
         patronymic: req.user.profile.patronymic,
         phone_number: req.user.profile.phone_number,
         date_of_birth: req.user.profile.date_of_birth,
+        avatar_url: req.user.profile.avatar_url,
         role: req.user.profile.role,
       };
       console.log('✅ [AUTH ME] User profile requested successfully.', { userId: req.user.profile.id });
@@ -257,8 +310,84 @@ router.post('/logout', (req, res) => {
   res.status(200).json({ message: 'Logged out successfully' });
 });
 
-// Update user profile
-router.put('/profile', authenticateSession, async (req, res) => {
+// Validation helper function
+const validateProfileData = (data, isPartial = false) => {
+  const errors = [];
+
+  // Email validation
+  if (data.email !== undefined) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(data.email)) {
+      errors.push('Invalid email format');
+    }
+  } else if (!isPartial) {
+    errors.push('Email is required');
+  }
+
+  // First name validation
+  if (data.first_name !== undefined) {
+    if (typeof data.first_name !== 'string' || data.first_name.trim().length < 2 || data.first_name.trim().length > 50) {
+      errors.push('First name must be between 2 and 50 characters');
+    }
+  } else if (!isPartial) {
+    errors.push('First name is required');
+  }
+
+  // Last name validation
+  if (data.last_name !== undefined) {
+    if (typeof data.last_name !== 'string' || data.last_name.trim().length < 2 || data.last_name.trim().length > 50) {
+      errors.push('Last name must be between 2 and 50 characters');
+    }
+  } else if (!isPartial) {
+    errors.push('Last name is required');
+  }
+
+  // Patronymic validation (optional)
+  if (data.patronymic !== undefined && data.patronymic !== null && data.patronymic !== '') {
+    if (typeof data.patronymic !== 'string' || data.patronymic.trim().length > 50) {
+      errors.push('Patronymic must be no more than 50 characters');
+    }
+  }
+
+  // Phone number validation (optional)
+  if (data.phone_number !== undefined && data.phone_number !== null && data.phone_number !== '') {
+    const phoneRegex = /^[\d\s\-\+\(\)]+$/;
+    if (!phoneRegex.test(data.phone_number) || data.phone_number.length > 20) {
+      errors.push('Invalid phone number format');
+    }
+  }
+
+  // Date of birth validation (optional)
+  if (data.date_of_birth !== undefined && data.date_of_birth !== null && data.date_of_birth !== '') {
+    const date = new Date(data.date_of_birth);
+    if (isNaN(date.getTime())) {
+      errors.push('Invalid date of birth format');
+    } else {
+      const today = new Date();
+      const age = today.getFullYear() - date.getFullYear();
+      if (age < 13 || age > 120) {
+        errors.push('Date of birth must represent an age between 13 and 120 years');
+      }
+    }
+  }
+
+  // Avatar URL validation (optional)
+  if (data.avatar_url !== undefined && data.avatar_url !== null && data.avatar_url !== '') {
+    try {
+      new URL(data.avatar_url);
+    } catch {
+      // If it's not a valid URL, check if it's a relative path
+      if (!data.avatar_url.startsWith('/') && !data.avatar_url.startsWith('./')) {
+        errors.push('Invalid avatar URL format');
+      }
+    }
+  }
+
+  return errors;
+};
+
+// Create user profile (POST) - обычно вызывается при регистрации, но может быть отдельным эндпоинтом
+router.post('/profile', authenticateSession, async (req, res) => {
   if (!req.user || !req.user.profile) {
     return res.status(401).json({ error: 'Authentication required' });
   }
@@ -266,15 +395,24 @@ router.put('/profile', authenticateSession, async (req, res) => {
   const userId = req.user.profile.id;
   const { first_name, last_name, patronymic, email, phone_number, date_of_birth, avatar_url } = req.body;
 
-  // Basic validation
-  if (!first_name || !last_name || !email) {
-    return res.status(400).json({ error: 'First name, last name, and email are required' });
+  // Validate all required fields
+  const validationErrors = validateProfileData(req.body, false);
+  if (validationErrors.length > 0) {
+    return res.status(400).json({ error: validationErrors.join('; ') });
   }
 
   const client = await pool.connect();
 
   try {
     await client.query('BEGIN');
+
+    // Check if profile already exists
+    const existingProfile = await client.query('SELECT id FROM profiles WHERE id = $1', [userId]);
+    if (existingProfile.rows.length > 0) {
+      await client.query('ROLLBACK');
+      client.release();
+      return res.status(409).json({ error: 'Profile already exists. Use PATCH or PUT to update it.' });
+    }
 
     // Check if email is already taken by another user
     const emailCheck = await client.query(
@@ -288,11 +426,79 @@ router.put('/profile', authenticateSession, async (req, res) => {
       return res.status(400).json({ error: 'Email is already in use' });
     }
 
-    // Update email in users table
-    await client.query(
-      'UPDATE users SET email = $1, updated_at = NOW() WHERE id = $2',
-      [email, userId]
+    // Update email in users table if provided
+    if (email) {
+      await client.query(
+        'UPDATE users SET email = $1 WHERE id = $2',
+        [email, userId]
+      );
+    }
+
+    // Create profile in profiles table
+    const profileResult = await client.query(
+      `INSERT INTO profiles (id, first_name, last_name, patronymic, phone_number, date_of_birth, avatar_url, created_at, updated_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, NOW(), NOW())
+       RETURNING id, first_name, last_name, patronymic, phone_number, date_of_birth, avatar_url, role, created_at, updated_at`,
+      [userId, first_name, last_name, patronymic || null, phone_number || null, date_of_birth || null, avatar_url || null]
     );
+
+    await client.query('COMMIT');
+
+    const newProfile = {
+      ...profileResult.rows[0],
+      email: email || req.user.email
+    };
+
+    res.status(201).json({ user: newProfile });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error creating profile:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+});
+
+// Update user profile (PUT - full update)
+router.put('/profile', authenticateSession, async (req, res) => {
+  if (!req.user || !req.user.profile) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  const userId = req.user.profile.id;
+  const { first_name, last_name, patronymic, email, phone_number, date_of_birth, avatar_url } = req.body;
+
+  // Validate all required fields for full update
+  const validationErrors = validateProfileData(req.body, false);
+  if (validationErrors.length > 0) {
+    return res.status(400).json({ error: validationErrors.join('; ') });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    // Check if email is already taken by another user
+    if (email) {
+      const emailCheck = await client.query(
+        'SELECT id FROM users WHERE email = $1 AND id != $2',
+        [email, userId]
+      );
+
+      if (emailCheck.rows.length > 0) {
+        await client.query('ROLLBACK');
+        client.release();
+        return res.status(400).json({ error: 'Email is already in use' });
+      }
+
+      // Update email in users table
+      await client.query(
+        'UPDATE users SET email = $1 WHERE id = $2',
+        [email, userId]
+      );
+    }
 
     // Update profile data in profiles table
     const profileResult = await client.query(
@@ -305,23 +511,131 @@ router.put('/profile', authenticateSession, async (req, res) => {
            avatar_url = $6,
            updated_at = NOW()
        WHERE id = $7
-       RETURNING id, first_name, last_name, patronymic, phone_number, date_of_birth, avatar_url, role`,
-      [first_name, last_name, patronymic, phone_number, date_of_birth, avatar_url, userId]
+       RETURNING id, first_name, last_name, patronymic, phone_number, date_of_birth, avatar_url, role, created_at, updated_at`,
+      [first_name, last_name, patronymic || null, phone_number || null, date_of_birth || null, avatar_url || null, userId]
     );
 
     await client.query('COMMIT');
 
     if (profileResult.rows.length === 0) {
-      // This case should ideally not be reached if authenticateSession works correctly
       return res.status(404).json({ error: 'User profile not found' });
     }
 
     const updatedUser = {
       ...profileResult.rows[0],
-      email: email // Add the updated email to the response
+      email: email || req.user.email
     };
 
     res.json({ user: updatedUser });
+
+  } catch (error) {
+    await client.query('ROLLBACK');
+    console.error('Error updating profile:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  } finally {
+    client.release();
+  }
+});
+
+// Partial update user profile (PATCH)
+router.patch('/profile', authenticateSession, async (req, res) => {
+  if (!req.user || !req.user.profile) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  const userId = req.user.profile.id;
+  const updateData = req.body;
+
+  // Validate only provided fields (partial update)
+  const validationErrors = validateProfileData(updateData, true);
+  if (validationErrors.length > 0) {
+    return res.status(400).json({ error: validationErrors.join('; ') });
+  }
+
+  // Check if any fields are provided
+  const allowedFields = ['first_name', 'last_name', 'patronymic', 'email', 'phone_number', 'date_of_birth', 'avatar_url'];
+  const providedFields = Object.keys(updateData).filter(key => allowedFields.includes(key));
+  
+  if (providedFields.length === 0) {
+    return res.status(400).json({ error: 'No valid fields provided for update' });
+  }
+
+  const client = await pool.connect();
+
+  try {
+    await client.query('BEGIN');
+
+    // Handle email update separately (it's in users table)
+    if (updateData.email) {
+      const emailCheck = await client.query(
+        'SELECT id FROM users WHERE email = $1 AND id != $2',
+        [updateData.email, userId]
+      );
+
+      if (emailCheck.rows.length > 0) {
+        await client.query('ROLLBACK');
+        client.release();
+        return res.status(400).json({ error: 'Email is already in use' });
+      }
+
+      await client.query(
+        'UPDATE users SET email = $1 WHERE id = $2',
+        [updateData.email, userId]
+      );
+    }
+
+    // Build dynamic update query for profile fields
+    const profileFields = ['first_name', 'last_name', 'patronymic', 'phone_number', 'date_of_birth', 'avatar_url'];
+    const updateFields = [];
+    const updateValues = [];
+    let paramIndex = 1;
+
+    profileFields.forEach(field => {
+      if (updateData[field] !== undefined) {
+        updateFields.push(`${field} = $${paramIndex++}`);
+        updateValues.push(updateData[field] || null);
+      }
+    });
+
+    if (updateFields.length > 0) {
+      updateFields.push(`updated_at = NOW()`);
+      updateValues.push(userId);
+
+      const profileResult = await client.query(
+        `UPDATE profiles
+         SET ${updateFields.join(', ')}
+         WHERE id = $${paramIndex}
+         RETURNING id, first_name, last_name, patronymic, phone_number, date_of_birth, avatar_url, role, created_at, updated_at`,
+        updateValues
+      );
+
+      await client.query('COMMIT');
+
+      if (profileResult.rows.length === 0) {
+        return res.status(404).json({ error: 'User profile not found' });
+      }
+
+      const updatedUser = {
+        ...profileResult.rows[0],
+        email: updateData.email || req.user.email
+      };
+
+      res.json({ user: updatedUser });
+    } else {
+      // Only email was updated
+      await client.query('COMMIT');
+      const profileResult = await client.query(
+        'SELECT id, first_name, last_name, patronymic, phone_number, date_of_birth, avatar_url, role, created_at, updated_at FROM profiles WHERE id = $1',
+        [userId]
+      );
+
+      const updatedUser = {
+        ...profileResult.rows[0],
+        email: updateData.email
+      };
+
+      res.json({ user: updatedUser });
+    }
 
   } catch (error) {
     await client.query('ROLLBACK');

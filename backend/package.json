@@ -7,9 +7,10 @@
   "scripts": {
     "start": "node server.js",
     "dev": "nodemon server.js",
-    "migrate:create": "node-pg-migrate create -j js --dir migrations",
-    "migrate:up": "node-pg-migrate up -j js --dir migrations",
-    "migrate:down": "node-pg-migrate down -j js --dir migrations"
+    "migrate:create": "node-pg-migrate create -j cjs --dir migrations",
+    "migrate:up": "node-pg-migrate up --dir migrations -f migrate.cjs",
+    "migrate:down": "node-pg-migrate down --dir migrations -f migrate.cjs",
+    "grant:achievements": "node scripts/grant_achievements.js"
   },
   "keywords": [],
   "author": "",

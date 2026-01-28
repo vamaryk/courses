@@ -18,3 +18,14 @@ INSERT INTO course_category_pivot (course_id, category_id) VALUES
 (2, 1), -- Advanced Python Programming -> Programming
 (3, 2), -- Database Design with SQL -> Database
 (4, 4); -- Web Security Fundamentals -> Security
+
+-- Insert achievements (геймификация)
+-- Используем ON CONFLICT для предотвращения дублирования при повторном запуске
+-- name имеет UNIQUE constraint, поэтому используем его для проверки конфликтов
+INSERT INTO achievements (name, description, icon_url) VALUES
+('Первый шаг', 'Завершите свой первый урок', '/icons/achievements/first-step.svg'),
+('Неделя обучения', 'Занимайтесь 7 дней подряд', '/icons/achievements/week-streak.svg'),
+('Мастер курса', 'Завершите полный курс', '/icons/achievements/course-master.svg'),
+('Отличник', 'Получите 100% правильных ответов в 10 заданиях подряд', '/icons/achievements/straight-a.svg'),
+('Знаток', 'Изучите 50 терминов в глоссарии', '/icons/achievements/knowledge-seeker.svg')
+ON CONFLICT (name) DO NOTHING;

@@ -88,7 +88,7 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 to-gray-100 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-md bg-white rounded-2xl shadow-xl overflow-hidden">
         <div className="p-8">
           <div className="text-center mb-8">
@@ -135,7 +135,7 @@ export default function AuthPage() {
                         maxLength={50}
                         value={formData.first_name}
                         onChange={handleChange}
-                        className="pl-10 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500"
+                        className="p-1 pl-10 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500"
                         placeholder="Иван"
                       />
                     </div>
@@ -157,7 +157,7 @@ export default function AuthPage() {
                         maxLength={50}
                         value={formData.last_name}
                         onChange={handleChange}
-                        className="pl-10 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500"
+                        className="p-1 pl-10 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500"
                         placeholder="Иванов"
                       />
                     </div>
@@ -178,7 +178,7 @@ export default function AuthPage() {
                       type="text"
                       value={formData.patronymic}
                       onChange={handleChange}
-                      className="pl-10 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500"
+                      className="p-1 pl-10 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500"
                       placeholder="Иванович"
                     />
                   </div>
@@ -198,7 +198,7 @@ export default function AuthPage() {
                       type="tel"
                       value={formData.phone_number}
                       onChange={handleChange}
-                      className="pl-10 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500"
+                      className="p-1 pl-10 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500"
                       placeholder="+7 (___) ___-____"
                     />
                   </div>
@@ -218,7 +218,7 @@ export default function AuthPage() {
                       type="date"
                       value={formData.date_of_birth}
                       onChange={handleChange}
-                      className="pl-10 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500"
+                      className="p-1 pl-10 block w-full rounded-lg text-gray-400 border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500"
                     />
                   </div>
                 </div>
@@ -240,7 +240,7 @@ export default function AuthPage() {
                   required
                   value={formData.email}
                   onChange={handleChange}
-                  className="pl-10 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500"
+                  className="p-1 pl-10 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500"
                   placeholder="your@email.com"
                 />
               </div>
@@ -269,7 +269,7 @@ export default function AuthPage() {
                   minLength={8}
                   value={formData.password}
                   onChange={handleChange}
-                  className="pl-10 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500"
+                  className="p-1 pl-10 block w-full rounded-lg border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500"
                   placeholder="••••••••"
                 />
               </div>

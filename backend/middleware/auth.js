@@ -59,6 +59,57 @@ export const authenticateSession = async (req, res, next) => {
   }
 };
 
+// Optional authentication middleware - sets req.user if session exists, but doesn't require it
+export const optionalAuthenticateSession = async (req, res, next) => {
+  const { sessionId } = req.cookies;
+
+  if (!sessionId) {
+    // No session, continue without authentication
+    req.user = null;
+    return next();
+  }
+
+  try {
+    const sessionResult = await pool.query(
+      'SELECT user_id, expires_at FROM sessions WHERE session_id = $1',
+      [sessionId]
+    );
+
+    const session = sessionResult.rows[0];
+
+    if (!session || new Date() > new Date(session.expires_at)) {
+      // Invalid or expired session, continue without authentication
+      req.user = null;
+      return next();
+    }
+
+    const userResult = await pool.query(
+      'SELECT u.email, p.id, p.first_name, p.last_name, p.patronymic, p.avatar_url, p.role, p.bio, p.date_of_birth, p.phone_number, p.address, p.occupation FROM profiles p JOIN users u ON p.id = u.id WHERE p.id = $1',
+      [session.user_id]
+    );
+
+    const user = userResult.rows[0];
+
+    if (user) {
+      req.user = {
+        userId: user.id,
+        role: user.role,
+        profile: user,
+        email: user.email,
+      };
+    } else {
+      req.user = null;
+    }
+
+    next();
+  } catch (error) {
+    console.error('💥 [AUTH] Ошибка опциональной аутентификации:', error.message);
+    // On error, continue without authentication
+    req.user = null;
+    next();
+  }
+};
+
 export const authorizeRole = (requiredRole) => {
   return (req, res, next) => {
     if (!req.user || !req.user.profile) {

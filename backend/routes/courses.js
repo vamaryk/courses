@@ -1,6 +1,6 @@
 import express from 'express';
 import pool from '../db.js';
-import { authenticateSession } from '../middleware/auth.js';
+import { authenticateSession, optionalAuthenticateSession } from '../middleware/auth.js';
 
 const router = express.Router();
 
@@ -16,7 +16,16 @@ const isCourseAuthor = async (courseId, userId) => {
 
 // POST /api/courses - Create a new course
 router.post('/', authenticateSession, async (req, res) => {
-  const { title, description, isPublic } = req.body;
+  const { 
+    title, 
+    description, 
+    isPublic, 
+    coverImage, 
+    tags, 
+    specialty, 
+    targetAudience, 
+    aboutCourse 
+  } = req.body;
   const authorId = req.user.userId;
 
   if (!title) {
@@ -25,8 +34,28 @@ router.post('/', authenticateSession, async (req, res) => {
 
   try {
     const result = await pool.query(
-      'INSERT INTO courses (title, description, is_public, author_id) VALUES ($1, $2, $3, $4) RETURNING *',
-      [title, description, isPublic, authorId]
+      `INSERT INTO courses (
+        title, 
+        description, 
+        is_public, 
+        author_id, 
+        cover_image, 
+        tags, 
+        specialty, 
+        target_audience, 
+        about_course
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+      [
+        title, 
+        description || null, 
+        isPublic || false, 
+        authorId, 
+        coverImage || null, 
+        tags || [], 
+        specialty || null, 
+        targetAudience || null, 
+        aboutCourse || null
+      ]
     );
     res.status(201).json(result.rows[0]);
   } catch (error) {
@@ -35,15 +64,149 @@ router.post('/', authenticateSession, async (req, res) => {
   }
 });
 
-// GET /api/courses - Get all courses for the logged-in user
-router.get('/', authenticateSession, async (req, res) => {
+// GET /api/courses - Get all public courses (or all courses if authenticated)
+// This endpoint can be accessed without authentication to see public courses
+router.get('/', optionalAuthenticateSession, async (req, res) => {
+  let query;
+  let params = [];
+  
+  try {
+    // If user is authenticated, show all courses (public + their own private courses)
+    // If not authenticated, show only public courses
+    
+    console.log('📚 [COURSES] Fetching courses. User authenticated:', !!req.user);
+    if (req.user && req.user.userId) {
+      // Authenticated: show all public courses OR courses created by user OR courses user has access to
+      const userId = req.user.userId;
+      query = `
+        SELECT DISTINCT 
+          c.id,
+          c.title,
+          c.description,
+          c.is_public,
+          c.author_id,
+          c.created_at,
+          c.updated_at,
+          COALESCE(c.cover_image, NULL) as cover_image,
+          CASE 
+            WHEN c.tags IS NULL THEN ARRAY[]::TEXT[]
+            WHEN pg_typeof(c.tags)::text = 'text[]' THEN c.tags::TEXT[]
+            ELSE ARRAY[]::TEXT[]
+          END as tags,
+          COALESCE(c.specialty, NULL) as specialty,
+          COALESCE(c.target_audience, NULL) as target_audience,
+          COALESCE(c.about_course, NULL) as about_course,
+          NULL as level,
+          NULL as language,
+          0 as price,
+          0 as "durationHours",
+          0 as rating,
+          COALESCE((SELECT COUNT(*) FROM user_enrollments WHERE course_id = c.id), 0) as "studentsCount",
+          COALESCE(p.first_name || ' ' || p.last_name, 'Преподаватель') as instructor_name,
+          COALESCE(p.avatar_url, NULL) as instructor_avatar,
+          jsonb_build_object(
+            'id', p.id,
+            'name', COALESCE(p.first_name || ' ' || p.last_name, 'Преподаватель'),
+            'email', u.email
+          ) as author
+        FROM courses c
+        LEFT JOIN LATERAL (
+          SELECT 
+            COALESCE(
+              (SELECT (c.author_id::text)::jsonb->>'id' 
+               WHERE (c.author_id::text) ~ '^[\s]*\{' 
+               AND jsonb_typeof((c.author_id::text)::jsonb) = 'object'
+               AND (c.author_id::text)::jsonb ? 'id'),
+              c.author_id::text,
+              NULL::text
+            ) as author_id_text
+        ) author_extract ON true
+        LEFT JOIN profiles p ON author_extract.author_id_text = p.id::text
+        LEFT JOIN users u ON p.id = u.id
+        WHERE c.is_public = true 
+           OR author_extract.author_id_text = $1::text
+           OR EXISTS (
+             SELECT 1 FROM course_access ca 
+             WHERE ca.course_id = c.id AND ca.user_id = $1::uuid
+           )
+        ORDER BY c.created_at DESC
+      `;
+      params = [userId];
+      console.log('📚 [COURSES] Using authenticated query for user:', userId);
+      console.log('📚 [COURSES] SQL Query:', query.replace(/\s+/g, ' ').trim());
+    } else {
+      // Not authenticated: show only public courses
+      console.log('📚 [COURSES] Using public courses query (not authenticated)');
+      query = `
+        SELECT 
+          c.id,
+          c.title,
+          c.description,
+          c.is_public,
+          c.author_id,
+          c.created_at,
+          c.updated_at,
+          COALESCE(c.cover_image, NULL) as cover_image,
+          CASE 
+            WHEN c.tags IS NULL THEN ARRAY[]::TEXT[]
+            WHEN pg_typeof(c.tags)::text = 'text[]' THEN c.tags::TEXT[]
+            ELSE ARRAY[]::TEXT[]
+          END as tags,
+          COALESCE(c.specialty, NULL) as specialty,
+          COALESCE(c.target_audience, NULL) as target_audience,
+          COALESCE(c.about_course, NULL) as about_course,
+          NULL as level,
+          NULL as language,
+          0 as price,
+          0 as "durationHours",
+          0 as rating,
+          COALESCE((SELECT COUNT(*) FROM user_enrollments WHERE course_id = c.id), 0) as "studentsCount",
+          COALESCE(p.first_name || ' ' || p.last_name, 'Преподаватель') as instructor_name,
+          COALESCE(p.avatar_url, NULL) as instructor_avatar,
+          jsonb_build_object(
+            'id', p.id,
+            'name', COALESCE(p.first_name || ' ' || p.last_name, 'Преподаватель'),
+            'email', u.email
+          ) as author
+        FROM courses c
+        LEFT JOIN LATERAL (
+          SELECT 
+            COALESCE(
+              (SELECT (c.author_id::text)::jsonb->>'id' 
+               WHERE (c.author_id::text) ~ '^[\s]*\{' 
+               AND jsonb_typeof((c.author_id::text)::jsonb) = 'object'
+               AND (c.author_id::text)::jsonb ? 'id'),
+              c.author_id::text,
+              NULL::text
+            ) as author_id_text
+        ) author_extract ON true
+        LEFT JOIN profiles p ON author_extract.author_id_text = p.id::text
+        LEFT JOIN users u ON p.id = u.id
+        WHERE c.is_public = true 
+        ORDER BY c.created_at DESC
+      `;
+    }
+    
+    const result = await pool.query(query, params);
+    console.log('📚 [COURSES] Successfully fetched', result.rows.length, 'courses');
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('❌ [COURSES] Error fetching courses:', error.message);
+    console.error('❌ [COURSES] Error stack:', error.stack);
+    console.error('❌ [COURSES] Query params:', params.length > 0 ? params : 'none');
+    res.status(500).json({ error: 'Failed to fetch courses', details: error.message });
+  }
+});
+
+// GET /api/courses/my - Get all courses created by the logged-in user
+router.get('/my', authenticateSession, async (req, res) => {
   const authorId = req.user.userId;
   try {
     const result = await pool.query('SELECT * FROM courses WHERE author_id = $1 ORDER BY created_at DESC', [authorId]);
     res.status(200).json(result.rows);
   } catch (error) {
-    console.error('Error fetching courses:', error.message);
-    res.status(500).json({ error: 'Failed to fetch courses' });
+    console.error('Error fetching user courses:', error.message);
+    res.status(500).json({ error: 'Failed to fetch user courses' });
   }
 });
 
@@ -61,6 +224,13 @@ router.get('/:id', authenticateSession, async (req, res) => {
       c.author_id,
       c.created_at,
       c.updated_at,
+      COALESCE(c.cover_image, NULL) as cover_image,
+      COALESCE(c.tags, ARRAY[]::TEXT[]) as tags,
+      COALESCE(c.specialty, NULL) as specialty,
+      COALESCE(c.target_audience, NULL) as target_audience,
+      COALESCE(c.about_course, NULL) as about_course,
+      COALESCE(p.first_name || ' ' || p.last_name, 'Преподаватель') as instructor_name,
+      COALESCE(p.avatar_url, NULL) as instructor_avatar,
       COALESCE(
         (
           SELECT JSON_AGG(ch_agg.*)
@@ -69,6 +239,7 @@ router.get('/:id', authenticateSession, async (req, res) => {
               ch.id,
               ch.title,
               ch.order,
+              COALESCE(ch.canvas_data, NULL) as canvas_data,
               COALESCE(
                 (
                   SELECT JSON_AGG(sub_agg.*)
@@ -109,6 +280,7 @@ router.get('/:id', authenticateSession, async (req, res) => {
         '[]'::json
       ) AS chapters
     FROM courses c
+    LEFT JOIN profiles p ON c.author_id = p.id
     WHERE c.id = $1;
   `;
 
@@ -141,7 +313,16 @@ router.get('/:id', authenticateSession, async (req, res) => {
 // PUT /api/courses/:id - Update a course
 router.put('/:id', authenticateSession, async (req, res) => {
   const { id } = req.params;
-  const { title, description, isPublic } = req.body;
+  const { 
+    title, 
+    description, 
+    isPublic, 
+    coverImage, 
+    tags, 
+    specialty, 
+    targetAudience, 
+    aboutCourse 
+  } = req.body;
   const authorId = req.user.userId;
 
   try {
@@ -150,8 +331,28 @@ router.put('/:id', authenticateSession, async (req, res) => {
     }
 
     const result = await pool.query(
-      'UPDATE courses SET title = $1, description = $2, is_public = $3, updated_at = NOW() WHERE id = $4 RETURNING *',
-      [title, description, isPublic, id]
+      `UPDATE courses SET 
+        title = $1, 
+        description = $2, 
+        is_public = $3, 
+        cover_image = $4, 
+        tags = $5, 
+        specialty = $6, 
+        target_audience = $7, 
+        about_course = $8, 
+        updated_at = NOW() 
+      WHERE id = $9 RETURNING *`,
+      [
+        title, 
+        description, 
+        isPublic, 
+        coverImage, 
+        tags, 
+        specialty, 
+        targetAudience, 
+        aboutCourse, 
+        id
+      ]
     );
 
     res.status(200).json(result.rows[0]);
@@ -277,9 +478,10 @@ router.post('/:courseId/chapters', authenticateSession, async (req, res) => {
 });
 
 // PUT /api/chapters/:id - Update a chapter
+// Note: This route is mounted at /api/chapters in server.js
 router.put('/:id', authenticateSession, async (req, res) => {
   const { id } = req.params;
-  const { title, order } = req.body;
+  const { title, order, canvasData } = req.body;
   const authorId = req.user.userId;
 
   try {
@@ -294,13 +496,64 @@ router.put('/:id', authenticateSession, async (req, res) => {
     }
 
     const result = await pool.query(
-      'UPDATE chapters SET title = $1, "order" = $2 WHERE id = $3 RETURNING *',
-      [title, order, id]
+      'UPDATE chapters SET title = $1, "order" = $2, canvas_data = $3 WHERE id = $4 RETURNING *',
+      [title, order, canvasData ? JSON.stringify(canvasData) : null, id]
     );
     res.status(200).json(result.rows[0]);
   } catch (error) {
     console.error(`Error updating chapter ${id}:`, error.message);
     res.status(500).json({ error: 'Failed to update chapter' });
+  }
+});
+
+// GET /api/chapters/:id/canvas - Get canvas data for a chapter
+router.get('/:id/canvas', authenticateSession, async (req, res) => {
+  const { id } = req.params;
+  const authorId = req.user.userId;
+
+  try {
+    const chapterCheck = await pool.query('SELECT course_id, COALESCE(canvas_data, NULL) as canvas_data FROM chapters WHERE id = $1', [id]);
+    const chapterData = chapterCheck.rows[0];
+
+    if (!chapterData) {
+      return res.status(404).json({ message: 'Chapter not found' });
+    }
+    if (!(await isCourseAuthor(chapterData.course_id, authorId))) {
+      return res.status(403).json({ error: 'You are not authorized to view this chapter' });
+    }
+
+    res.status(200).json({ canvasData: chapterData.canvas_data || null });
+  } catch (error) {
+    console.error(`Error fetching canvas data for chapter ${id}:`, error.message);
+    res.status(500).json({ error: 'Failed to fetch canvas data' });
+  }
+});
+
+// PUT /api/chapters/:id/canvas - Update canvas data for a chapter
+router.put('/:id/canvas', authenticateSession, async (req, res) => {
+  const { id } = req.params;
+  const { canvasData } = req.body;
+  const authorId = req.user.userId;
+
+  try {
+    const chapterCheck = await pool.query('SELECT course_id FROM chapters WHERE id = $1', [id]);
+    const chapterData = chapterCheck.rows[0];
+
+    if (!chapterData) {
+      return res.status(404).json({ message: 'Chapter not found' });
+    }
+    if (!(await isCourseAuthor(chapterData.course_id, authorId))) {
+      return res.status(403).json({ error: 'You are not authorized to update this chapter' });
+    }
+
+    const result = await pool.query(
+      'UPDATE chapters SET canvas_data = $1 WHERE id = $2 RETURNING id, canvas_data',
+      [canvasData ? JSON.stringify(canvasData) : null, id]
+    );
+    res.status(200).json({ canvasData: result.rows[0].canvas_data });
+  } catch (error) {
+    console.error(`Error updating canvas data for chapter ${id}:`, error.message);
+    res.status(500).json({ error: 'Failed to update canvas data' });
   }
 });
 
@@ -330,6 +583,33 @@ router.delete('/:id', authenticateSession, async (req, res) => {
 
 
 // --- Subchapters ---
+// GET /api/chapters/:chapterId/subchapters - Get all subchapters for a chapter
+router.get('/:chapterId/subchapters', authenticateSession, async (req, res) => {
+  const { chapterId } = req.params;
+  const authorId = req.user.userId;
+
+  try {
+    const chapterCheck = await pool.query('SELECT course_id FROM chapters WHERE id = $1', [chapterId]);
+    const chapterData = chapterCheck.rows[0];
+
+    if (!chapterData) {
+      return res.status(404).json({ message: 'Chapter not found' });
+    }
+    if (!(await isCourseAuthor(chapterData.course_id, authorId))) {
+      return res.status(403).json({ error: 'You are not authorized to view subchapters of this chapter' });
+    }
+
+    const result = await pool.query(
+      'SELECT * FROM subchapters WHERE chapter_id = $1 ORDER BY "order" ASC',
+      [chapterId]
+    );
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('Error fetching subchapters:', error.message);
+    res.status(500).json({ error: 'Failed to fetch subchapters' });
+  }
+});
+
 // POST /api/chapters/:chapterId/subchapters - Create a new subchapter
 router.post('/:chapterId/subchapters', authenticateSession, async (req, res) => {
   const { chapterId } = req.params;
@@ -577,6 +857,238 @@ router.delete('/:id', authenticateSession, async (req, res) => {
   } catch (error) {
     console.error(`Error deleting content block ${id}:`, error.message);
     res.status(500).json({ error: 'Failed to delete content block' });
+  }
+});
+
+// --- Favorites ---
+// GET /api/courses/favorites - Get user's favorite courses
+router.get('/favorites', authenticateSession, async (req, res) => {
+  const userId = req.user.userId;
+  
+  try {
+    const result = await pool.query(
+      `SELECT c.* 
+       FROM courses c
+       INNER JOIN favorites f ON c.id = f.course_id
+       WHERE f.user_id = $1
+       ORDER BY c.created_at DESC`,
+      [userId]
+    );
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error('Error fetching favorite courses:', error.message);
+    res.status(500).json({ error: 'Failed to fetch favorite courses' });
+  }
+});
+
+// POST /api/courses/:id/favorite - Add course to favorites
+router.post('/:id/favorite', authenticateSession, async (req, res) => {
+  const { id: courseId } = req.params;
+  const userId = req.user.userId;
+  
+  try {
+    // Check if course exists
+    const courseCheck = await pool.query('SELECT id FROM courses WHERE id = $1', [courseId]);
+    if (courseCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+    
+    // Check if already in favorites
+    const existing = await pool.query(
+      'SELECT * FROM favorites WHERE user_id = $1 AND course_id = $2',
+      [userId, courseId]
+    );
+    
+    if (existing.rows.length > 0) {
+      return res.status(409).json({ message: 'Course already in favorites' });
+    }
+    
+    // Add to favorites
+    await pool.query(
+      'INSERT INTO favorites (user_id, course_id) VALUES ($1, $2)',
+      [userId, courseId]
+    );
+    
+    res.status(201).json({ message: 'Course added to favorites' });
+  } catch (error) {
+    console.error(`Error adding course ${courseId} to favorites:`, error.message);
+    res.status(500).json({ error: 'Failed to add course to favorites' });
+  }
+});
+
+// DELETE /api/courses/:id/favorite - Remove course from favorites
+router.delete('/:id/favorite', authenticateSession, async (req, res) => {
+  const { id: courseId } = req.params;
+  const userId = req.user.userId;
+  
+  try {
+    const result = await pool.query(
+      'DELETE FROM favorites WHERE user_id = $1 AND course_id = $2',
+      [userId, courseId]
+    );
+    
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Favorite not found' });
+    }
+    
+    res.status(204).send();
+  } catch (error) {
+    console.error(`Error removing course ${courseId} from favorites:`, error.message);
+    res.status(500).json({ error: 'Failed to remove course from favorites' });
+  }
+});
+
+// GET /api/courses/:id/favorite/status - Check if course is in favorites
+router.get('/:id/favorite/status', authenticateSession, async (req, res) => {
+  const { id: courseId } = req.params;
+  const userId = req.user.userId;
+  
+  try {
+    const result = await pool.query(
+      'SELECT * FROM favorites WHERE user_id = $1 AND course_id = $2',
+      [userId, courseId]
+    );
+    
+    res.status(200).json({ isFavorite: result.rows.length > 0 });
+  } catch (error) {
+    console.error(`Error checking favorite status for course ${courseId}:`, error.message);
+    res.status(500).json({ error: 'Failed to check favorite status' });
+  }
+});
+
+// GET /api/courses/:id/activity - Get activity statistics for a course (time spent by day)
+router.get('/:id/activity', authenticateSession, async (req, res) => {
+  const { id: courseId } = req.params;
+  const userId = req.user.userId;
+  
+  try {
+    // Get activity logs for the last 7 days for this course
+    const result = await pool.query(
+      `SELECT 
+        activity_date,
+        COALESCE(SUM(time_spent_minutes), 0) as time_spent_minutes
+      FROM activity_logs
+      WHERE user_id = $1 AND course_id = $2 
+        AND activity_date >= CURRENT_DATE - INTERVAL '7 days'
+      GROUP BY activity_date
+      ORDER BY activity_date ASC`,
+      [userId, courseId]
+    );
+    
+    // Get today's activity
+    const todayResult = await pool.query(
+      `SELECT COALESCE(SUM(time_spent_minutes), 0) as time_spent_minutes
+       FROM activity_logs
+       WHERE user_id = $1 AND course_id = $2 
+         AND activity_date = CURRENT_DATE`,
+      [userId, courseId]
+    );
+    
+    // Get this week's activity
+    const weekResult = await pool.query(
+      `SELECT COALESCE(SUM(time_spent_minutes), 0) as time_spent_minutes
+       FROM activity_logs
+       WHERE user_id = $1 AND course_id = $2 
+         AND activity_date >= DATE_TRUNC('week', CURRENT_DATE)`,
+      [userId, courseId]
+    );
+    
+    // Get total activity
+    const totalResult = await pool.query(
+      `SELECT COALESCE(SUM(time_spent_minutes), 0) as time_spent_minutes
+       FROM activity_logs
+       WHERE user_id = $1 AND course_id = $2`,
+      [userId, courseId]
+    );
+    
+    // Format data for chart (last 7 days)
+    const daysOfWeek = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+    const chartData = [];
+    const today = new Date();
+    
+    for (let i = 6; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - i);
+      const dayName = daysOfWeek[date.getDay() === 0 ? 6 : date.getDay() - 1];
+      
+      const dayData = result.rows.find(
+        row => new Date(row.activity_date).toDateString() === date.toDateString()
+      );
+      
+      chartData.push({
+        day: dayName,
+        value: dayData ? dayData.time_spent_minutes : 0
+      });
+    }
+    
+    const todayMinutes = parseInt(todayResult.rows[0]?.time_spent_minutes) || 0;
+    const weekMinutes = parseInt(weekResult.rows[0]?.time_spent_minutes) || 0;
+    const totalMinutes = parseInt(totalResult.rows[0]?.time_spent_minutes) || 0;
+    
+    res.status(200).json({
+      stats: {
+        today: formatTime(todayMinutes),
+        week: formatTime(weekMinutes),
+        total: formatTime(totalMinutes)
+      },
+      chartData
+    });
+  } catch (error) {
+    console.error(`Error fetching activity for course ${courseId}:`, error.message);
+    res.status(500).json({ error: 'Failed to fetch activity statistics' });
+  }
+});
+
+// Helper function to format minutes to readable time
+function formatTime(minutes) {
+  const mins = parseInt(minutes) || 0;
+  if (mins < 60) {
+    return `${mins} мин`;
+  }
+  const hours = Math.floor(mins / 60);
+  const remainingMins = mins % 60;
+  if (remainingMins === 0) {
+    if (hours === 1) {
+      return '1 час';
+    } else if (hours < 5) {
+      return `${hours} часа`;
+    } else {
+      return `${hours} часов`;
+    }
+  }
+  return `${hours} ч ${remainingMins} мин`;
+}
+
+// POST /api/courses/:id/activity/track - Track time spent on course
+router.post('/:id/activity/track', authenticateSession, async (req, res) => {
+  const { id: courseId } = req.params;
+  const { timeSpentMinutes } = req.body;
+  const userId = req.user.userId;
+  
+  if (!timeSpentMinutes || timeSpentMinutes <= 0) {
+    return res.status(400).json({ error: 'Invalid time spent' });
+  }
+  
+  try {
+    // Check if course exists
+    const courseCheck = await pool.query('SELECT id FROM courses WHERE id = $1', [courseId]);
+    if (courseCheck.rows.length === 0) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+    
+    // Insert or update activity log for today
+    await pool.query(
+      `INSERT INTO activity_logs (user_id, activity_date, time_spent_minutes, course_id)
+       VALUES ($1, CURRENT_DATE, $2, $3)
+       ON CONFLICT (user_id, activity_date, course_id)
+       DO UPDATE SET time_spent_minutes = activity_logs.time_spent_minutes + $2`,
+      [userId, timeSpentMinutes, courseId]
+    );
+    
+    res.status(200).json({ message: 'Activity tracked successfully' });
+  } catch (error) {
+    console.error(`Error tracking activity for course ${courseId}:`, error.message);
+    res.status(500).json({ error: 'Failed to track activity' });
   }
 });
 

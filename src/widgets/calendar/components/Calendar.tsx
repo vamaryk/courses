@@ -116,8 +116,8 @@ export function Calendar({ view, currentDate, tasks, onEditTask }: CalendarProps
     }
 
     return {
-      width: '100%',
-      left: '0',
+      width: '95%',
+      left: '30px',
       top: getTaskPosition(task),
       height: getTaskHeight(task),
     };
@@ -128,7 +128,7 @@ export function Calendar({ view, currentDate, tasks, onEditTask }: CalendarProps
     const gridCols = isMobile ? 'grid-cols-2' : 'grid-cols-7';
 
     return (
-      <div className="relative flex flex-col rounded-xl overflow-hidden">
+      <div className="relative flex flex-col rounded-xl overflow-hidden mt-4 bg-white/50">
         <div className="sticky top-0 z-1 p-4 items-center pl-[60px]">
           <div className={`grid ${gridCols} gap-2`}>
             {visibleDays.map((day, index) => {
@@ -150,7 +150,7 @@ export function Calendar({ view, currentDate, tasks, onEditTask }: CalendarProps
                   <div className="flex items-center justify-between px-[0.2em]">
                     <div
                       className={`
-                        text-[20px] font-normal font-montserrat leading-5
+                        text-[20px] font-normal font-Montserrat leading-5
                         ${isCurrentDay ? 'text-purple-600' : 'text-[#525252]'}
                       `}
                     >
@@ -158,7 +158,7 @@ export function Calendar({ view, currentDate, tasks, onEditTask }: CalendarProps
                     </div>
                     <div
                       className={`
-                        text-[2.5em] font-semibold font-montserrat leading-none py-[0.2em]
+                        text-[2.5em] font-semibold font-Montserrat leading-none py-[0.2em]
                         ${isCurrentDay ? 'text-purple-600' : 'text-[#525252]'}
                       `}
                     >
@@ -171,15 +171,18 @@ export function Calendar({ view, currentDate, tasks, onEditTask }: CalendarProps
           </div>
         </div>
 
-        <div className="h-[590px] overflow-y-auto bg-white rounded-[12px]">
-          <div className="grid grid-cols-[auto,1fr] gap-4 h-full px-4">
-            <div className="sticky left-0 z-1">
-              {hours.map((hour) => (
-                <div key={hour} className="text-sm text-gray-500 h-[60px] font-montserrat flex items-center">
-                  {hour.toString().padStart(2, '0')}:00
-                </div>
-              ))}
-            </div>
+        <div className="h-[590px] overflow-y-auto bg-white rounded-b-[12px]">
+        <div className="grid grid-cols-[0px_1fr] h-full pl-2">
+          <div className="sticky left-0 z-1 bg-white">
+            {hours.map((hour) => (
+              <div
+                key={hour}
+                className="text-sm text-gray-500 h-[60px] font-Montserrat flex items-center"
+              >
+                {hour.toString().padStart(2, '0')}:00
+              </div>
+            ))}
+          </div>
 
             <div className="relative min-w-0">
               <div className={`grid ${gridCols}`}>
@@ -197,9 +200,9 @@ export function Calendar({ view, currentDate, tasks, onEditTask }: CalendarProps
                         {hours.map((hour) => (
                           <div
                             key={hour}
-                            className="border-t border-gray-200/50"
-                            style={{ height: '60px' }}
-                          />
+                            className="text-sm text-gray-500 h-[60px] font-Montserrat flex items-center border-t border-gray-200/50"
+                          >
+                          </div>
                         ))}
                       </div>
                       {dayTasks.map((task) => {
@@ -248,7 +251,7 @@ export function Calendar({ view, currentDate, tasks, onEditTask }: CalendarProps
   return (
     <div className="grid grid-cols-7 gap-2">
       {days.map((day) => (
-        <div key={day} className="text-center font-montserrat font-medium py-2">
+        <div key={day} className="text-center font-Montserrat font-medium py-2">
           {day}
         </div>
       ))}
@@ -262,7 +265,7 @@ export function Calendar({ view, currentDate, tasks, onEditTask }: CalendarProps
         return (
           <div
             key={i}
-            className={`h-32 border rounded-xl p-2 ${
+            className={`h-32 rounded-xl p-2 ${
               isCurrentMonth
                 ? isCurrentDay
                   ? 'bg-purple-100'

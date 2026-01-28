@@ -22,21 +22,10 @@ export function SideCalendar({ currentDate, onDateChange, tasks }: SideCalendarP
   const isToday = (date: Date) => isSameDay(date, today);
 
   const monthNames = [
-    'Январь',
-    'Февраль',
-    'Март',
-    'Апрель',
-    'Май',
-    'Июнь',
-    'Июль',
-    'Август',
-    'Сентябрь',
-    'Октябрь',
-    'Ноябрь',
-    'Декабрь',
+    'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
+    'Июль', 'Август', 'Сентябрь', 'Октябрь', 'Ноябрь', 'Декабрь',
   ];
 
-  // Получение текущего месяца и года
   const currentMonth = monthNames[currentDate.getMonth()];
   const currentYear = currentDate.getFullYear();
 
@@ -45,7 +34,9 @@ export function SideCalendar({ currentDate, onDateChange, tasks }: SideCalendarP
   };
 
   return (
-    <div className="bg-white fixed t-[4rem] rounded-xl shadow p-6 h-[calc(100vh-4.6rem)] w-[300px]">
+    // Удалены классы фиксированного позиционирования. Используем flex-col и h-full, чтобы растянуться по высоте родителя.
+    <div className="h-full flex flex-col"> 
+      
       {/* Заголовок */}
       <div className="self-start">
         <h2 className="text-xl font-semibold font-montserrat">
@@ -58,65 +49,57 @@ export function SideCalendar({ currentDate, onDateChange, tasks }: SideCalendarP
 
       {/* Навигация по неделям */}
       <div className="p-1 border-[1px] border-solid rounded-[12px] mt-[15px] border-[#E5E5E5]">
-      <div className="flex items-center justify-between mb-2 pt-[10px]">
-        <button
-          onClick={() => {
-            const newDate = new Date(currentDate);
-            newDate.setDate(currentDate.getDate() - 7);
-            onDateChange(newDate);
-          }}
-        >
-          <ChevronLeft className="w-4 h-4 ml-[15px] text-gray-600" />
-        </button>
+        <div className="flex items-center justify-between mb-2 pt-[10px]">
+          <button
+            onClick={() => onDateChange(addDays(currentDate, -7))}
+          >
+            <ChevronLeft className="w-4 h-4 ml-[15px] text-gray-600" />
+          </button>
 
-        {/* Месяц и год */}
-        <div className="flex flex-col items-center">
-          <span className="text-[14px] font-medium font-montserrat">
-            {currentMonth} {currentYear}
-          </span>
+          {/* Месяц и год */}
+          <div className="flex flex-col items-center">
+            <span className="text-[14px] font-medium font-montserrat">
+              {currentMonth} {currentYear}
+            </span>
+          </div>
+
+          <button
+            onClick={() => onDateChange(addDays(currentDate, 7))}
+          >
+            <ChevronRight className="w-4 h-4 mr-[15px] text-gray-600" />
+          </button>
         </div>
 
-        <button
-          onClick={() => {
-            const newDate = new Date(currentDate);
-            newDate.setDate(currentDate.getDate() + 7);
-            onDateChange(newDate);
-          }}
-        >
-          <ChevronRight className="w-4 h-4 mr-[15px] text-gray-600" />
-        </button>
+        {/* Дни недели */}
+        <div className="grid grid-cols-7 gap-2 font-montserrat text-xs text-gray-500 text-center mb-1">
+          {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((dayName) => (
+            <span key={dayName}>{dayName}</span>
+          ))}
+        </div>
+
+        {/* Даты */}
+        <div className="grid grid-cols-7 gap-2 mb-2">
+          {weekDays.map((date) => {
+            const dayNumber = format(date, 'd');
+            const isCurrentDay = isToday(date);
+
+            return (
+              <button
+                key={date.toISOString()}
+                onClick={() => onDateChange(date)}
+                className={`flex flex-col items-center p-2 rounded-full font-montserrat ${
+                  isCurrentDay ? 'bg-[#D8E6FF] text-[#252525]' : 'hover:bg-gray-50 text-gray-600'
+                }`}
+              >
+                <span className="text-sm">{dayNumber}</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Дни недели */}
-      <div className="grid grid-cols-7 gap-2 font-montserrat text-xs text-gray-500 text-center mb-1">
-        {['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'].map((dayName) => (
-          <span key={dayName}>{dayName}</span>
-        ))}
-      </div>
-
-      {/* Даты */}
-      <div className="grid grid-cols-7 gap-2 mb-2">
-        {weekDays.map((date) => {
-          const dayNumber = format(date, 'd');
-          const isCurrentDay = isToday(date);
-
-          return (
-            <button
-              key={date.toISOString()}
-              onClick={() => onDateChange(date)}
-              className={`flex flex-col items-center p-2 rounded-full font-montserrat ${
-                isCurrentDay ? 'bg-[#D8E6FF] text-[#252525]' : 'hover:bg-gray-50 text-gray-600'
-              }`}
-            >
-              <span className="text-sm">{dayNumber}</span>
-            </button>
-          );
-        })}
-      </div>
-     </div>
-
-      {/* Задачи на сегодня */}
-      <div className="mt-6">
+      {/* Задачи на сегодня (Используем flex-1 и overflow-y-auto для скроллинга внутри блока, если задач много) */}
+      <div className="mt-6 flex-1 min-h-0 overflow-y-auto">
         <h3 className="text-lg font-medium font-montserrat mb-2">Задачи на сегодня</h3>
         <div className="space-y-3">
           {getTodaysTasks().map((task) => (

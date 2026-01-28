@@ -1,8 +1,17 @@
-import { BookOpen, BookText, FileText, Clock, Users, ChevronRight } from 'lucide-react';
-import { useParams, Link } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import { useEffect, useState, useRef } from 'react';
 import { coursesApi, type Course, type Chapter, type Subchapter, type ContentBlock } from '@/shared/api/courses';
-import { Button } from '@/components/ui/button';
+import Header from "@/widgets/navigation/Header/Header";
+import MenuSidebar from "@/widgets/navigation/MenuSidebar/MenuSidebar";
+import HeroHeader from "@/components/dashboard/HeroHeader";
+import CourseProgress from "@/components/dashboard/CourseProgress";
+import CourseModules from "@/components/dashboard/CourseModules";
+import ActivitySection from "@/components/dashboard/ActivitySection";
+import AboutCourse from "@/components/dashboard/AboutCourse";
+import ResumeSection from "@/components/dashboard/ResumeSection";
+import { Button } from "@/components/ui/button";
+import { Edit } from "lucide-react";
+import { useAuth } from "@/app/providers/AuthProvider";
 
 interface CourseWithChapters extends Course {
   chapters?: Array<Chapter & {
@@ -23,9 +32,22 @@ interface CourseWithChapters extends Course {
 
 export default function CourseDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
+  const { user, isAuthenticated } = useAuth();
   const [course, setCourse] = useState<CourseWithChapters | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activityData, setActivityData] = useState<{
+    stats: { today: string; week: string; total: string };
+    chartData: Array<{ day: string; value: number }>;
+  } | null>(null);
+  
+  // Track time spent on page
+  const pageLoadTime = useRef<number>(Date.now());
+  const trackingInterval = useRef<number | null>(null);
+
+  // Check if current user is the author of the course
+  const isAuthor = course && user && course.author_id && user.id && course.author_id === user.id;
 
   useEffect(() => {
     const fetchCourse = async () => {
@@ -70,6 +92,46 @@ export default function CourseDetailPage() {
     fetchCourse();
   }, [id]);
 
+  // Fetch activity data and track time spent
+  useEffect(() => {
+    if (!id || !isAuthenticated || !course) return;
+
+    const fetchActivity = async () => {
+      try {
+        const activity = await coursesApi.getCourseActivity(parseInt(id));
+        setActivityData(activity);
+      } catch (err) {
+        console.error('Error fetching activity:', err);
+      }
+    };
+
+    fetchActivity();
+
+    // Track time spent on page (update every minute)
+    trackingInterval.current = window.setInterval(async () => {
+      const timeSpent = Math.floor((Date.now() - pageLoadTime.current) / 1000 / 60); // in minutes
+      if (timeSpent > 0) {
+        try {
+          await coursesApi.trackActivity(parseInt(id), timeSpent);
+          pageLoadTime.current = Date.now(); // Reset timer after tracking
+        } catch (err) {
+          console.error('Error tracking activity:', err);
+        }
+      }
+    }, 60000); // Every minute
+
+    return () => {
+      if (trackingInterval.current) {
+        clearInterval(trackingInterval.current);
+        // Track final time before leaving
+        const finalTime = Math.floor((Date.now() - pageLoadTime.current) / 1000 / 60);
+        if (finalTime > 0) {
+          coursesApi.trackActivity(parseInt(id), finalTime).catch(console.error);
+        }
+      }
+    };
+  }, [id, isAuthenticated, course]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -82,12 +144,8 @@ export default function CourseDetailPage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center p-6 max-w-md mx-auto">
-          <BookOpen className="w-12 h-12 text-gray-400 mx-auto mb-4" />
           <h2 className="text-xl font-semibold text-gray-800 mb-2">Курс не найден</h2>
           <p className="text-gray-600 mb-6">Не удалось загрузить информацию о курсе. Пожалуйста, попробуйте позже.</p>
-          <Button asChild>
-            <Link to="/">Вернуться на главную</Link>
-          </Button>
         </div>
       </div>
     );
@@ -110,146 +168,107 @@ export default function CourseDetailPage() {
     }, 0);
   }, 0) || 0;
 
+  // Calculate progress percentage
+  const progressPercentage = course.totalLessons && course.totalLessons > 0 
+    ? Math.round((1 / course.totalLessons) * 100) 
+    : 1;
+
+  // Convert chapters to sections format for CourseModules
+  const sections = course.chapters?.map((chapter, chapterIndex) => ({
+    id: String(chapter.id),
+    title: `${chapterIndex + 1}. ${chapter.title}`,
+    modules: chapter.subchapters?.map((subchapter, subIndex) => ({
+      id: `${chapter.id}-${subchapter.id}`,
+      title: subchapter.title,
+      description: subchapter.description,
+      duration: subchapter.content_blocks 
+        ? `${Math.ceil((subchapter.content_blocks.length * 15) / 60)} : ${(subchapter.content_blocks.length * 15) % 60}`
+        : undefined,
+      isCompleted: false, // TODO: Get from user progress
+      isPlaying: chapterIndex === 0 && subIndex === 0, // TODO: Get from user progress
+      hasFireIcon: false,
+    })) || [],
+  })) || [];
+
+  // Prepare progress data
+  const progressData = [
+    { value: String(Math.ceil((course.totalDuration || 0) / 60)), label: "часов", progress: 45, color: "purple" as const },
+    { value: `${progressPercentage}%`, label: "пройдено", progress: progressPercentage, color: "blue" as const },
+    { value: String(course.totalLessons || 0), label: "лекций", progress: 78, color: "green" as const },
+    { value: String(course.studentsCount || 0), label: "процесс", progress: 60, color: "orange" as const },
+  ];
+
+  // Prepare stats for HeroHeader
+  const stats = {
+    tests: String(practiceCount),
+    programs: "0/5",
+    lectures: `${theoryCount}/${course.totalLessons || 0}`,
+    progress: `${progressPercentage}%`
+  };
+
+  // Prepare tags
+  const tags = course.language ? [course.language, course.is_public ? 'Публичный' : 'Приватный'] : [];
+
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-7xl mx-auto">
-        {/* Course Header */}
-        <div className="bg-white rounded-xl shadow-sm p-6 sm:p-8 mb-8">
-          <div className="flex flex-col md:flex-row md:items-start gap-6">
-            <div className="flex-1">
-              <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
-                <span className="px-2 py-1 bg-purple-100 text-purple-800 text-xs font-medium rounded-full">
-                  {course.is_public ? 'Публичный' : 'Приватный'}
-                </span>
-                {course.language && (
-                  <span className="px-2 py-1 bg-blue-100 text-blue-800 text-xs font-medium rounded-full">
-                    {course.language}
-                  </span>
-                )}
-              </div>
-              
-              <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-4">
-                {course.title}
-              </h1>
-              
-              <p className="text-gray-600 mb-6">
-                {course.description || 'Описание курса отсутствует'}
-              </p>
-              
-              <div className="flex flex-wrap gap-4 mb-6">
-                <div className="flex items-center text-sm text-gray-600">
-                  <Users className="w-4 h-4 mr-2 text-gray-400" />
-                  <span>{course.studentsCount || 0} студентов</span>
-                </div>
-                <div className="flex items-center text-sm text-gray-600">
-                  <FileText className="w-4 h-4 mr-2 text-gray-400" />
-                  <span>{theoryCount} теоретических блоков</span>
-                </div>
-                <div className="flex items-center text-sm text-gray-600">
-                  <BookText className="w-4 h-4 mr-2 text-gray-400" />
-                  <span>{practiceCount} практических заданий</span>
-                </div>
-                <div className="flex items-center text-sm text-gray-600">
-                  <Clock className="w-4 h-4 mr-2 text-gray-400" />
-                  <span>{Math.ceil((course.totalDuration || 0) / 60)} минут обучения</span>
-                </div>
-              </div>
-              
-              <Button className="bg-purple-600 hover:bg-purple-700">
-                Начать обучение
+    <div className="min-h-screen bg-background">
+      <Header />
+      <MenuSidebar />
+      {/* Main content */}
+      <main className="mt-[4em] lg:ml-[100px] md:ml-[100px] sm:ml-0 p-6">
+        <div className="max-w-7xl mx-auto">
+          {/* Header with Edit button */}
+          <div className="flex items-center justify-between mb-6">
+            <h1 className="text-3xl font-bold text-foreground">{course.title}</h1>
+            {isAuthor && (
+              <Button
+                onClick={() => navigate(`/courses/${id}/manage`)}
+                className="flex items-center gap-2"
+                variant="outline"
+              >
+                <Edit className="w-4 h-4" />
+                Редактировать курс
               </Button>
+            )}
+          </div>
+
+          {/* Hero */}
+          <HeroHeader 
+            courseTitle={course.title}
+            courseDescription={course.description || ''}
+            authorName={course.instructor_name || course.author?.name || 'Неизвестный автор'}
+            stats={stats}
+            tags={tags}
+            progress={progressPercentage}
+          />
+          
+          {/* Main grid layout */}
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
+            {/* Left column - Course content */}
+            <div className="lg:col-span-3 space-y-6">
+              <CourseProgress progressData={progressData} />
+              <CourseModules sections={sections} />
             </div>
             
-            <div className="w-full md:w-64 lg:w-80 flex-shrink-0">
-              <div className="aspect-video bg-gradient-to-br from-purple-100 to-blue-100 rounded-lg flex items-center justify-center text-gray-400">
-                <BookOpen className="w-16 h-16" />
-              </div>
+            {/* Right column - Activity & About */}
+            <div className="lg:col-span-2">
+              <ActivitySection 
+                activityStats={activityData ? [
+                  { value: activityData.stats.today, label: "сегодня" },
+                  { value: activityData.stats.week, label: "на этой неделе" },
+                  { value: activityData.stats.total, label: "всего" },
+                ] : undefined}
+                chartData={activityData?.chartData}
+              />
+              <AboutCourse 
+                aboutText={course.about_course || course.description || ''}
+              />
             </div>
-          </div>
-        </div>
-        
-        {/* Course Content */}
-        <div className="bg-white rounded-xl shadow-sm overflow-hidden mb-8">
-          <div className="p-6 border-b border-gray-100">
-            <h2 className="text-xl font-semibold text-gray-900">Содержание курса</h2>
           </div>
           
-          <div className="divide-y divide-gray-100">
-            {course.chapters?.map((chapter) => (
-              <div key={chapter.id} className="p-6">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-medium text-gray-900">
-                    {chapter.title}
-                  </h3>
-                  <span className="text-sm text-gray-500">
-                    {chapter.subchapters?.reduce((sum, sub) => sum + (sub.content_blocks?.length || 0), 0) || 0} уроков • 
-                    {Math.ceil((chapter.subchapters?.reduce((sum, sub) => 
-                      sum + ((sub.content_blocks?.length || 0) * 15), 0) || 0) / 60)} мин
-                  </span>
-                </div>
-                
-                <div className="space-y-2">
-                  {chapter.subchapters?.map((subchapter) => (
-                    <div key={subchapter.id} className="ml-4">
-                      <h4 className="text-md font-medium text-gray-800 mb-2">
-                        {subchapter.title}
-                      </h4>
-                      <div className="space-y-2">
-                        {subchapter.content_blocks?.map((block) => (
-                          <div 
-                            key={block.id}
-                            className="flex items-center p-3 rounded-lg hover:bg-gray-50 transition-colors"
-                          >
-                            <div className="flex-shrink-0 w-8 h-8 rounded-full bg-purple-50 flex items-center justify-center mr-3">
-                              {block.type === 'theory' ? (
-                                <FileText className="w-4 h-4 text-purple-600" />
-                              ) : (
-                                <BookText className="w-4 h-4 text-blue-600" />
-                              )}
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium text-gray-900 truncate">
-                                {block.type === 'theory' ? 'Теория' : 'Практическое задание'}
-                              </p>
-                              <div className="flex items-center text-xs text-gray-500">
-                                <span className="capitalize">
-                                  {block.type === 'theory' ? 'Теория' : 'Практика'}
-                                </span>
-                                <span className="mx-2">•</span>
-                                <span>15 минут</span>
-                              </div>
-                            </div>
-                            <ChevronRight className="w-5 h-5 text-gray-400" />
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
+          {/* Resume section - Full width */}
+          <ResumeSection />
         </div>
-        
-        {/* Course Instructor */}
-        {course.author && (
-          <div className="bg-white rounded-xl shadow-sm p-6 mb-8">
-            <h2 className="text-xl font-semibold text-gray-900 mb-6">Преподаватель</h2>
-            <div className="flex items-start gap-4">
-              <div className="w-16 h-16 rounded-full bg-gray-200 flex items-center justify-center text-gray-400 text-xl font-medium">
-                {course.author.name.charAt(0)}
-              </div>
-              <div>
-                <h3 className="text-lg font-medium text-gray-900">{course.author.name}</h3>
-                <p className="text-gray-600 text-sm">{course.author.email}</p>
-                <p className="text-gray-600 mt-2">
-                  Опытный преподаватель с многолетним стажем работы в области.
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-      </div>
+      </main>
     </div>
   );
 }
