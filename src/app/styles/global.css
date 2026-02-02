@@ -616,3 +616,64 @@ body{
         --color-header: #323232;
     }
 } */
+
+@keyframes gradient-rotate {
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+.animated-gradient {
+  position: relative;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.3s;
+}
+
+.animated-gradient:hover {
+  transform: scale(1.05);
+}
+
+/* Анимированный градиент (скрыт по умолчанию) */
+.animated-gradient::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(
+    90deg,
+    #b291ff,
+    #f656f9,
+    #d8e6ff,
+    #b291ff
+  );
+  background-size: 300% 300%;
+  animation: gradient-rotate 4s linear infinite;
+  filter: blur(10px);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.animated-gradient:hover::before {
+  opacity: 1;
+}
+
+/* Внутренний фон для блоков категорий */
+.animated-gradient.animated-gradient-block::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  background: hsl(var(--background));
+  border-radius: 10px;
+  z-index: -1;
+}
+
+/* Внутренний фон для кнопок тегов */
+.animated-gradient.animated-gradient-button::after {
+  content: '';
+  position: absolute;
+  inset: 2px;
+  background: hsl(var(--background));
+  border-radius: 10px;
+  z-index: -1;
+}

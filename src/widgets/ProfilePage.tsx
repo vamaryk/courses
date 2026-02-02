@@ -5,11 +5,13 @@ import { useNavigate } from 'react-router-dom';
 import TopNav from '@/components/dashboard/TopNav';
 import StatsCards from '@/components/dashboard/StatsCards';
 import MyCourses from '@/components/dashboard/MyCourses';
+import CrCourse from '@/components/dashboard/CrCourses';
 import Achievements from '@/components/dashboard/Achievements';
 import StatisticsChart from '@/components/dashboard/StatisticsChart';
 import TopCourses from '@/components/dashboard/TopCourses';
 import ProgressRings from '@/components/dashboard/ProgressRings';
-import CalendarWidget from '@/components/dashboard/CalendarWidget';
+import { SideCalendar } from '@/widgets/calendar/components/SideCalendar';
+import { Task } from '@/widgets/calendar/types';
 
 interface UserProfile {
   id: number;
@@ -25,6 +27,8 @@ interface UserProfile {
 export default function ProfilePage() {
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [tasks, setTasks] = useState<Task[]>([]);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -52,6 +56,26 @@ export default function ProfilePage() {
     fetchUserProfile();
   }, [navigate]);
 
+  useEffect(() => {
+    const fetchTasks = async () => {
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || '/api';
+        const response = await fetch(`${apiUrl}/api/tasks`, {
+          credentials: 'include',
+        });
+
+        if (response.ok) {
+          const data = await response.json();
+          setTasks(data);
+        }
+      } catch (error) {
+        console.error('Error fetching tasks:', error);
+      }
+    };
+
+    fetchTasks();
+  }, []);
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
@@ -65,29 +89,36 @@ export default function ProfilePage() {
     : 'Пользователь';
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Main Content */}
+    <div className="bg-background">
       <div className="flex">
-        {/* Center Content */}
-        <main className="flex-1 p-8 pr-4">
-          <TopNav userName={userName} />
-          <StatsCards />
-          <MyCourses />
-          <Achievements />
+        <main className="flex-1 mx-5 mb-5">
+          <div className="bg-white rounded-xl shadow p-5">
+            <TopNav userName={userName} />
+            <StatsCards />
+            <MyCourses />
+            <CrCourse />
+            <Achievements />
 
-          {/* Statistics Row */}
-          <div className="flex gap-4 mb-8">
-            <StatisticsChart />
-            <TopCourses />
+            {/* Statistics Row */}
+            <div className="flex flex-col md:flex-row gap-4 mb-8">
+              <StatisticsChart />
+              <TopCourses />
+            </div>
+
+            <ProgressRings />
           </div>
-
-          <ProgressRings />
         </main>
 
-        {/* Right Sidebar */}
-        <div className="p-8 pl-4">
-          <CalendarWidget />
-        </div>
+        {/* Календарь */}
+        <aside className="w-[300px] mr-[20px] flex-shrink-0 hidden lg:block">
+          <div className="sticky top-[4em] rounded-xl shadow p-6 h-fit bg-white">
+            <SideCalendar
+              currentDate={currentDate}
+              onDateChange={setCurrentDate}
+              tasks={tasks}
+            />
+          </div>
+        </aside>
       </div>
     </div>
   );

@@ -29,9 +29,15 @@ const StatisticsChart = () => {
           const data: ChartResponse = await response.json();
           setChartData(data.data);
           setTotalProgress(data.totalProgress);
+        } else {
+          console.error('Не удалось получить данные графика:', response.statusText);
+          setChartData([]);
+          setTotalProgress(0);
         }
       } catch (error) {
-        console.error('Error fetching chart data:', error);
+        console.error('Ошибка при получении данных графика:', error);
+        setChartData([]);
+        setTotalProgress(0);
       } finally {
         setLoading(false);
       }
@@ -42,7 +48,7 @@ const StatisticsChart = () => {
 
   if (loading) {
     return (
-      <div className="glass-card rounded-3xl p-6 flex-1">
+      <div className="rounded-3xl p-6 border-1 border-muted-foreground/30 flex-1 min-w-0">
         <div className="flex items-center justify-center h-48">
           <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary"></div>
         </div>
@@ -52,7 +58,7 @@ const StatisticsChart = () => {
 
   if (chartData.length === 0) {
     return (
-      <div className="glass-card rounded-3xl p-6 flex-1">
+      <div className="rounded-3xl p-6 border-1 border-muted-foreground/30 flex-1 min-w-0">
         <div className="flex items-center justify-between mb-4">
           <div>
             <h3 className="font-semibold text-foreground">Статистика</h3>
@@ -67,18 +73,15 @@ const StatisticsChart = () => {
   }
 
   return (
-    <div className="glass-card rounded-3xl p-6 flex-1">
+    <div className="rounded-3xl p-6 border-1 border-muted-foreground/30 flex-1 min-w-0">
       <div className="flex items-center justify-between mb-4">
         <div>
           <h3 className="font-semibold text-foreground">Статистика</h3>
           <p className="text-xs text-muted-foreground">за всё время</p>
         </div>
-        <button className="text-sm text-muted-foreground hover:text-foreground transition-colors">
-          показать все
-        </button>
       </div>
-      <div className="flex items-center gap-6">
-        <div className="relative w-36 h-36">
+      <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
+        <div className="relative w-full max-w-[144px] h-[144px] flex-shrink-0">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
@@ -100,7 +103,7 @@ const StatisticsChart = () => {
             <span className="text-2xl font-bold text-foreground">{totalProgress} %</span>
           </div>
         </div>
-        <div className="flex-1 space-y-2">
+        <div className="flex-1 space-y-2 w-full sm:w-auto">
           {chartData.map((item, index) => (
             <div key={index} className="flex items-center gap-2">
               <div

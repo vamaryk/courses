@@ -1,7 +1,5 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import Header from "@/widgets/navigation/Header/Header";
-import MenuSidebar from "@/widgets/navigation/MenuSidebar/MenuSidebar";
 import { SearchBar } from "@/components/courses/SearchBar";
 import { CategoryPills } from "@/components/courses/CategoryPills";
 import { CourseCard, Course } from "@/components/courses/CourseCard";
@@ -329,10 +327,7 @@ export default function CoursesPage() {
   });
 
   return (
-    <div className="min-h-screen bg-background">
-      <Header />
-      <MenuSidebar />
-      
+    <div className="bg-background">
       <main className="mt-[4em] lg:ml-[100px] md:ml-[100px] sm:ml-0 pb-8 px-6">
         <div className="flex gap-6">
           {/* Main content */}
