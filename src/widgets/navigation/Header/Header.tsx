@@ -2,7 +2,8 @@
 import { Path } from '@/shared/routing/path';
 import { Link } from 'react-router-dom';
 import { useState, useEffect, useRef } from 'react';
-import Logo from './logo.svg'
+import { GraduationCap } from 'lucide-react';
+
 export default function Header() {
 
     const [isActive, setActive] = useState(false);
@@ -60,7 +61,7 @@ const toggleProfileMenu = () => {
     return <nav className=" bg-header flex fixed top-0 left-0 w-full justify-between items-center h-[4em] px-10 z-100 mb-16">
         <div className="pl-8 lg:pl-0">
             <Link to={Path.Home}>
-                <img src={Logo} />
+                <GraduationCap size={24} className="text-purple" />
             </Link>
         </div>
         <div className='flex flex-row items-center gap-2'>
