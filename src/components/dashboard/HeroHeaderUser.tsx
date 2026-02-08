@@ -1,5 +1,6 @@
-import { ChevronLeft, Clock, BookOpen, FileCheck, TrendingUp, User } from "lucide-react";
+import { ChevronLeft, Clock, BookOpen, FileCheck, Heart, User } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useState } from "react";
 import heroImage from "@/assets/hero-robot.jpg";
 
 interface HeroHeaderProps {
@@ -7,36 +8,35 @@ interface HeroHeaderProps {
   courseDescription?: string;
   authorName?: string;
   stats?: {
-    tests?: string;
-    programs?: string;
-    lectures?: string;
-    progress?: string;
+    totalLectures?: number;
+    totalPrograms?: number;
+    totalTests?: number;
   };
   tags?: string[];
-  progress?: number;
+  price?: number;
+  isFavorite?: boolean;
 }
 
-const HeroHeader = ({ 
+const HeroHeaderUser = ({ 
   courseTitle = "Основы HTML и CSS",
   courseDescription = "Курс для начинающих верстальщиков сайтов на HTML и CSS. Разбираем реальные макеты, изучаем семантику языка, отрабатываем навыки в тренажере. В курсе более 190 заданий. Из них 150 – решение практических задач.",
   authorName = "Иван Иванов",
   stats = {
-    tests: "1/15",
-    programs: "0/5",
-    lectures: "1/40",
-    progress: "1%"
+    totalLectures: 40,
+    totalPrograms: 5,
+    totalTests: 15
   },
   tags = ["Программирование", "HTML", "CSS"],
-  progress = 1
+  price = 5900,
+  isFavorite = false
 }: HeroHeaderProps) => {
   const navigate = useNavigate();
+  const [favorite, setFavorite] = useState(isFavorite);
 
-  const defaultStats = [
-    { icon: FileCheck, value: stats.tests || "1/15", label: "тестов" },
-    { icon: BookOpen, value: stats.programs || "0/5", label: "программ" },
-    { icon: BookOpen, value: stats.lectures || "1/40", label: "лекций" },
-    { icon: TrendingUp, value: stats.progress || "1%", label: "прогресс" },
-  ];
+  const toggleFavorite = () => {
+    setFavorite(!favorite);
+    // добавить логику для сохранения в БД
+  };
 
   return (
     <div className="relative rounded-xl overflow-hidden mb-4">
@@ -91,39 +91,66 @@ const HeroHeader = ({
           </div>
         </div>
         
-        {/* Stats row - responsive grid for mobile */}
-        <div className="mt-2 mb-6">
-          <div className="grid grid-cols-2 md:flex md:items-center md:gap-8 gap-4 pt-4">
-            {defaultStats.map((stat, index) => {
-              const Icon = stat.icon;
-              return (
-                <div key={index} className="flex items-center gap-2">
-                  <Icon className="w-4 h-4 text-white/60" />
-                  <span className="text-white font-semibold text-sm">{stat.value}</span>
-                  <span className="text-white/60 text-xs md:text-sm">{stat.label}</span>
-                </div>
-              );
-            })}
+        {/* Stats row - total counts */}
+        <div className="mt-2 mb-3">
+          <div className="flex items-center gap-6 md:gap-8 pt-4">
+            <div className="flex items-center gap-2">
+              <BookOpen className="w-4 h-4 text-white/60" />
+              <span className="text-white font-semibold text-sm">{stats.totalLectures || 0}</span>
+              <span className="text-white/60 text-xs md:text-sm">лекций</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <FileCheck className="w-4 h-4 text-white/60" />
+              <span className="text-white font-semibold text-sm">{stats.totalPrograms || 0}</span>
+              <span className="text-white/60 text-xs md:text-sm">программ</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-white/60" />
+              <span className="text-white font-semibold text-sm">{stats.totalTests || 0}</span>
+              <span className="text-white/60 text-xs md:text-sm">тестов</span>
+            </div>
           </div>
         </div>
         
-        {/* Progress bar */}
-        <div>
-          <div className="flex justify-between text-white/70 text-sm mb-2">
-            <span>Ваш прогресс</span>
-            <span>{progress}%</span>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-4">
+          {/* Price and Buy button */}
+          <div className="flex items-center gap-4">
+            <div className="text-xl font-bold text-white">
+              {price.toLocaleString('ru-RU')} ₽
+            </div>
+            <button 
+              onClick={() => {
+                // Логика покупки
+                console.log("Купить курс");
+              }}
+              className="px-4 py-2 border-2 border-purple text-white rounded-full font-semibold hover:bg-purple transition-all duration-200 shadow-lg hover:shadow-xl"
+            >
+              Купить
+            </button>
           </div>
-          <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-500" 
-              style={{ width: `${progress}%` }}
-            />
-          </div>
+          
+          {/* Favorite button */}
+          <button
+            onClick={toggleFavorite}
+            className="flex items-center gap-2 px-4 py-3 rounded-full border-2 border-white/20 hover:border-white/40 transition-all duration-200"
+          >
+            {favorite ? (
+              <>
+                <Heart className="w-4 h-4 text-red-500 fill-red-500" />
+                <span className="text-white font-medium">В "Избранном"</span>
+              </>
+            ) : (
+              <>
+                <Heart className="w-4 h-4 text-white/70" />
+                <span className="text-white font-medium">В "Избранное"</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
       
       {/* Tags for mobile - shown only on small screens */}
-      <div className="md:hidden absolute bottom-4 right-4 flex gap-2 flex-wrap">
+      <div className="md:hidden absolute bottom-16 left-4 flex gap-2 flex-wrap">
         {tags.map((tag, index) => (
           <span 
             key={index}
@@ -137,4 +164,4 @@ const HeroHeader = ({
   );
 };
 
-export default HeroHeader;
+export default HeroHeaderUser;

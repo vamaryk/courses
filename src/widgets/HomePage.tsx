@@ -962,7 +962,6 @@ export default function HomePage() {
 
               {totalPages > 1 && (
                 <div className="flex items-center justify-center mt-8 sm:mt-10 lg:mt-12 gap-1 sm:gap-2 flex-wrap">
-                    {/* Кнопка "Назад" */}
                     <button
                     onClick={prevPage}
                     disabled={currentPage === 1}
@@ -999,7 +998,6 @@ export default function HomePage() {
                     )
                     )}
 
-                    {/* Кнопка "Дальше" */}
                     <button
                     onClick={nextPage}
                     disabled={currentPage === totalPages}
@@ -1009,7 +1007,7 @@ export default function HomePage() {
                         : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
                     }`}
                     >
-                    Дальше
+                    Далее
                     </button>
                 </div>
                 )}

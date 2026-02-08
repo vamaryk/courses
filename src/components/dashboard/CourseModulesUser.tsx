@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { ChevronDown, BookOpen, FileCheck, Lightbulb } from "lucide-react";
-// import { CheckCircle2, PlayCircle, FileText, Flame, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Module {
@@ -93,9 +92,8 @@ const defaultSections: Section[] = [
   },
 ];
 
-const CourseModules = ({ sections = defaultSections }: CourseModulesProps) => {
+const CourseModulesUser = ({ sections = defaultSections }: CourseModulesProps) => {
   const [expandedSections, setExpandedSections] = useState<string[]>([]);
-  // const [expandedModules, setExpandedModules] = useState<string[]>(["2-1"]);
   const [showMore, setShowMore] = useState(false);
 
   const toggleSection = (sectionId: string) => {
@@ -106,26 +104,16 @@ const CourseModules = ({ sections = defaultSections }: CourseModulesProps) => {
     );
   };
 
-  // const toggleModule = (moduleId: string) => {
-  //   setExpandedModules(prev => 
-  //     prev.includes(moduleId) 
-  //       ? prev.filter(id => id !== moduleId)
-  //       : [...prev, moduleId]
-  //   );
-  // };
-
-  // Определяем, какие главы показывать
   const visibleSections = showMore ? sections : sections.slice(0, 3);
 
   return (
     <div className="border rounded-lg p-4">
-        <div className="space-y-2">
+      <div className="space-y-2">
         {visibleSections.map((section) => {
           const isSectionExpanded = expandedSections.includes(section.id);
           
           return (
             <div key={section.id} className="border rounded-lg overflow-hidden">
-              {/* Section header - clickable */}
               <button
                 onClick={() => toggleSection(section.id)}
                 className="w-full flex items-center justify-between gap-3 p-4 bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
@@ -144,16 +132,12 @@ const CourseModules = ({ sections = defaultSections }: CourseModulesProps) => {
                 />
               </button>
               
-              {/* Section content - expanded */}
               {isSectionExpanded && (
                 <div className="px-4 py-3 bg-background animate-fade-in border-t">
-                  {/* Brief info */}
                   <p className="text-sm text-muted-foreground leading-relaxed mb-4">
                     {section.description || "Краткая информация"}
                   </p>
-                  <p className="text-sm text-muted-foreground leading-relaxed mb-4">изменить на ссылку "Перейти к изучению"</p>
                   
-                  {/* изменить ссылки, добавить количество */}
                   <div className="flex gap-4 mb-4">
                     <a 
                       href="#" 
@@ -177,71 +161,6 @@ const CourseModules = ({ sections = defaultSections }: CourseModulesProps) => {
                       <span>Заданий: {section.stats?.tasks || 0}</span>
                     </a>
                   </div>
-                  
-                  {/* Modules */}
-                  {/* <div className="space-y-2 pt-2">
-                    {section.modules.map((module) => {
-                      const isExpanded = expandedModules.includes(module.id);
-                      
-                      return (
-                        <div 
-                          key={module.id}
-                          className={cn(
-                            "rounded-lg border border-border/50 overflow-hidden transition-all duration-200",
-                            isExpanded && "bg-muted/30"
-                          )}
-                        >
-                          <button
-                            onClick={() => toggleModule(module.id)}
-                            className="w-full flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors"
-                          >
-                            <div className="flex-shrink-0">
-                              {module.isCompleted ? (
-                                <CheckCircle2 className="w-4 h-4 text-primary" />
-                              ) : module.isPlaying ? (
-                                <PlayCircle className="w-4 h-4 text-muted-foreground" />
-                              ) : (
-                                <FileText className="w-4 h-4 text-muted-foreground" />
-                              )}
-                            </div>
-                            
-                            <span className="flex-1 text-left text-sm font-medium text-foreground">
-                              {module.title}
-                            </span>
-                            
-                            {module.duration && (
-                              <span className="text-xs text-muted-foreground">
-                                {module.duration}
-                              </span>
-                            )}
-                            
-                            <ChevronDown 
-                              className={cn(
-                                "w-3 h-3 text-muted-foreground transition-transform duration-200",
-                                isExpanded && "rotate-180"
-                              )} 
-                            />
-                          </button>
-                          
-                          {isExpanded && module.description && (
-                            <div className="px-3 pb-3 animate-fade-in">
-                              <div className="pl-7">
-                                <p className="text-xs text-muted-foreground leading-relaxed mb-2">
-                                  {module.description}
-                                </p>
-                                
-                                <div className="flex items-center gap-3">
-                                  {module.hasFireIcon && (
-                                    <Flame className="w-3 h-3 text-orange-400" />
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div> */}
                 </div>
               )}
             </div>
@@ -263,4 +182,4 @@ const CourseModules = ({ sections = defaultSections }: CourseModulesProps) => {
   );
 };
 
-export default CourseModules;
+export default CourseModulesUser;
