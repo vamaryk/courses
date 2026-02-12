@@ -53,6 +53,42 @@ BEGIN
         RAISE NOTICE '✅ Added about_course column to courses';
     END IF;
 
+    -- course_skills (навыки после обучения)
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'courses' AND column_name = 'course_skills'
+    ) THEN
+        ALTER TABLE courses ADD COLUMN course_skills TEXT[] DEFAULT ARRAY[]::TEXT[];
+        RAISE NOTICE '✅ Added course_skills column to courses';
+    END IF;
+
+    -- course_tools (инструменты курса)
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'courses' AND column_name = 'course_tools'
+    ) THEN
+        ALTER TABLE courses ADD COLUMN course_tools TEXT[] DEFAULT ARRAY[]::TEXT[];
+        RAISE NOTICE '✅ Added course_tools column to courses';
+    END IF;
+
+    -- certificate_text (описание сертификата)
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'courses' AND column_name = 'certificate_text'
+    ) THEN
+        ALTER TABLE courses ADD COLUMN certificate_text TEXT;
+        RAISE NOTICE '✅ Added certificate_text column to courses';
+    END IF;
+
+    -- job_title (должность/роль после курса)
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'courses' AND column_name = 'job_title'
+    ) THEN
+        ALTER TABLE courses ADD COLUMN job_title TEXT;
+        RAISE NOTICE '✅ Added job_title column to courses';
+    END IF;
+
     -- level (уровень сложности)
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns 
@@ -151,7 +187,33 @@ BEGIN
 END $$;
 
 -- ============================================
--- 4. Проверяем наличие таблицы profiles и добавляем недостающие поля
+-- 4. Расширяем типы content_blocks (добавляем test)
+-- ============================================
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'content_blocks' AND column_name = 'type'
+    ) THEN
+        -- Снимаем старый check, если он есть, и добавляем новый.
+        BEGIN
+            ALTER TABLE content_blocks DROP CONSTRAINT IF EXISTS content_blocks_type_check;
+        EXCEPTION WHEN undefined_object THEN
+            NULL;
+        END;
+
+        ALTER TABLE content_blocks
+            ADD CONSTRAINT content_blocks_type_check
+            CHECK (type IN ('theory', 'task', 'test'));
+
+        RAISE NOTICE '✅ Updated content_blocks.type check with test';
+    END IF;
+END $$;
+
+-- ============================================
+-- 5. Проверяем наличие таблицы profiles и добавляем недостающие поля
 -- ============================================
 
 DO $$

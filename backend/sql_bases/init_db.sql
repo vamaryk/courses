@@ -102,6 +102,10 @@ CREATE TABLE courses (
     description TEXT,
     is_public BOOLEAN NOT NULL DEFAULT false,
     author_id UUID REFERENCES profiles(id) ON DELETE CASCADE,
+    course_skills TEXT[] DEFAULT ARRAY[]::TEXT[],
+    course_tools TEXT[] DEFAULT ARRAY[]::TEXT[],
+    certificate_text TEXT,
+    job_title TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
@@ -131,7 +135,7 @@ CREATE TABLE subchapters (
 CREATE TABLE content_blocks (
     id SERIAL PRIMARY KEY,
     subchapter_id INTEGER REFERENCES subchapters(id) ON DELETE CASCADE,
-    type TEXT NOT NULL CHECK (type IN ('theory', 'task')),
+    type TEXT NOT NULL CHECK (type IN ('theory', 'task', 'test')),
     content TEXT,
     answer TEXT,
     "order" INTEGER NOT NULL

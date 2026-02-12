@@ -15,9 +15,26 @@ export interface Course {
   specialty?: string | null;
   target_audience?: string | null;
   about_course?: string | null;
+  course_skills?: string[];
+  course_tools?: string[];
+  certificate_text?: string | null;
+  job_title?: string | null;
   chapters?: Chapter[];
   instructor_name?: string;
   instructor_avatar?: string | null;
+  price?: number;
+  studentsCount?: number;
+  is_enrolled?: boolean;
+  has_access?: boolean;
+}
+
+export interface CourseAccessStatus {
+  courseId: number;
+  isPublic: boolean;
+  isAuthor: boolean;
+  isEnrolled: boolean;
+  hasAccess: boolean;
+  canViewContent: boolean;
 }
 
 export interface Chapter {
@@ -39,7 +56,7 @@ export interface Subchapter {
 export interface ContentBlock {
   id: number;
   subchapter_id: number;
-  type: 'theory' | 'task';
+  type: 'theory' | 'task' | 'test';
   content: string;
   answer?: string | null;
   order: number;
@@ -54,6 +71,10 @@ export interface CreateCourseData {
   specialty?: string | null;
   targetAudience?: string | null;
   aboutCourse?: string | null;
+  courseSkills?: string[];
+  courseTools?: string[];
+  certificateText?: string | null;
+  jobTitle?: string | null;
 }
 
 export interface UpdateCourseData {
@@ -65,6 +86,10 @@ export interface UpdateCourseData {
   specialty?: string | null;
   targetAudience?: string | null;
   aboutCourse?: string | null;
+  courseSkills?: string[];
+  courseTools?: string[];
+  certificateText?: string | null;
+  jobTitle?: string | null;
 }
 
 export interface CreateChapterData {
@@ -89,14 +114,14 @@ export interface UpdateSubchapterData {
 }
 
 export interface CreateContentBlockData {
-  type: 'theory' | 'task';
+  type: 'theory' | 'task' | 'test';
   content: string;
   answer?: string | null;
   order: number;
 }
 
 export interface UpdateContentBlockData {
-  type: 'theory' | 'task';
+  type: 'theory' | 'task' | 'test';
   content: string;
   answer?: string | null;
   order: number;
@@ -139,6 +164,21 @@ export const coursesApi = {
       course.chapters = [];
     }
     return course;
+  },
+
+  async getCourseAccessStatus(id: number): Promise<CourseAccessStatus> {
+    const response = await axios.get(`${API_URL}/api/courses/${id}/access-status`, {
+      withCredentials: true,
+    });
+    return response.data;
+  },
+
+  async enrollToCourse(id: number): Promise<void> {
+    await axios.post(
+      `${API_URL}/api/courses/${id}/enroll`,
+      {},
+      { withCredentials: true }
+    );
   },
 
   async createCourse(data: CreateCourseData): Promise<Course> {

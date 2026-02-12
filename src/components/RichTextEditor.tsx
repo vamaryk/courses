@@ -16,6 +16,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   disabled = false,
 }) => {
   const editorRef = useRef<HTMLDivElement>(null);
+  const isEmpty = !value || value.replace(/<[^>]*>/g, '').trim().length === 0;
 
   const handleInput = useCallback(() => {
     if (editorRef.current) {
@@ -109,31 +110,28 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       </div>
 
       {/* Editor */}
-      <div
-        ref={editorRef}
-        contentEditable={!disabled}
-        onInput={handleInput}
-        onKeyDown={handleKeyDown}
-        className={`
-          min-h-[200px] p-3 border border-gray-300 border-t-0 rounded-b-md
-          focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent
-          ${disabled ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}
-        `}
-        dangerouslySetInnerHTML={{ __html: value }}
-        data-placeholder={placeholder}
-        style={{
-          display: 'block',
-        }}
-      />
-
-      {/* Placeholder styling */}
-      <style jsx>{`
-        .rich-text-editor [contenteditable]:empty:before {
-          content: attr(data-placeholder);
-          color: #9ca3af;
-          pointer-events: none;
-        }
-      `}</style>
+      <div className="relative">
+        {isEmpty && (
+          <div className="absolute top-3 left-3 text-sm text-gray-400 pointer-events-none z-10">
+            {placeholder}
+          </div>
+        )}
+        <div
+          ref={editorRef}
+          contentEditable={!disabled}
+          onInput={handleInput}
+          onKeyDown={handleKeyDown}
+          className={`
+            min-h-[200px] p-3 border border-gray-300 border-t-0 rounded-b-md
+            focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent
+            ${disabled ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}
+          `}
+          dangerouslySetInnerHTML={{ __html: value }}
+          style={{
+            display: 'block',
+          }}
+        />
+      </div>
     </div>
   );
 };

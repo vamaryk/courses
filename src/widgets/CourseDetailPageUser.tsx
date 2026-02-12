@@ -1,17 +1,15 @@
 import { useParams, useNavigate } from 'react-router-dom';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
 import { coursesApi, type Course, type Chapter, type Subchapter, type ContentBlock } from '@/shared/api/courses';
-import Header from "@/widgets/navigation/Header/Header";
-import MenuSidebar from "@/widgets/navigation/MenuSidebar/MenuSidebar";
-import HeroHeader from "@/components/dashboard/HeroHeader";
-import CourseProgress from "@/components/dashboard/CourseProgress";
-import CourseModules from "@/components/dashboard/CourseModules";
-import ActivitySection from "@/components/dashboard/ActivitySection";
+import HeroHeaderUser from "@/components/dashboard/HeroHeaderUser";
+import CourseModulesUser from "@/components/dashboard/CourseModulesUser";
+import CourseStats from "@/components/dashboard/CourseStats";
 import AboutCourse from "@/components/dashboard/AboutCourse";
 import ResumeSection from "@/components/dashboard/ResumeSection";
 import { Button } from "@/components/ui/button";
 import { Edit } from "lucide-react";
 import { useAuth } from "@/app/providers/AuthProvider";
+import axios from 'axios';
 
 interface CourseWithChapters extends Course {
   chapters?: Array<Chapter & {
@@ -30,22 +28,21 @@ interface CourseWithChapters extends Course {
   language?: string;
 }
 
-export default function CourseDetailPage() {
+interface CourseDetailPageUserProps {
+  onEnrolled?: () => void;
+}
+
+export default function CourseDetailPageUser({ onEnrolled }: CourseDetailPageUserProps) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
   const [course, setCourse] = useState<CourseWithChapters | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activityData, setActivityData] = useState<{
-    stats: { today: string; week: string; total: string };
-    chartData: Array<{ day: string; value: number }>;
-  } | null>(null);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
+  const [buyLoading, setBuyLoading] = useState(false);
   
-  // Track time spent on page
-  const pageLoadTime = useRef<number>(Date.now());
-  const trackingInterval = useRef<number | null>(null);
-
   // Check if current user is the author of the course
   const isAuthor = course && user && course.author_id && user.id && course.author_id === user.id;
 
@@ -75,12 +72,26 @@ export default function CourseDetailPage() {
           });
         }
 
-        setCourse({
+        const mappedCourse = {
           ...courseData,
           studentsCount: Number(courseData.studentsCount || 0),
           totalLessons,
           totalDuration
-        });
+        };
+
+        setCourse(mappedCourse);
+
+        if (isAuthenticated) {
+          try {
+            const favoriteStatus = await coursesApi.getFavoriteStatus(parseInt(id));
+            setIsFavorite(Boolean(favoriteStatus.isFavorite));
+          } catch (favoriteErr) {
+            console.error('Error fetching favorite status:', favoriteErr);
+            setIsFavorite(false);
+          }
+        } else {
+          setIsFavorite(false);
+        }
       } catch (err) {
         console.error('Error fetching course:', err);
         setError('Не удалось загрузить информацию о курсе');
@@ -90,47 +101,53 @@ export default function CourseDetailPage() {
     };
 
     fetchCourse();
-  }, [id]);
+  }, [id, isAuthenticated]);
 
-  // Fetch activity data and track time spent
-  useEffect(() => {
-    if (!id || !isAuthenticated || !course) return;
+  const handleToggleFavorite = async () => {
+    if (!id) return;
 
-    const fetchActivity = async () => {
-      try {
-        const activity = await coursesApi.getCourseActivity(parseInt(id));
-        setActivityData(activity);
-      } catch (err) {
-        console.error('Error fetching activity:', err);
+    if (!isAuthenticated) {
+      navigate('/auth');
+      return;
+    }
+
+    try {
+      setFavoriteLoading(true);
+      if (isFavorite) {
+        await coursesApi.removeFromFavorites(parseInt(id));
+        setIsFavorite(false);
+      } else {
+        await coursesApi.addToFavorites(parseInt(id));
+        setIsFavorite(true);
       }
-    };
+    } catch (err) {
+      console.error('Error toggling favorite:', err);
+    } finally {
+      setFavoriteLoading(false);
+    }
+  };
 
-    fetchActivity();
+  const handleBuyCourse = async () => {
+    if (!id) return;
 
-    // Track time spent on page (update every minute)
-    trackingInterval.current = window.setInterval(async () => {
-      const timeSpent = Math.floor((Date.now() - pageLoadTime.current) / 1000 / 60); // in minutes
-      if (timeSpent > 0) {
-        try {
-          await coursesApi.trackActivity(parseInt(id), timeSpent);
-          pageLoadTime.current = Date.now(); // Reset timer after tracking
-        } catch (err) {
-          console.error('Error tracking activity:', err);
-        }
+    if (!isAuthenticated) {
+      navigate('/auth');
+      return;
+    }
+
+    try {
+      setBuyLoading(true);
+      await coursesApi.enrollToCourse(parseInt(id));
+      onEnrolled?.();
+    } catch (err) {
+      console.error('Error enrolling to course:', err);
+      if (axios.isAxiosError(err) && err.response?.status === 401) {
+        navigate('/auth');
       }
-    }, 60000); // Every minute
-
-    return () => {
-      if (trackingInterval.current) {
-        clearInterval(trackingInterval.current);
-        // Track final time before leaving
-        const finalTime = Math.floor((Date.now() - pageLoadTime.current) / 1000 / 60);
-        if (finalTime > 0) {
-          coursesApi.trackActivity(parseInt(id), finalTime).catch(console.error);
-        }
-      }
-    };
-  }, [id, isAuthenticated, course]);
+    } finally {
+      setBuyLoading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -168,11 +185,6 @@ export default function CourseDetailPage() {
     }, 0);
   }, 0) || 0;
 
-  // Calculate progress percentage
-  const progressPercentage = course.totalLessons && course.totalLessons > 0 
-    ? Math.round((1 / course.totalLessons) * 100) 
-    : 1;
-
   // Convert chapters to sections format for CourseModules
   const sections = course.chapters?.map((chapter, chapterIndex) => ({
     id: String(chapter.id),
@@ -180,7 +192,6 @@ export default function CourseDetailPage() {
     modules: chapter.subchapters?.map((subchapter, subIndex) => ({
       id: `${chapter.id}-${subchapter.id}`,
       title: subchapter.title,
-      description: subchapter.description,
       duration: subchapter.content_blocks 
         ? `${Math.ceil((subchapter.content_blocks.length * 15) / 60)} : ${(subchapter.content_blocks.length * 15) % 60}`
         : undefined,
@@ -190,39 +201,20 @@ export default function CourseDetailPage() {
     })) || [],
   })) || [];
 
-  // Prepare progress data
-  const progressData = [
-    { value: String(Math.ceil((course.totalDuration || 0) / 60)), label: "часов", progress: 45, color: "purple" as const },
-    { value: `${progressPercentage}%`, label: "пройдено", progress: progressPercentage, color: "blue" as const },
-    { value: String(course.totalLessons || 0), label: "лекций", progress: 78, color: "green" as const },
-    { value: String(course.studentsCount || 0), label: "процесс", progress: 60, color: "orange" as const },
-  ];
-
-  // Prepare stats for HeroHeader
-  const stats = {
-    tests: String(practiceCount),
-    programs: "0/5",
-    lectures: `${theoryCount}/${course.totalLessons || 0}`,
-    progress: `${progressPercentage}%`
-  };
-
   // Prepare tags
   const tags = course.language ? [course.language, course.is_public ? 'Публичный' : 'Приватный'] : [];
 
   return (
     <div className="min-h-screen bg-background">
-      <Header />
-      <MenuSidebar />
       {/* Main content */}
-      <main className="mt-[4em] lg:ml-[100px] md:ml-[100px] sm:ml-0 p-6">
-        <div className="max-w-7xl mx-auto">
+      <main className="px-4 sm:px-6 lg:px-[20px] mb-5">
+        <div>
           {/* Header with Edit button */}
           <div className="flex items-center justify-between mb-6">
-            <h1 className="text-3xl font-bold text-foreground">{course.title}</h1>
             {isAuthor && (
               <Button
                 onClick={() => navigate(`/courses/${id}/manage`)}
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 cursor-pointer"
                 variant="outline"
               >
                 <Edit className="w-4 h-4" />
@@ -232,38 +224,41 @@ export default function CourseDetailPage() {
           </div>
 
           {/* Hero */}
-          <HeroHeader 
+          <HeroHeaderUser 
             courseTitle={course.title}
             courseDescription={course.description || ''}
             authorName={course.instructor_name || course.author?.name || 'Неизвестный автор'}
-            stats={stats}
+            stats={{
+              totalLectures: theoryCount,
+              totalPrograms: 0,
+              totalTests: practiceCount
+            }}
             tags={tags}
-            progress={progressPercentage}
+            price={Number((course as CourseWithChapters & { price?: number }).price || 0)}
+            isFavorite={isFavorite}
+            isFavoriteLoading={favoriteLoading}
+            isBuyLoading={buyLoading}
+            onToggleFavorite={handleToggleFavorite}
+            onBuy={handleBuyCourse}
           />
+          <div className="bg-white rounded-xl shadow p-5">
           
           {/* Main grid layout */}
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
             {/* Left column - Course content */}
             <div className="lg:col-span-3 space-y-6">
-              <CourseProgress progressData={progressData} />
-              <CourseModules sections={sections} />
+                <h2 className="text-lg font-semibold text-foreground mb-2">Программа курса</h2>      
+                <CourseModulesUser sections={sections} />
             </div>
             
-            {/* Right column - Activity & About */}
-            <div className="lg:col-span-2">
-              <ActivitySection 
-                activityStats={activityData ? [
-                  { value: activityData.stats.today, label: "сегодня" },
-                  { value: activityData.stats.week, label: "на этой неделе" },
-                  { value: activityData.stats.total, label: "всего" },
-                ] : undefined}
-                chartData={activityData?.chartData}
-              />
-              <AboutCourse 
+            {/* Right column - Stats & About */}
+            <div className="lg:col-span-2 space-y-6">
+                <CourseStats />
+                <AboutCourse 
                 aboutText={course.about_course || course.description || ''}
-              />
+                />
             </div>
-          </div>
+            </div>
           
           {/* Resume section - Full width */}
           <ResumeSection
@@ -272,6 +267,7 @@ export default function CourseDetailPage() {
             certificateText={course.certificate_text || undefined}
             jobTitle={course.job_title || undefined}
           />
+        </div>
         </div>
       </main>
     </div>

@@ -21,6 +21,10 @@ interface CourseFormData {
   specialty: string | null;
   targetAudience: string | null;
   aboutCourse: string | null;
+  courseSkills: string[];
+  courseTools: string[];
+  certificateText: string | null;
+  jobTitle: string | null;
 }
 
 function CourseManagePage() {
@@ -46,6 +50,10 @@ function CourseManagePage() {
     specialty: null,
     targetAudience: null,
     aboutCourse: null,
+    courseSkills: [],
+    courseTools: [],
+    certificateText: null,
+    jobTitle: null,
   });
 
   const [chapters, setChapters] = useState<Chapter[]>([]);
@@ -85,6 +93,10 @@ function CourseManagePage() {
         specialty: course.specialty || null,
         targetAudience: course.target_audience || null,
         aboutCourse: course.about_course || null,
+        courseSkills: course.course_skills || [],
+        courseTools: course.course_tools || [],
+        certificateText: course.certificate_text || null,
+        jobTitle: course.job_title || null,
       });
       // Ensure chapters array exists and is properly formatted
       const courseChapters = course.chapters || [];
@@ -144,6 +156,10 @@ function CourseManagePage() {
         specialty: formData.specialty,
         targetAudience: formData.targetAudience,
         aboutCourse: formData.aboutCourse,
+        courseSkills: formData.courseSkills,
+        courseTools: formData.courseTools,
+        certificateText: formData.certificateText,
+        jobTitle: formData.jobTitle,
       };
 
       if (isCreatePage) {
@@ -175,9 +191,17 @@ function CourseManagePage() {
         // Refresh course data
         await fetchCourse();
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Error saving course:', err);
-      const errorMessage = err.response?.data?.error || err.message || 'Ошибка при сохранении курса';
+      const errorMessage =
+        typeof err === 'object' &&
+        err !== null &&
+        'response' in err &&
+        typeof (err as { response?: { data?: { error?: unknown } } }).response?.data?.error === 'string'
+          ? (err as { response?: { data?: { error?: string } } }).response?.data?.error || 'Ошибка при сохранении курса'
+          : err instanceof Error
+            ? err.message
+            : 'Ошибка при сохранении курса';
       setError(errorMessage);
       toast.error(errorMessage);
     } finally {
@@ -260,7 +284,16 @@ function CourseManagePage() {
                 onTargetAudienceChange={(targetAudience) => setFormData({ ...formData, targetAudience })}
                 onAboutCourseChange={(aboutCourse) => setFormData({ ...formData, aboutCourse })}
               />
-              <OutcomesCard />
+              <OutcomesCard
+                skills={formData.courseSkills}
+                tools={formData.courseTools}
+                certificateText={formData.certificateText}
+                jobTitle={formData.jobTitle}
+                onSkillsChange={(courseSkills) => setFormData({ ...formData, courseSkills })}
+                onToolsChange={(courseTools) => setFormData({ ...formData, courseTools })}
+                onCertificateTextChange={(certificateText) => setFormData({ ...formData, certificateText })}
+                onJobTitleChange={(jobTitle) => setFormData({ ...formData, jobTitle })}
+              />
             </div>
           </div>
 

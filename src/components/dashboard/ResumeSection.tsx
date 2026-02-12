@@ -1,15 +1,30 @@
-interface Skill {
-  name: string;
-}
+import { useState } from "react";
+import {
+  SiSketch,
+  SiFigma,
+  SiAdobexd,
+  SiFramer,
+  SiHtml5,
+  SiCss3,
+  SiJavascript,
+  SiTypescript,
+  SiReact,
+  SiVuedotjs,
+  SiAngular,
+  SiAdobephotoshop,
+  SiCanva,
+} from "react-icons/si";
+import type { IconType } from "react-icons";
 
 interface Tool {
   name: string;
   color: string;
+  icon?: IconType;
 }
 
 interface ResumeSectionProps {
   skills?: string[];
-  tools?: Tool[];
+  tools?: Array<Tool | string>;
   certificateText?: string;
   jobTitle?: string;
 }
@@ -26,20 +41,81 @@ const defaultSkills = [
 ];
 
 const defaultTools = [
-  { name: "Sketch", color: "#F7B500" },
-  { name: "Figma", color: "#A259FF" },
-  { name: "Adobe XD", color: "#FF61F6" },
-  { name: "Framer", color: "#0055FF" },
-  { name: "HTML5", color: "#E34F26" },
-  { name: "CSS3", color: "#1572B6" },
+  { name: "Sketch", color: "#F7B500", icon: SiSketch },
+  { name: "Figma", color: "#A259FF", icon: SiFigma },
+  { name: "Adobe XD", color: "#FF61F6", icon: SiAdobexd },
+  { name: "Framer", color: "#0055FF", icon: SiFramer },
+  { name: "HTML5", color: "#E34F26", icon: SiHtml5 },
+  { name: "CSS3", color: "#1572B6", icon: SiCss3 },
 ];
 
+const getToolMeta = (toolName: string): Tool => {
+  const name = toolName.trim();
+  const lower = name.toLowerCase();
+
+  if (lower.includes("figma")) return { name, color: "#A259FF", icon: SiFigma };
+  if (lower.includes("sketch")) return { name, color: "#F7B500", icon: SiSketch };
+  if (lower.includes("adobe xd") || lower === "xd") return { name, color: "#FF61F6", icon: SiAdobexd };
+  if (lower.includes("framer")) return { name, color: "#0055FF", icon: SiFramer };
+  if (lower.includes("html")) return { name, color: "#E34F26", icon: SiHtml5 };
+  if (lower.includes("css")) return { name, color: "#1572B6", icon: SiCss3 };
+  if (lower.includes("javascript") || lower === "js") return { name, color: "#F7DF1E", icon: SiJavascript };
+  if (lower.includes("typescript") || lower === "ts") return { name, color: "#3178C6", icon: SiTypescript };
+  if (lower.includes("react")) return { name, color: "#61DAFB", icon: SiReact };
+  if (lower.includes("vue")) return { name, color: "#42B883", icon: SiVuedotjs };
+  if (lower.includes("angular")) return { name, color: "#DD0031", icon: SiAngular };
+  if (lower.includes("photoshop") || lower.includes("adobe ps")) return { name, color: "#001E36", icon: SiAdobephotoshop };
+  if (lower.includes("canva")) return { name, color: "#00C4CC", icon: SiCanva };
+
+  return { name, color: "#64748B" };
+};
+
+const ToolWithTooltip = ({ tool }: { tool: Tool }) => {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const Icon = tool.icon;
+
+  return (
+    <div 
+      className="relative group"
+      onMouseEnter={() => setShowTooltip(true)}
+      onMouseLeave={() => setShowTooltip(false)}
+    >
+      {/* Tool icon */}
+      <div 
+        className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-xs font-bold shadow-sm cursor-pointer transition-all duration-200"
+        style={{ backgroundColor: tool.color }}
+      >
+        {Icon ? <Icon className="w-5 h-5 text-white" /> : tool.name.charAt(0)}
+      </div>
+      
+      {/* Custom tooltip */}
+      {showTooltip && (
+        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 z-50">
+          <div className="bg-white text-darkgrey px-4 py-2 rounded-lg text-sm font-medium shadow-lg whitespace-nowrap animate-fade-in">
+            {tool.name}
+          </div>
+          <div className="absolute top-full left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-2 h-2 bg-foreground rotate-45" />
+        </div>
+      )}
+    </div>
+  );
+};
 const ResumeSection = ({ 
   skills = defaultSkills,
   tools = defaultTools,
   certificateText = "Траляля ляля люлю. Какой-то текстик про сертификат интересненький крутельный ништячковый",
   jobTitle = "Веб-дизайнер"
 }: ResumeSectionProps) => {
+  const normalizedTools: Tool[] = tools.map((tool) => {
+    if (typeof tool === "string") {
+      return getToolMeta(tool);
+    }
+    if (tool.icon) {
+      return tool;
+    }
+    return getToolMeta(tool.name);
+  });
+
   return (
     <div className="mt-8">
       <div className="flex items-center justify-between mb-6">
@@ -70,15 +146,8 @@ const ResumeSection = ({
           <div className="card-elevated p-6">
             <h3 className="text-primary font-semibold mb-4">Инструменты</h3>
             <div className="flex flex-wrap gap-3">
-              {tools.map((tool, index) => (
-                <div 
-                  key={index}
-                  className="w-10 h-10 rounded-xl flex items-center justify-center text-white text-xs font-bold shadow-sm"
-                  style={{ backgroundColor: tool.color }}
-                  title={tool.name}
-                >
-                  {tool.name.charAt(0)}
-                </div>
+              {normalizedTools.map((tool, index) => (
+                <ToolWithTooltip key={index} tool={tool} />
               ))}
             </div>
           </div>

@@ -1,9 +1,31 @@
 import { Plus, Upload, X, FileImage } from "lucide-react";
-import { useState, useRef, DragEvent } from "react";
+import { useState, useRef, type DragEvent, type ChangeEvent } from "react";
 
-const OutcomesCard = () => {
+interface OutcomesCardProps {
+  skills: string[];
+  tools: string[];
+  certificateText: string | null;
+  jobTitle: string | null;
+  onSkillsChange: (skills: string[]) => void;
+  onToolsChange: (tools: string[]) => void;
+  onCertificateTextChange: (text: string | null) => void;
+  onJobTitleChange: (title: string | null) => void;
+}
+
+const OutcomesCard = ({
+  skills,
+  tools,
+  certificateText,
+  jobTitle,
+  onSkillsChange,
+  onToolsChange,
+  onCertificateTextChange,
+  onJobTitleChange,
+}: OutcomesCardProps) => {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [toolInput, setToolInput] = useState("");
+  const [skillInput, setSkillInput] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
@@ -29,7 +51,7 @@ const OutcomesCard = () => {
     }
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (files && files.length > 0) {
       setUploadedFile(files[0]);
@@ -43,21 +65,113 @@ const OutcomesCard = () => {
     }
   };
 
+  const addValue = (value: string, current: string[], onChange: (items: string[]) => void) => {
+    const normalized = value.trim();
+    if (!normalized) return;
+    if (current.some(item => item.toLowerCase() === normalized.toLowerCase())) {
+      return;
+    }
+    onChange([...current, normalized]);
+  };
+
+  const removeValue = (value: string, current: string[], onChange: (items: string[]) => void) => {
+    onChange(current.filter(item => item !== value));
+  };
+
   return (
     <div className="card-blue animate-fade-in" style={{ animationDelay: "0.25s" }}>
       <h3 className="text-foreground font-semibold mb-4">Резюме после обучения</h3>
+
+      {/* Job Title Input */}
+      <div className="relative mb-4">
+        <input
+          type="text"
+          value={jobTitle || ""}
+          onChange={(e) => onJobTitleChange(e.target.value.trim() ? e.target.value : null)}
+          placeholder="Профессия после обучения"
+          className="input-field"
+        />
+      </div>
+
+      {/* Skills Input */}
+      <div className="relative mb-3">
+        <input
+          type="text"
+          value={skillInput}
+          onChange={(e) => setSkillInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              addValue(skillInput, skills, onSkillsChange);
+              setSkillInput("");
+            }
+          }}
+          placeholder="Навыки после обучения"
+          className="input-field pr-10"
+        />
+        <button
+          type="button"
+          onClick={() => {
+            addValue(skillInput, skills, onSkillsChange);
+            setSkillInput("");
+          }}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-primary hover:scale-110 transition-transform"
+        >
+          <Plus className="w-5 h-5" />
+        </button>
+      </div>
+      {skills.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {skills.map((skill) => (
+            <span key={skill} className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-1 rounded-full text-xs">
+              {skill}
+              <button type="button" onClick={() => removeValue(skill, skills, onSkillsChange)}>
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Software/Tools Input */}
       <div className="relative mb-4">
         <input
           type="text"
+          value={toolInput}
+          onChange={(e) => setToolInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              addValue(toolInput, tools, onToolsChange);
+              setToolInput("");
+            }
+          }}
           placeholder="Используемые программы, инструменты"
           className="input-field pr-10"
         />
-        <button className="absolute right-3 top-1/2 -translate-y-1/2 text-primary hover:scale-110 transition-transform">
+        <button
+          type="button"
+          onClick={() => {
+            addValue(toolInput, tools, onToolsChange);
+            setToolInput("");
+          }}
+          className="absolute right-3 top-1/2 -translate-y-1/2 text-primary hover:scale-110 transition-transform"
+        >
           <Plus className="w-5 h-5" />
         </button>
       </div>
+      {tools.length > 0 && (
+        <div className="flex flex-wrap gap-2 mb-4">
+          {tools.map((tool) => (
+            <span key={tool} className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-1 rounded-full text-xs">
+              {tool}
+              <button type="button" onClick={() => removeValue(tool, tools, onToolsChange)}>
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          ))}
+        </div>
+      )}
 
       {/* Certificate Upload - Drag & Drop */}
       <div className="mb-4">
@@ -123,6 +237,8 @@ const OutcomesCard = () => {
       {/* Certificate Description */}
       <textarea
         placeholder="Расскажите про сертификат"
+        value={certificateText || ""}
+        onChange={(e) => onCertificateTextChange(e.target.value.trim() ? e.target.value : null)}
         className="input-field min-h-[100px] resize-none"
         rows={4}
       />
