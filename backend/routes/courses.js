@@ -4,6 +4,13 @@ import { authenticateSession, optionalAuthenticateSession } from '../middleware/
 
 const router = express.Router();
 
+const ensureBaseUrl = (expectedBaseUrl) => (req, res, next) => {
+  if (req.baseUrl !== expectedBaseUrl) {
+    return next('route');
+  }
+  return next();
+};
+
 // Helper function to check if the user is the author of the course
 const isCourseAuthor = async (courseId, userId) => {
   console.log(`🔍 [AUTH] Checking if user ${userId} is author of course ${courseId}`);
@@ -444,7 +451,7 @@ router.get('/:id(\\d+)', optionalAuthenticateSession, async (req, res) => {
 });
 
 // PUT /api/courses/:id - Update a course
-router.put('/:id', authenticateSession, async (req, res) => {
+router.put('/:id', ensureBaseUrl('/api/courses'), authenticateSession, async (req, res) => {
   const { id } = req.params;
   const { 
     title, 
@@ -508,7 +515,7 @@ router.put('/:id', authenticateSession, async (req, res) => {
 });
 
 // DELETE /api/courses/:id - Delete a course
-router.delete('/:id', authenticateSession, async (req, res) => {
+router.delete('/:id', ensureBaseUrl('/api/courses'), authenticateSession, async (req, res) => {
   const { id } = req.params;
   const authorId = req.user.userId;
 
@@ -624,7 +631,7 @@ router.post('/:courseId/chapters', authenticateSession, async (req, res) => {
 
 // PUT /api/chapters/:id - Update a chapter
 // Note: This route is mounted at /api/chapters in server.js
-router.put('/:id', authenticateSession, async (req, res) => {
+router.put('/:id', ensureBaseUrl('/api/chapters'), authenticateSession, async (req, res) => {
   const { id } = req.params;
   const { title, order, canvasData } = req.body;
   const authorId = req.user.userId;
@@ -703,7 +710,7 @@ router.put('/:id/canvas', authenticateSession, async (req, res) => {
 });
 
 // DELETE /api/chapters/:id - Delete a chapter
-router.delete('/:id', authenticateSession, async (req, res) => {
+router.delete('/:id', ensureBaseUrl('/api/chapters'), authenticateSession, async (req, res) => {
   const { id } = req.params;
   const authorId = req.user.userId;
 
@@ -745,7 +752,29 @@ router.get('/:chapterId/subchapters', authenticateSession, async (req, res) => {
     }
 
     const result = await pool.query(
-      'SELECT * FROM subchapters WHERE chapter_id = $1 ORDER BY "order" ASC',
+      `SELECT
+        s.*,
+        COALESCE(
+          (
+            SELECT JSON_AGG(cb_agg.*)
+            FROM (
+              SELECT
+                cb.id,
+                cb.subchapter_id,
+                cb.type,
+                cb.content,
+                cb.answer,
+                cb."order"
+              FROM content_blocks cb
+              WHERE cb.subchapter_id = s.id
+              ORDER BY cb."order"
+            ) AS cb_agg
+          ),
+          '[]'::json
+        ) AS content_blocks
+      FROM subchapters s
+      WHERE s.chapter_id = $1
+      ORDER BY s."order" ASC`,
       [chapterId]
     );
     res.status(200).json(result.rows);
@@ -788,7 +817,7 @@ router.post('/:chapterId/subchapters', authenticateSession, async (req, res) => 
 });
 
 // PUT /api/subchapters/:id - Update a subchapter
-router.put('/:id', authenticateSession, async (req, res) => {
+router.put('/:id', ensureBaseUrl('/api/subchapters'), authenticateSession, async (req, res) => {
   const { id } = req.params;
   const { title, order } = req.body;
   const authorId = req.user.userId;
@@ -823,7 +852,7 @@ router.put('/:id', authenticateSession, async (req, res) => {
 });
 
 // DELETE /api/subchapters/:id - Delete a subchapter
-router.delete('/:id', authenticateSession, async (req, res) => {
+router.delete('/:id', ensureBaseUrl('/api/subchapters'), authenticateSession, async (req, res) => {
   const { id } = req.params;
   const authorId = req.user.userId;
 
@@ -901,7 +930,7 @@ router.post('/:subchapterId/contentblocks', authenticateSession, async (req, res
 });
 
 // PUT /api/contentblocks/:id - Update a content block
-router.put('/:id', authenticateSession, async (req, res) => {
+router.put('/:id', ensureBaseUrl('/api/contentblocks'), authenticateSession, async (req, res) => {
   const { id } = req.params;
   const { type, content, answer, order } = req.body;
   const authorId = req.user.userId;
@@ -975,7 +1004,7 @@ router.put('/:id', authenticateSession, async (req, res) => {
 });
 
 // DELETE /api/contentblocks/:id - Delete a content block
-router.delete('/:id', authenticateSession, async (req, res) => {
+router.delete('/:id', ensureBaseUrl('/api/contentblocks'), authenticateSession, async (req, res) => {
   const { id } = req.params;
   const authorId = req.user.userId;
 
@@ -1009,6 +1038,105 @@ router.delete('/:id', authenticateSession, async (req, res) => {
   } catch (error) {
     console.error(`Error deleting content block ${id}:`, error.message);
     res.status(500).json({ error: 'Failed to delete content block' });
+  }
+});
+
+// GET /api/subchapters/:subchapterId/answers - Get current user's saved answers for subchapter
+router.get('/:subchapterId/answers', ensureBaseUrl('/api/subchapters'), authenticateSession, async (req, res) => {
+  const { subchapterId } = req.params;
+  const userId = req.user.userId;
+
+  try {
+    const subchapterCheck = await pool.query('SELECT chapter_id FROM subchapters WHERE id = $1', [subchapterId]);
+    const subchapterData = subchapterCheck.rows[0];
+    if (!subchapterData) {
+      return res.status(404).json({ message: 'Subchapter not found' });
+    }
+
+    const chapterCheck = await pool.query('SELECT course_id FROM chapters WHERE id = $1', [subchapterData.chapter_id]);
+    const chapterData = chapterCheck.rows[0];
+    if (!chapterData) {
+      return res.status(404).json({ message: 'Chapter not found' });
+    }
+
+    const accessStatus = await getCourseAccessStatus(chapterData.course_id, userId);
+    if (!accessStatus?.canViewContent) {
+      return res.status(403).json({ error: 'You are not authorized to access this subchapter' });
+    }
+
+    const result = await pool.query(
+      `SELECT
+        content_block_id,
+        user_answer,
+        is_correct,
+        answered_at,
+        updated_at
+      FROM user_content_block_answers
+      WHERE user_id = $1 AND subchapter_id = $2`,
+      [userId, subchapterId]
+    );
+
+    return res.status(200).json(result.rows);
+  } catch (error) {
+    console.error(`Error fetching answers for subchapter ${subchapterId}:`, error.message);
+    return res.status(500).json({ error: 'Failed to fetch user answers' });
+  }
+});
+
+// PUT /api/contentblocks/:id/answer - Save current user's answer for a content block
+router.put('/:id/answer', ensureBaseUrl('/api/contentblocks'), authenticateSession, async (req, res) => {
+  const { id: contentBlockId } = req.params;
+  const { userAnswer, isCorrect } = req.body;
+  const userId = req.user.userId;
+
+  if (typeof userAnswer !== 'string') {
+    return res.status(400).json({ error: 'userAnswer must be a string' });
+  }
+  if (typeof isCorrect !== 'boolean') {
+    return res.status(400).json({ error: 'isCorrect must be a boolean' });
+  }
+
+  try {
+    const blockCheck = await pool.query('SELECT subchapter_id FROM content_blocks WHERE id = $1', [contentBlockId]);
+    const blockData = blockCheck.rows[0];
+    if (!blockData) {
+      return res.status(404).json({ message: 'Content block not found' });
+    }
+
+    const subchapterCheck = await pool.query('SELECT chapter_id FROM subchapters WHERE id = $1', [blockData.subchapter_id]);
+    const subchapterData = subchapterCheck.rows[0];
+    if (!subchapterData) {
+      return res.status(404).json({ message: 'Subchapter not found' });
+    }
+
+    const chapterCheck = await pool.query('SELECT course_id FROM chapters WHERE id = $1', [subchapterData.chapter_id]);
+    const chapterData = chapterCheck.rows[0];
+    if (!chapterData) {
+      return res.status(404).json({ message: 'Chapter not found' });
+    }
+
+    const accessStatus = await getCourseAccessStatus(chapterData.course_id, userId);
+    if (!accessStatus?.canViewContent) {
+      return res.status(403).json({ error: 'You are not authorized to answer this content block' });
+    }
+
+    const saveResult = await pool.query(
+      `INSERT INTO user_content_block_answers (
+        user_id, content_block_id, subchapter_id, user_answer, is_correct, answered_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+      ON CONFLICT (user_id, content_block_id)
+      DO UPDATE SET
+        user_answer = EXCLUDED.user_answer,
+        is_correct = EXCLUDED.is_correct,
+        updated_at = NOW()
+      RETURNING *`,
+      [userId, contentBlockId, blockData.subchapter_id, userAnswer, isCorrect]
+    );
+
+    return res.status(200).json(saveResult.rows[0]);
+  } catch (error) {
+    console.error(`Error saving answer for content block ${contentBlockId}:`, error.message);
+    return res.status(500).json({ error: 'Failed to save user answer' });
   }
 });
 

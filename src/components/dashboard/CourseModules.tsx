@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { ChevronDown, CheckCircle2, PlayCircle, FileText, Flame, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 interface Module {
   id: string;
   title: string;
+  subchapterId?: number;
   description?: string;
   duration?: string;
   isCompleted?: boolean;
@@ -15,11 +17,14 @@ interface Module {
 interface Section {
   id: string;
   title: string;
+  chapterId?: number;
+  firstSubchapterId?: number;
   modules: Module[];
 }
 
 interface CourseModulesProps {
   sections?: Section[];
+  onStartChapter?: (chapterId: number, subchapterId: number) => void;
 }
 
 const defaultSections: Section[] = [
@@ -49,7 +54,7 @@ const defaultSections: Section[] = [
   },
 ];
 
-const CourseModules = ({ sections = defaultSections }: CourseModulesProps) => {
+const CourseModules = ({ sections = defaultSections, onStartChapter }: CourseModulesProps) => {
   const [expandedModules, setExpandedModules] = useState<string[]>(["2-1"]);
   const [showMore, setShowMore] = useState(false);
 
@@ -67,9 +72,22 @@ const CourseModules = ({ sections = defaultSections }: CourseModulesProps) => {
       <div className="space-y-6">
         {sections.map((section) => (
           <div key={section.id}>
-            <h3 className="text-sm font-medium text-muted-foreground mb-3">
-              {section.title}
-            </h3>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-muted-foreground">
+                {section.title}
+              </h3>
+              {section.chapterId && section.firstSubchapterId && onStartChapter && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onStartChapter(section.chapterId, section.firstSubchapterId)}
+                  className="h-8 px-3"
+                >
+                  <PlayCircle className="w-4 h-4 mr-1" />
+                  Пуск
+                </Button>
+              )}
+            </div>
             
             <div className="space-y-2">
               {section.modules.map((module) => {

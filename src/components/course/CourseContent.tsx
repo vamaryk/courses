@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { coursesApi } from '@/shared/api/courses';
 import { useCourseProgress } from '@/hooks/useCourseProgress';
 import { Button } from '@/components/ui/button';
 import { ChevronLeft, ChevronRight, CheckCircle } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
+import { cn } from '@/lib/utils';
 
 interface CourseContentProps {
   courseId: number;
@@ -12,19 +12,59 @@ interface CourseContentProps {
     id: number;
     title: string;
     order: number;
-    subchapters: Array<{
+    subchapters?: Array<{
       id: number;
       title: string;
       order: number;
-      content_blocks: Array<{
+      content_blocks?: Array<{
         id: number;
-        type: 'theory' | 'task';
+        type: 'theory' | 'task' | 'test';
         content: string;
+        answer?: string | null;
         order: number;
       }>;
     }>;
   }>;
 }
+
+type QuizSelectionType = 'single' | 'multiple';
+
+interface QuizOption {
+  id: string;
+  text: string;
+  isCorrect: boolean;
+}
+
+interface QuizAnswerPayload {
+  format: 'quiz_v1';
+  selectionType: QuizSelectionType;
+  options: QuizOption[];
+}
+
+const parseQuizPayload = (rawAnswer?: string | null): QuizAnswerPayload | null => {
+  if (!rawAnswer) return null;
+  try {
+    const parsed = JSON.parse(rawAnswer) as Partial<QuizAnswerPayload>;
+    if (
+      parsed?.format === 'quiz_v1' &&
+      (parsed.selectionType === 'single' || parsed.selectionType === 'multiple') &&
+      Array.isArray(parsed.options)
+    ) {
+      return {
+        format: 'quiz_v1',
+        selectionType: parsed.selectionType,
+        options: parsed.options.map((option, index) => ({
+          id: option.id || `opt-${index + 1}`,
+          text: option.text || '',
+          isCorrect: Boolean(option.isCorrect),
+        })),
+      };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+};
 
 export const CourseContent = ({ courseId, chapters }: CourseContentProps) => {
   const navigate = useNavigate();
@@ -37,20 +77,31 @@ export const CourseContent = ({ courseId, chapters }: CourseContentProps) => {
   const [currentSubchapterIndex, setCurrentSubchapterIndex] = useState(0);
   const [progress, setProgress] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [checkedTests, setCheckedTests] = useState<Record<number, boolean>>({});
+  const [selectedTestOptions, setSelectedTestOptions] = useState<Record<number, string[]>>({});
 
-  // Sort chapters and subchapters by order
-  const sortedChapters = [...chapters].sort((a, b) => a.order - b.order).map(chapter => ({
-    ...chapter,
-    subchapters: [...(chapter.subchapters || [])].sort((a, b) => a.order - b.order).map(subchapter => ({
-      ...subchapter,
-      content_blocks: [...(subchapter.content_blocks || [])].sort((a, b) => a.order - b.order)
-    }))
-  }));
+  const sortedChapters = useMemo(
+    () =>
+      [...chapters]
+        .sort((a, b) => a.order - b.order)
+        .map((chapter) => ({
+          ...chapter,
+          subchapters: [...(chapter.subchapters || [])]
+            .sort((a, b) => a.order - b.order)
+            .map((subchapter) => ({
+              ...subchapter,
+              content_blocks: [...(subchapter.content_blocks || [])].sort((a, b) => a.order - b.order),
+            })),
+        })),
+    [chapters]
+  );
 
   // Initialize current chapter and subchapter based on URL params
   useEffect(() => {
-    if (chapters.length === 0) return;
+    if (!sortedChapters.length) {
+      setIsLoading(false);
+      return;
+    }
 
     let chapterIdx = 0;
     let subchapterIdx = 0;
@@ -77,12 +128,12 @@ export const CourseContent = ({ courseId, chapters }: CourseContentProps) => {
     setCurrentChapterIndex(chapterIdx);
     setCurrentSubchapterIndex(subchapterIdx);
     setIsLoading(false);
-  }, [chapters, chapterId, subchapterId, sortedChapters]);
+  }, [chapterId, subchapterId, sortedChapters]);
 
   // Track progress
   const currentChapter = sortedChapters[currentChapterIndex];
   const currentSubchapter = currentChapter?.subchapters?.[currentSubchapterIndex];
-  const currentContent = currentSubchapter?.content_blocks?.[0]; // For simplicity, using first content block
+  const currentContent = currentSubchapter?.content_blocks?.[0];
 
   const { markAsCompleted } = useCourseProgress({
     courseId,
@@ -104,21 +155,22 @@ export const CourseContent = ({ courseId, chapters }: CourseContentProps) => {
     await markAsCompleted();
 
     // Check if there's a next subchapter
-    if (currentSubchapterIndex < currentChapter.subchapters.length - 1) {
+    if (currentSubchapterIndex < (currentChapter.subchapters?.length || 0) - 1) {
       // Go to next subchapter in the same chapter
-      const nextSubchapter = currentChapter.subchapters[currentSubchapterIndex + 1];
-      navigate(`/courses/${courseId}/chapters/${currentChapter.id}/subchapters/${nextSubchapter.id}`);
+      const nextSubchapter = currentChapter.subchapters?.[currentSubchapterIndex + 1];
+      if (!nextSubchapter) return;
+      navigate(`/courses/${courseId}/learn/${currentChapter.id}/${nextSubchapter.id}`);
     } else if (currentChapterIndex < sortedChapters.length - 1) {
       // Go to first subchapter of next chapter
       const nextChapter = sortedChapters[currentChapterIndex + 1];
-      if (nextChapter.subchapters.length > 0) {
-        navigate(`/courses/${courseId}/chapters/${nextChapter.id}/subchapters/${nextChapter.subchapters[0].id}`);
-      } else {
-        navigate(`/courses/${courseId}/chapters/${nextChapter.id}`);
+      if ((nextChapter.subchapters?.length || 0) > 0) {
+        const firstSubchapterId = nextChapter.subchapters?.[0]?.id;
+        if (!firstSubchapterId) return;
+        navigate(`/courses/${courseId}/learn/${nextChapter.id}/${firstSubchapterId}`);
       }
     } else {
       // Course completed
-      navigate(`/courses/${courseId}/complete`);
+      navigate(`/courses/${courseId}`);
     }
   };
 
@@ -127,16 +179,17 @@ export const CourseContent = ({ courseId, chapters }: CourseContentProps) => {
 
     if (currentSubchapterIndex > 0) {
       // Go to previous subchapter in the same chapter
-      const prevSubchapter = currentChapter.subchapters[currentSubchapterIndex - 1];
-      navigate(`/courses/${courseId}/chapters/${currentChapter.id}/subchapters/${prevSubchapter.id}`);
+      const prevSubchapter = currentChapter.subchapters?.[currentSubchapterIndex - 1];
+      if (!prevSubchapter) return;
+      navigate(`/courses/${courseId}/learn/${currentChapter.id}/${prevSubchapter.id}`);
     } else if (currentChapterIndex > 0) {
       // Go to last subchapter of previous chapter
       const prevChapter = sortedChapters[currentChapterIndex - 1];
-      if (prevChapter.subchapters.length > 0) {
-        const lastSubchapterIndex = prevChapter.subchapters.length - 1;
-        navigate(`/courses/${courseId}/chapters/${prevChapter.id}/subchapters/${prevChapter.subchapters[lastSubchapterIndex].id}`);
-      } else {
-        navigate(`/courses/${courseId}/chapters/${prevChapter.id}`);
+      if ((prevChapter.subchapters?.length || 0) > 0) {
+        const lastSubchapterIndex = (prevChapter.subchapters?.length || 1) - 1;
+        const targetSubchapterId = prevChapter.subchapters?.[lastSubchapterIndex]?.id;
+        if (!targetSubchapterId) return;
+        navigate(`/courses/${courseId}/learn/${prevChapter.id}/${targetSubchapterId}`);
       }
     }
   };
@@ -157,13 +210,28 @@ export const CourseContent = ({ courseId, chapters }: CourseContentProps) => {
     return <div>Loading...</div>;
   }
 
-  if (error) {
-    return <div className="text-red-500">{error}</div>;
-  }
-
   if (!currentChapter || !currentSubchapter) {
     return <div>Content not found</div>;
   }
+
+  const handleTestOptionChange = (
+    blockId: number,
+    optionId: string,
+    selectionType: QuizSelectionType,
+    checked: boolean
+  ) => {
+    setSelectedTestOptions((prev) => {
+      const existing = prev[blockId] || [];
+      if (selectionType === 'single') {
+        return { ...prev, [blockId]: checked ? [optionId] : [] };
+      }
+      if (checked) {
+        return { ...prev, [blockId]: [...existing, optionId] };
+      }
+      return { ...prev, [blockId]: existing.filter((id) => id !== optionId) };
+    });
+    setCheckedTests((prev) => ({ ...prev, [blockId]: false }));
+  };
 
   return (
     <div className="flex flex-col h-full">
@@ -195,7 +263,7 @@ export const CourseContent = ({ courseId, chapters }: CourseContentProps) => {
                 </div>
                 
                 <div className="ml-3 mt-1 space-y-1">
-                  {chapter.subchapters.map((subchapter) => (
+                  {(chapter.subchapters || []).map((subchapter) => (
                     <div
                       key={subchapter.id}
                       className={`flex items-center py-1 px-2 rounded ${
@@ -204,7 +272,7 @@ export const CourseContent = ({ courseId, chapters }: CourseContentProps) => {
                           : 'hover:bg-gray-50'
                       }`}
                       onClick={() => 
-                        navigate(`/courses/${courseId}/chapters/${chapter.id}/subchapters/${subchapter.id}`)
+                        navigate(`/courses/${courseId}/learn/${chapter.id}/${subchapter.id}`)
                       }
                     >
                       <div className="w-4 h-4 mr-2 flex-shrink-0">
@@ -229,13 +297,88 @@ export const CourseContent = ({ courseId, chapters }: CourseContentProps) => {
           <h3 className="text-xl font-semibold mb-6 text-gray-800">{currentSubchapter.title}</h3>
           
           {/* Content area */}
-          <div className="prose max-w-none mb-8">
-            {currentContent && (
-              <div
-                className="prose max-w-none"
-                dangerouslySetInnerHTML={{ __html: currentContent.content }}
-              />
+          <div className="space-y-4 mb-8">
+            {(currentSubchapter.content_blocks?.length || 0) === 0 && (
+              <div className="text-sm text-muted-foreground">В этой лекции пока нет контента.</div>
             )}
+            {(currentSubchapter.content_blocks || []).map((block) => {
+              const quizPayload = block.type === 'test' ? parseQuizPayload(block.answer) : null;
+              const selected = selectedTestOptions[block.id] || [];
+              const checked = checkedTests[block.id];
+
+              return (
+                <div key={block.id} className="border rounded-lg p-4">
+                  <div className="mb-3 text-xs font-medium uppercase text-muted-foreground">
+                    {block.type === 'theory' ? 'Теория' : block.type === 'task' ? 'Задание' : 'Тест'}
+                  </div>
+
+                  {block.type !== 'test' && block.content && (
+                    <div
+                      className="prose max-w-none"
+                      dangerouslySetInnerHTML={{ __html: block.content }}
+                    />
+                  )}
+
+                  {block.type === 'task' && block.answer && (
+                    <div className="mt-3 rounded-md bg-muted p-3 text-sm">
+                      <div className="font-medium mb-1">Ответ / ориентир:</div>
+                      <div>{block.answer}</div>
+                    </div>
+                  )}
+
+                  {block.type === 'test' && (
+                    <div className="space-y-3">
+                      {quizPayload?.options?.length ? (
+                        <>
+                          <div className="text-sm text-muted-foreground">
+                            {quizPayload.selectionType === 'single'
+                              ? 'Выберите один правильный ответ'
+                              : 'Выберите один или несколько вариантов'}
+                          </div>
+                          {quizPayload.options.map((option) => {
+                            const isSelected = selected.includes(option.id);
+                            const showCorrectness = checked;
+                            const isCorrect = option.isCorrect;
+                            return (
+                              <label
+                                key={option.id}
+                                className={cn(
+                                  'flex items-start gap-3 rounded-md border p-3 cursor-pointer',
+                                  showCorrectness && isCorrect && 'border-green-500 bg-green-50',
+                                  showCorrectness && isSelected && !isCorrect && 'border-red-500 bg-red-50'
+                                )}
+                              >
+                                <input
+                                  type={quizPayload.selectionType === 'single' ? 'radio' : 'checkbox'}
+                                  name={`test-${block.id}`}
+                                  checked={isSelected}
+                                  onChange={(event) =>
+                                    handleTestOptionChange(
+                                      block.id,
+                                      option.id,
+                                      quizPayload.selectionType,
+                                      event.target.checked
+                                    )
+                                  }
+                                />
+                                <span className="text-sm">{option.text || 'Без текста варианта'}</span>
+                              </label>
+                            );
+                          })}
+                          <Button size="sm" variant="outline" onClick={() => setCheckedTests((prev) => ({ ...prev, [block.id]: true }))}>
+                            Проверить
+                          </Button>
+                        </>
+                      ) : (
+                        <div className="text-sm text-muted-foreground">
+                          Данные теста не заполнены.
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
           {/* Navigation buttons */}

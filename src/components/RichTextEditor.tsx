@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useEffect } from 'react';
 
 interface RichTextEditorProps {
   value: string;
@@ -16,11 +16,30 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   disabled = false,
 }) => {
   const editorRef = useRef<HTMLDivElement>(null);
+  const lastSyncedValueRef = useRef<string>(value);
   const isEmpty = !value || value.replace(/<[^>]*>/g, '').trim().length === 0;
 
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    // Do not rewrite innerHTML while typing, otherwise caret jumps to the start.
+    if (document.activeElement === editor) return;
+
+    if (editor.innerHTML !== value) {
+      editor.innerHTML = value || '';
+      lastSyncedValueRef.current = value;
+    }
+  }, [value]);
+
   const handleInput = useCallback(() => {
-    if (editorRef.current) {
-      onChange(editorRef.current.innerHTML);
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const nextValue = editor.innerHTML;
+    if (nextValue !== lastSyncedValueRef.current) {
+      lastSyncedValueRef.current = nextValue;
+      onChange(nextValue);
     }
   }, [onChange]);
 
@@ -119,6 +138,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         <div
           ref={editorRef}
           contentEditable={!disabled}
+          suppressContentEditableWarning
           onInput={handleInput}
           onKeyDown={handleKeyDown}
           className={`
@@ -126,7 +146,6 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent
             ${disabled ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}
           `}
-          dangerouslySetInnerHTML={{ __html: value }}
           style={{
             display: 'block',
           }}

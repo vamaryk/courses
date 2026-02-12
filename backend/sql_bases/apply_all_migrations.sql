@@ -228,4 +228,26 @@ BEGIN
     END IF;
 END $$;
 
-RAISE NOTICE '🎉 All migrations completed successfully!';
+-- ============================================
+-- 6. Таблица ответов пользователей по блокам контента
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS user_content_block_answers (
+    id SERIAL PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    content_block_id INTEGER NOT NULL REFERENCES content_blocks(id) ON DELETE CASCADE,
+    subchapter_id INTEGER NOT NULL REFERENCES subchapters(id) ON DELETE CASCADE,
+    user_answer TEXT NOT NULL DEFAULT '',
+    is_correct BOOLEAN NOT NULL DEFAULT false,
+    answered_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE (user_id, content_block_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ucba_user_subchapter
+    ON user_content_block_answers (user_id, subchapter_id);
+
+DO $$
+BEGIN
+    RAISE NOTICE 'All migrations completed successfully!';
+END $$;

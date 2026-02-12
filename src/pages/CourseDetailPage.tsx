@@ -1,4 +1,4 @@
-import CourseDetailPageSt from "@/widgets/CourseDetailPageSt";
+import CourseDetailPageSt from "@/widgets/CourseDetailPage";
 import CourseDetailPageUser from "@/widgets/CourseDetailPageUser";
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "react-router-dom";

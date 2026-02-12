@@ -213,11 +213,15 @@ function SubchapterEditPage() {
   const handleAddContentBlock = async (subchapterId: number) => {
     try {
       const currentBlocks = contentBlocksMap.get(subchapterId) || [];
+      const nextOrder =
+        currentBlocks.length > 0
+          ? Math.max(...currentBlocks.map((block) => Number(block.order) || 0)) + 1
+          : 1;
       const newBlock = await coursesApi.createContentBlock(subchapterId, {
         type: 'theory',
         content: '',
         answer: '',
-        order: currentBlocks.length + 1,
+        order: nextOrder,
       });
       
       setContentBlocksMap(prev => {

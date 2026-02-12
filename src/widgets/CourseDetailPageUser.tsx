@@ -2,7 +2,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { coursesApi, type Course, type Chapter, type Subchapter, type ContentBlock } from '@/shared/api/courses';
 import HeroHeaderUser from "@/components/dashboard/HeroHeaderUser";
-import CourseModulesUser from "@/components/dashboard/CourseModulesUser";
+import CourseModules from "@/components/dashboard/CourseModules";
 import CourseStats from "@/components/dashboard/CourseStats";
 import AboutCourse from "@/components/dashboard/AboutCourse";
 import ResumeSection from "@/components/dashboard/ResumeSection";
@@ -189,6 +189,8 @@ export default function CourseDetailPageUser({ onEnrolled }: CourseDetailPageUse
   const sections = course.chapters?.map((chapter, chapterIndex) => ({
     id: String(chapter.id),
     title: `${chapterIndex + 1}. ${chapter.title}`,
+    chapterId: chapter.id,
+    firstSubchapterId: chapter.subchapters?.[0]?.id,
     modules: chapter.subchapters?.map((subchapter, subIndex) => ({
       id: `${chapter.id}-${subchapter.id}`,
       title: subchapter.title,
@@ -248,7 +250,12 @@ export default function CourseDetailPageUser({ onEnrolled }: CourseDetailPageUse
             {/* Left column - Course content */}
             <div className="lg:col-span-3 space-y-6">
                 <h2 className="text-lg font-semibold text-foreground mb-2">Программа курса</h2>      
-                <CourseModulesUser sections={sections} />
+                <CourseModules
+                  sections={sections}
+                  onStartChapter={(chapterId, subchapterId) =>
+                    navigate(`/courses/${id}/learn/${chapterId}/${subchapterId}`)
+                  }
+                />
             </div>
             
             {/* Right column - Stats & About */}

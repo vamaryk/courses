@@ -127,6 +127,14 @@ export interface UpdateContentBlockData {
   order: number;
 }
 
+export interface UserContentBlockAnswer {
+  content_block_id: number;
+  user_answer: string;
+  is_correct: boolean;
+  answered_at?: string;
+  updated_at?: string;
+}
+
 export const coursesApi = {
   // Get all courses (public courses + user's courses if authenticated)
   async getAllCourses(): Promise<Course[]> {
@@ -269,6 +277,26 @@ export const coursesApi = {
     await axios.delete(`${API_URL}/api/contentblocks/${id}`, {
       withCredentials: true,
     });
+  },
+
+  async getSubchapterAnswers(subchapterId: number): Promise<UserContentBlockAnswer[]> {
+    const response = await axios.get(`${API_URL}/api/subchapters/${subchapterId}/answers`, {
+      withCredentials: true,
+    });
+    return Array.isArray(response.data) ? response.data : [];
+  },
+
+  async saveContentBlockAnswer(
+    contentBlockId: number,
+    userAnswer: string,
+    isCorrect: boolean
+  ): Promise<UserContentBlockAnswer> {
+    const response = await axios.put(
+      `${API_URL}/api/contentblocks/${contentBlockId}/answer`,
+      { userAnswer, isCorrect },
+      { withCredentials: true }
+    );
+    return response.data;
   },
 
   // Canvas operations for chapters

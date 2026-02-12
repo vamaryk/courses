@@ -177,10 +177,12 @@ export default function CourseDetailPage() {
   const sections = course.chapters?.map((chapter, chapterIndex) => ({
     id: String(chapter.id),
     title: `${chapterIndex + 1}. ${chapter.title}`,
+    chapterId: chapter.id,
+    firstSubchapterId: chapter.subchapters?.[0]?.id,
     modules: chapter.subchapters?.map((subchapter, subIndex) => ({
       id: `${chapter.id}-${subchapter.id}`,
+      subchapterId: subchapter.id,
       title: subchapter.title,
-      description: subchapter.description,
       duration: subchapter.content_blocks 
         ? `${Math.ceil((subchapter.content_blocks.length * 15) / 60)} : ${(subchapter.content_blocks.length * 15) % 60}`
         : undefined,
@@ -246,7 +248,12 @@ export default function CourseDetailPage() {
             {/* Left column - Course content */}
             <div className="lg:col-span-3 space-y-6">
               <CourseProgress progressData={progressData} />
-              <CourseModules sections={sections} />
+              <CourseModules
+                sections={sections}
+                onStartChapter={(chapterId, subchapterId) =>
+                  navigate(`/courses/${id}/learn/${chapterId}/${subchapterId}`)
+                }
+              />
             </div>
             
             {/* Right column - Activity & About */}
