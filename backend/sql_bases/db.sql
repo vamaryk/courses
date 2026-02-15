@@ -51,7 +51,11 @@ CREATE TABLE courses (
     difficulty text, 
     status text NOT NULL DEFAULT 'draft', 
     created_at timestamp with time zone DEFAULT now(),
-    tags TEXT[] DEFAULT ARRAY[]::TEXT[] -- New column for tags
+    tags TEXT[] DEFAULT ARRAY[]::TEXT[], -- New column for tags
+    course_skills TEXT[] DEFAULT ARRAY[]::TEXT[],
+    course_tools TEXT[] DEFAULT ARRAY[]::TEXT[],
+    certificate_text TEXT,
+    job_title TEXT
 );
 
 

@@ -9,6 +9,7 @@ import GlossaryPage from "@/widgets/GlossaryPage";
 import AuthPage from "@/app/auth/page";
 import CourseManagePage from "@/widgets/CourseManagePage";
 import CourseDetailPage from "@/pages/CourseDetailPage";
+import LecturePage from "@/pages/LecturePage";
 import { CourseStatisticsPage } from "@/widgets/CourseStatisticsPage";
 import ChapterCanvasPage from "@/widgets/ChapterCanvasPage";
 import SubchapterEditPage from "@/widgets/SubchapterEditPage";
@@ -53,7 +54,8 @@ export const Router = () => {
         } 
       />
       <Route path="/courses/:id/statistics" element={<AppLayout><CourseStatisticsPage /></AppLayout>} />
-      <Route path="/courses/:id" element={<AppLayout><CourseDetailPage /></AppLayout>} />
+      <Route path="/courses/:id" element={<CourseDetailPage />} />
+      <Route path="/courses/:courseId/learn/:chapterId/:subchapterId" element={<LecturePage />} />
       <Route path="/profile" element={<AppLayout><ProfilePage /></AppLayout>} />
       <Route path="/settings" element={<AppLayout><SettingsPage /></AppLayout>} />
       <Route path="/glossary" element={<AppLayout><GlossaryPage /></AppLayout>} />

@@ -1,8 +1,10 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect, useState, useRef } from 'react';
 import { coursesApi, type Course, type Chapter, type Subchapter, type ContentBlock } from '@/shared/api/courses';
+import Header from "@/widgets/navigation/Header/Header";
+import MenuSidebar from "@/widgets/navigation/MenuSidebar/MenuSidebar";
 import HeroHeader from "@/components/dashboard/HeroHeader";
-// import CourseProgress from "@/components/dashboard/CourseProgress";
+import CourseProgress from "@/components/dashboard/CourseProgress";
 import CourseModules from "@/components/dashboard/CourseModules";
 import ActivitySection from "@/components/dashboard/ActivitySection";
 import AboutCourse from "@/components/dashboard/AboutCourse";
@@ -28,7 +30,7 @@ interface CourseWithChapters extends Course {
   language?: string;
 }
 
-export default function CourseDetailPageSt() {
+export default function CourseDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
@@ -75,7 +77,7 @@ export default function CourseDetailPageSt() {
 
         setCourse({
           ...courseData,
-          studentsCount: 128, // Mock data
+          studentsCount: Number(courseData.studentsCount || 0),
           totalLessons,
           totalDuration
         });
@@ -175,10 +177,12 @@ export default function CourseDetailPageSt() {
   const sections = course.chapters?.map((chapter, chapterIndex) => ({
     id: String(chapter.id),
     title: `${chapterIndex + 1}. ${chapter.title}`,
+    chapterId: chapter.id,
+    firstSubchapterId: chapter.subchapters?.[0]?.id,
     modules: chapter.subchapters?.map((subchapter, subIndex) => ({
       id: `${chapter.id}-${subchapter.id}`,
+      subchapterId: subchapter.id,
       title: subchapter.title,
-    //   description: subchapter.description,
       duration: subchapter.content_blocks 
         ? `${Math.ceil((subchapter.content_blocks.length * 15) / 60)} : ${(subchapter.content_blocks.length * 15) % 60}`
         : undefined,
@@ -189,12 +193,12 @@ export default function CourseDetailPageSt() {
   })) || [];
 
   // Prepare progress data
-//   const progressData = [
-//     { value: String(Math.ceil((course.totalDuration || 0) / 60)), label: "часов", progress: 45, color: "purple" as const },
-//     { value: `${progressPercentage}%`, label: "пройдено", progress: progressPercentage, color: "blue" as const },
-//     { value: String(course.totalLessons || 0), label: "лекций", progress: 78, color: "green" as const },
-//     { value: String(course.studentsCount || 0), label: "процесс", progress: 60, color: "orange" as const },
-//   ];
+  const progressData = [
+    { value: String(Math.ceil((course.totalDuration || 0) / 60)), label: "часов", progress: 45, color: "purple" as const },
+    { value: `${progressPercentage}%`, label: "пройдено", progress: progressPercentage, color: "blue" as const },
+    { value: String(course.totalLessons || 0), label: "лекций", progress: 78, color: "green" as const },
+    { value: String(course.studentsCount || 0), label: "процесс", progress: 60, color: "orange" as const },
+  ];
 
   // Prepare stats for HeroHeader
   const stats = {
@@ -209,15 +213,18 @@ export default function CourseDetailPageSt() {
 
   return (
     <div className="min-h-screen bg-background">
+      <Header />
+      <MenuSidebar />
       {/* Main content */}
-      <main className="px-4 sm:px-6 lg:px-[20px] mb-5">
-        <div>
+      <main className="mt-[4em] lg:ml-[100px] md:ml-[100px] sm:ml-0 p-6">
+        <div className="max-w-7xl mx-auto">
           {/* Header with Edit button */}
           <div className="flex items-center justify-between mb-6">
+            <h1 className="text-3xl font-bold text-foreground">{course.title}</h1>
             {isAuthor && (
               <Button
                 onClick={() => navigate(`/courses/${id}/manage`)}
-                className="flex items-center gap-2 cursor-pointer"
+                className="flex items-center gap-2"
                 variant="outline"
               >
                 <Edit className="w-4 h-4" />
@@ -235,36 +242,43 @@ export default function CourseDetailPageSt() {
             tags={tags}
             progress={progressPercentage}
           />
-          <div className="bg-white rounded-xl shadow p-5">
           
           {/* Main grid layout */}
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
             {/* Left column - Course content */}
             <div className="lg:col-span-3 space-y-6">
-                {/* <CourseProgress progressData={progressData} /> */}
-                <h2 className="text-lg font-semibold text-foreground mb-2">Программа курса</h2>      
-                <CourseModules sections={sections} />
+              <CourseProgress progressData={progressData} />
+              <CourseModules
+                sections={sections}
+                onStartChapter={(chapterId, subchapterId) =>
+                  navigate(`/courses/${id}/learn/${chapterId}/${subchapterId}`)
+                }
+              />
             </div>
             
             {/* Right column - Activity & About */}
-            <div className="lg:col-span-2 space-y-6">
-                <ActivitySection 
+            <div className="lg:col-span-2">
+              <ActivitySection 
                 activityStats={activityData ? [
-                    { value: activityData.stats.today, label: "сегодня" },
-                    { value: activityData.stats.week, label: "на этой неделе" },
-                    { value: activityData.stats.total, label: "всего" },
+                  { value: activityData.stats.today, label: "сегодня" },
+                  { value: activityData.stats.week, label: "на этой неделе" },
+                  { value: activityData.stats.total, label: "всего" },
                 ] : undefined}
                 chartData={activityData?.chartData}
-                />
-                <AboutCourse 
+              />
+              <AboutCourse 
                 aboutText={course.about_course || course.description || ''}
-                />
+              />
             </div>
-            </div>
+          </div>
           
           {/* Resume section - Full width */}
-          <ResumeSection />
-        </div>
+          <ResumeSection
+            skills={course.course_skills}
+            tools={course.course_tools}
+            certificateText={course.certificate_text || undefined}
+            jobTitle={course.job_title || undefined}
+          />
         </div>
       </main>
     </div>

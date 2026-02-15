@@ -15,9 +15,26 @@ export interface Course {
   specialty?: string | null;
   target_audience?: string | null;
   about_course?: string | null;
+  course_skills?: string[];
+  course_tools?: string[];
+  certificate_text?: string | null;
+  job_title?: string | null;
   chapters?: Chapter[];
   instructor_name?: string;
   instructor_avatar?: string | null;
+  price?: number;
+  studentsCount?: number;
+  is_enrolled?: boolean;
+  has_access?: boolean;
+}
+
+export interface CourseAccessStatus {
+  courseId: number;
+  isPublic: boolean;
+  isAuthor: boolean;
+  isEnrolled: boolean;
+  hasAccess: boolean;
+  canViewContent: boolean;
 }
 
 export interface Chapter {
@@ -39,7 +56,7 @@ export interface Subchapter {
 export interface ContentBlock {
   id: number;
   subchapter_id: number;
-  type: 'theory' | 'task';
+  type: 'theory' | 'task' | 'test';
   content: string;
   answer?: string | null;
   order: number;
@@ -54,6 +71,10 @@ export interface CreateCourseData {
   specialty?: string | null;
   targetAudience?: string | null;
   aboutCourse?: string | null;
+  courseSkills?: string[];
+  courseTools?: string[];
+  certificateText?: string | null;
+  jobTitle?: string | null;
 }
 
 export interface UpdateCourseData {
@@ -65,6 +86,10 @@ export interface UpdateCourseData {
   specialty?: string | null;
   targetAudience?: string | null;
   aboutCourse?: string | null;
+  courseSkills?: string[];
+  courseTools?: string[];
+  certificateText?: string | null;
+  jobTitle?: string | null;
 }
 
 export interface CreateChapterData {
@@ -89,17 +114,25 @@ export interface UpdateSubchapterData {
 }
 
 export interface CreateContentBlockData {
-  type: 'theory' | 'task';
+  type: 'theory' | 'task' | 'test';
   content: string;
   answer?: string | null;
   order: number;
 }
 
 export interface UpdateContentBlockData {
-  type: 'theory' | 'task';
+  type: 'theory' | 'task' | 'test';
   content: string;
   answer?: string | null;
   order: number;
+}
+
+export interface UserContentBlockAnswer {
+  content_block_id: number;
+  user_answer: string;
+  is_correct: boolean;
+  answered_at?: string;
+  updated_at?: string;
 }
 
 export const coursesApi = {
@@ -139,6 +172,21 @@ export const coursesApi = {
       course.chapters = [];
     }
     return course;
+  },
+
+  async getCourseAccessStatus(id: number): Promise<CourseAccessStatus> {
+    const response = await axios.get(`${API_URL}/api/courses/${id}/access-status`, {
+      withCredentials: true,
+    });
+    return response.data;
+  },
+
+  async enrollToCourse(id: number): Promise<void> {
+    await axios.post(
+      `${API_URL}/api/courses/${id}/enroll`,
+      {},
+      { withCredentials: true }
+    );
   },
 
   async createCourse(data: CreateCourseData): Promise<Course> {
@@ -229,6 +277,26 @@ export const coursesApi = {
     await axios.delete(`${API_URL}/api/contentblocks/${id}`, {
       withCredentials: true,
     });
+  },
+
+  async getSubchapterAnswers(subchapterId: number): Promise<UserContentBlockAnswer[]> {
+    const response = await axios.get(`${API_URL}/api/subchapters/${subchapterId}/answers`, {
+      withCredentials: true,
+    });
+    return Array.isArray(response.data) ? response.data : [];
+  },
+
+  async saveContentBlockAnswer(
+    contentBlockId: number,
+    userAnswer: string,
+    isCorrect: boolean
+  ): Promise<UserContentBlockAnswer> {
+    const response = await axios.put(
+      `${API_URL}/api/contentblocks/${contentBlockId}/answer`,
+      { userAnswer, isCorrect },
+      { withCredentials: true }
+    );
+    return response.data;
   },
 
   // Canvas operations for chapters

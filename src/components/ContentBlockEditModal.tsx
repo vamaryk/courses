@@ -18,7 +18,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { coursesApi, type ContentBlock } from '@/shared/api/courses';
+import { coursesApi } from '@/shared/api/courses';
+import RichTextEditor from '@/components/RichTextEditor';
 
 interface ContentBlockEditModalProps {
   isOpen: boolean;
@@ -132,10 +133,10 @@ export function ContentBlockEditModal({
                 Тип
               </Label>
               <Select value={type} onValueChange={(value: 'theory' | 'task') => setType(value)} disabled={loading}>
-                <SelectTrigger id="block-type" className="col-span-3">
+                <SelectTrigger id="block-type" className="col-span-3 bg-white opacity-100">
                   <SelectValue placeholder="Выберите тип" />
                 </SelectTrigger>
-                <SelectContent>
+                <SelectContent className="bg-white opacity-100 border shadow-md">
                   <SelectItem value="theory">Теория</SelectItem>
                   <SelectItem value="task">Задание</SelectItem>
                 </SelectContent>
@@ -146,15 +147,14 @@ export function ContentBlockEditModal({
               <Label htmlFor="block-content" className="text-right mt-2">
                 Содержание
               </Label>
-              <Textarea
-                id="block-content"
-                value={content}
-                onChange={(e) => setContent(e.target.value)}
-                className="col-span-3"
-                placeholder="Введите содержание блока"
-                rows={5}
-                disabled={loading}
-              />
+              <div className="col-span-3">
+                <RichTextEditor
+                  value={content}
+                  onChange={setContent}
+                  placeholder="Введите содержание блока"
+                  disabled={loading}
+                />
+              </div>
             </div>
 
             {type === 'task' && (

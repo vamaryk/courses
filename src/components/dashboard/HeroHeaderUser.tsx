@@ -1,6 +1,5 @@
 import { ChevronLeft, Clock, BookOpen, FileCheck, Heart, User } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { useState } from "react";
 import heroImage from "@/assets/hero-robot.jpg";
 
 interface HeroHeaderProps {
@@ -15,6 +14,10 @@ interface HeroHeaderProps {
   tags?: string[];
   price?: number;
   isFavorite?: boolean;
+  isFavoriteLoading?: boolean;
+  isBuyLoading?: boolean;
+  onToggleFavorite?: () => void;
+  onBuy?: () => void;
 }
 
 const HeroHeaderUser = ({ 
@@ -28,15 +31,14 @@ const HeroHeaderUser = ({
   },
   tags = ["Программирование", "HTML", "CSS"],
   price = 5900,
-  isFavorite = false
+  isFavorite = false,
+  isFavoriteLoading = false,
+  isBuyLoading = false,
+  onToggleFavorite,
+  onBuy,
 }: HeroHeaderProps) => {
   const navigate = useNavigate();
-  const [favorite, setFavorite] = useState(isFavorite);
-
-  const toggleFavorite = () => {
-    setFavorite(!favorite);
-    // добавить логику для сохранения в БД
-  };
+  const isFreeCourse = price <= 0;
 
   return (
     <div className="relative rounded-xl overflow-hidden mb-4">
@@ -115,34 +117,35 @@ const HeroHeaderUser = ({
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-4">
           {/* Price and Buy button */}
           <div className="flex items-center gap-4">
-            <div className="text-xl font-bold text-white">
-              {price.toLocaleString('ru-RU')} ₽
-            </div>
+            {!isFreeCourse && (
+              <div className="text-xl font-bold text-white">
+                {price.toLocaleString('ru-RU')} ₽
+              </div>
+            )}
             <button 
-              onClick={() => {
-                // Логика покупки
-                console.log("Купить курс");
-              }}
+              onClick={onBuy}
+              disabled={isBuyLoading}
               className="px-4 py-2 border-2 border-purple text-white rounded-full font-semibold hover:bg-purple transition-all duration-200 shadow-lg hover:shadow-xl"
             >
-              Купить
+              {isBuyLoading ? (isFreeCourse ? "Запись..." : "Покупка...") : (isFreeCourse ? "Записаться на курс" : "Купить")}
             </button>
           </div>
           
           {/* Favorite button */}
           <button
-            onClick={toggleFavorite}
+            onClick={onToggleFavorite}
+            disabled={isFavoriteLoading}
             className="flex items-center gap-2 px-4 py-3 rounded-full border-2 border-white/20 hover:border-white/40 transition-all duration-200"
           >
-            {favorite ? (
+            {isFavorite ? (
               <>
                 <Heart className="w-4 h-4 text-red-500 fill-red-500" />
-                <span className="text-white font-medium">В "Избранном"</span>
+                <span className="text-white font-medium">{isFavoriteLoading ? "..." : 'В "Избранном"'}</span>
               </>
             ) : (
               <>
                 <Heart className="w-4 h-4 text-white/70" />
-                <span className="text-white font-medium">В "Избранное"</span>
+                <span className="text-white font-medium">{isFavoriteLoading ? "..." : 'В "Избранное"'}</span>
               </>
             )}
           </button>
