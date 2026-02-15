@@ -53,6 +53,42 @@ BEGIN
         RAISE NOTICE '✅ Added about_course column to courses';
     END IF;
 
+    -- course_skills (навыки после обучения)
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'courses' AND column_name = 'course_skills'
+    ) THEN
+        ALTER TABLE courses ADD COLUMN course_skills TEXT[] DEFAULT ARRAY[]::TEXT[];
+        RAISE NOTICE '✅ Added course_skills column to courses';
+    END IF;
+
+    -- course_tools (инструменты курса)
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'courses' AND column_name = 'course_tools'
+    ) THEN
+        ALTER TABLE courses ADD COLUMN course_tools TEXT[] DEFAULT ARRAY[]::TEXT[];
+        RAISE NOTICE '✅ Added course_tools column to courses';
+    END IF;
+
+    -- certificate_text (описание сертификата)
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'courses' AND column_name = 'certificate_text'
+    ) THEN
+        ALTER TABLE courses ADD COLUMN certificate_text TEXT;
+        RAISE NOTICE '✅ Added certificate_text column to courses';
+    END IF;
+
+    -- job_title (должность/роль после курса)
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns 
+        WHERE table_name = 'courses' AND column_name = 'job_title'
+    ) THEN
+        ALTER TABLE courses ADD COLUMN job_title TEXT;
+        RAISE NOTICE '✅ Added job_title column to courses';
+    END IF;
+
     -- level (уровень сложности)
     IF NOT EXISTS (
         SELECT 1 FROM information_schema.columns 
@@ -151,7 +187,33 @@ BEGIN
 END $$;
 
 -- ============================================
--- 4. Проверяем наличие таблицы profiles и добавляем недостающие поля
+-- 4. Расширяем типы content_blocks (добавляем test)
+-- ============================================
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_name = 'content_blocks' AND column_name = 'type'
+    ) THEN
+        -- Снимаем старый check, если он есть, и добавляем новый.
+        BEGIN
+            ALTER TABLE content_blocks DROP CONSTRAINT IF EXISTS content_blocks_type_check;
+        EXCEPTION WHEN undefined_object THEN
+            NULL;
+        END;
+
+        ALTER TABLE content_blocks
+            ADD CONSTRAINT content_blocks_type_check
+            CHECK (type IN ('theory', 'task', 'test'));
+
+        RAISE NOTICE '✅ Updated content_blocks.type check with test';
+    END IF;
+END $$;
+
+-- ============================================
+-- 5. Проверяем наличие таблицы profiles и добавляем недостающие поля
 -- ============================================
 
 DO $$
@@ -166,4 +228,26 @@ BEGIN
     END IF;
 END $$;
 
-RAISE NOTICE '🎉 All migrations completed successfully!';
+-- ============================================
+-- 6. Таблица ответов пользователей по блокам контента
+-- ============================================
+
+CREATE TABLE IF NOT EXISTS user_content_block_answers (
+    id SERIAL PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    content_block_id INTEGER NOT NULL REFERENCES content_blocks(id) ON DELETE CASCADE,
+    subchapter_id INTEGER NOT NULL REFERENCES subchapters(id) ON DELETE CASCADE,
+    user_answer TEXT NOT NULL DEFAULT '',
+    is_correct BOOLEAN NOT NULL DEFAULT false,
+    answered_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    UNIQUE (user_id, content_block_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_ucba_user_subchapter
+    ON user_content_block_answers (user_id, subchapter_id);
+
+DO $$
+BEGIN
+    RAISE NOTICE 'All migrations completed successfully!';
+END $$;

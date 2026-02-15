@@ -2,13 +2,14 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { coursesApi, type Course, type Chapter, type Subchapter, type ContentBlock } from '@/shared/api/courses';
 import HeroHeaderUser from "@/components/dashboard/HeroHeaderUser";
-import CourseModulesUser from "@/components/dashboard/CourseModulesUser";
+import CourseModules from "@/components/dashboard/CourseModules";
 import CourseStats from "@/components/dashboard/CourseStats";
 import AboutCourse from "@/components/dashboard/AboutCourse";
 import ResumeSection from "@/components/dashboard/ResumeSection";
 import { Button } from "@/components/ui/button";
 import { Edit } from "lucide-react";
 import { useAuth } from "@/app/providers/AuthProvider";
+import axios from 'axios';
 
 interface CourseWithChapters extends Course {
   chapters?: Array<Chapter & {
@@ -27,13 +28,20 @@ interface CourseWithChapters extends Course {
   language?: string;
 }
 
-export default function CourseDetailPageUser() {
+interface CourseDetailPageUserProps {
+  onEnrolled?: () => void;
+}
+
+export default function CourseDetailPageUser({ onEnrolled }: CourseDetailPageUserProps) {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const [course, setCourse] = useState<CourseWithChapters | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [favoriteLoading, setFavoriteLoading] = useState(false);
+  const [buyLoading, setBuyLoading] = useState(false);
   
   // Check if current user is the author of the course
   const isAuthor = course && user && course.author_id && user.id && course.author_id === user.id;
@@ -64,12 +72,26 @@ export default function CourseDetailPageUser() {
           });
         }
 
-        setCourse({
+        const mappedCourse = {
           ...courseData,
-          studentsCount: 128, // Mock data
+          studentsCount: Number(courseData.studentsCount || 0),
           totalLessons,
           totalDuration
-        });
+        };
+
+        setCourse(mappedCourse);
+
+        if (isAuthenticated) {
+          try {
+            const favoriteStatus = await coursesApi.getFavoriteStatus(parseInt(id));
+            setIsFavorite(Boolean(favoriteStatus.isFavorite));
+          } catch (favoriteErr) {
+            console.error('Error fetching favorite status:', favoriteErr);
+            setIsFavorite(false);
+          }
+        } else {
+          setIsFavorite(false);
+        }
       } catch (err) {
         console.error('Error fetching course:', err);
         setError('Не удалось загрузить информацию о курсе');
@@ -79,7 +101,53 @@ export default function CourseDetailPageUser() {
     };
 
     fetchCourse();
-  }, [id]);
+  }, [id, isAuthenticated]);
+
+  const handleToggleFavorite = async () => {
+    if (!id) return;
+
+    if (!isAuthenticated) {
+      navigate('/auth');
+      return;
+    }
+
+    try {
+      setFavoriteLoading(true);
+      if (isFavorite) {
+        await coursesApi.removeFromFavorites(parseInt(id));
+        setIsFavorite(false);
+      } else {
+        await coursesApi.addToFavorites(parseInt(id));
+        setIsFavorite(true);
+      }
+    } catch (err) {
+      console.error('Error toggling favorite:', err);
+    } finally {
+      setFavoriteLoading(false);
+    }
+  };
+
+  const handleBuyCourse = async () => {
+    if (!id) return;
+
+    if (!isAuthenticated) {
+      navigate('/auth');
+      return;
+    }
+
+    try {
+      setBuyLoading(true);
+      await coursesApi.enrollToCourse(parseInt(id));
+      onEnrolled?.();
+    } catch (err) {
+      console.error('Error enrolling to course:', err);
+      if (axios.isAxiosError(err) && err.response?.status === 401) {
+        navigate('/auth');
+      }
+    } finally {
+      setBuyLoading(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -117,15 +185,12 @@ export default function CourseDetailPageUser() {
     }, 0);
   }, 0) || 0;
 
-  // Calculate progress percentage
-  const progressPercentage = course.totalLessons && course.totalLessons > 0 
-    ? Math.round((1 / course.totalLessons) * 100) 
-    : 1;
-
   // Convert chapters to sections format for CourseModules
   const sections = course.chapters?.map((chapter, chapterIndex) => ({
     id: String(chapter.id),
     title: `${chapterIndex + 1}. ${chapter.title}`,
+    chapterId: chapter.id,
+    firstSubchapterId: chapter.subchapters?.[0]?.id,
     modules: chapter.subchapters?.map((subchapter, subIndex) => ({
       id: `${chapter.id}-${subchapter.id}`,
       title: subchapter.title,
@@ -137,14 +202,6 @@ export default function CourseDetailPageUser() {
       hasFireIcon: false,
     })) || [],
   })) || [];
-
-  // Prepare stats for HeroHeader
-  const stats = {
-    tests: String(practiceCount),
-    programs: "0/5",
-    lectures: `${theoryCount}/${course.totalLessons || 0}`,
-    progress: `${progressPercentage}%`
-  };
 
   // Prepare tags
   const tags = course.language ? [course.language, course.is_public ? 'Публичный' : 'Приватный'] : [];
@@ -173,9 +230,18 @@ export default function CourseDetailPageUser() {
             courseTitle={course.title}
             courseDescription={course.description || ''}
             authorName={course.instructor_name || course.author?.name || 'Неизвестный автор'}
-            stats={stats}
+            stats={{
+              totalLectures: theoryCount,
+              totalPrograms: 0,
+              totalTests: practiceCount
+            }}
             tags={tags}
-            progress={progressPercentage}
+            price={Number((course as CourseWithChapters & { price?: number }).price || 0)}
+            isFavorite={isFavorite}
+            isFavoriteLoading={favoriteLoading}
+            isBuyLoading={buyLoading}
+            onToggleFavorite={handleToggleFavorite}
+            onBuy={handleBuyCourse}
           />
           <div className="bg-white rounded-xl shadow p-5">
           
@@ -184,7 +250,12 @@ export default function CourseDetailPageUser() {
             {/* Left column - Course content */}
             <div className="lg:col-span-3 space-y-6">
                 <h2 className="text-lg font-semibold text-foreground mb-2">Программа курса</h2>      
-                <CourseModulesUser sections={sections} />
+                <CourseModules
+                  sections={sections}
+                  onStartChapter={(chapterId, subchapterId) =>
+                    navigate(`/courses/${id}/learn/${chapterId}/${subchapterId}`)
+                  }
+                />
             </div>
             
             {/* Right column - Stats & About */}
@@ -197,7 +268,12 @@ export default function CourseDetailPageUser() {
             </div>
           
           {/* Resume section - Full width */}
-          <ResumeSection />
+          <ResumeSection
+            skills={course.course_skills}
+            tools={course.course_tools}
+            certificateText={course.certificate_text || undefined}
+            jobTitle={course.job_title || undefined}
+          />
         </div>
         </div>
       </main>

@@ -4,6 +4,13 @@ import { authenticateSession, optionalAuthenticateSession } from '../middleware/
 
 const router = express.Router();
 
+const ensureBaseUrl = (expectedBaseUrl) => (req, res, next) => {
+  if (req.baseUrl !== expectedBaseUrl) {
+    return next('route');
+  }
+  return next();
+};
+
 // Helper function to check if the user is the author of the course
 const isCourseAuthor = async (courseId, userId) => {
   console.log(`🔍 [AUTH] Checking if user ${userId} is author of course ${courseId}`);
@@ -12,6 +19,55 @@ const isCourseAuthor = async (courseId, userId) => {
   const isAuthor = result.rows.length > 0 && result.rows[0].author_id === userId;
   console.log(`✅ [AUTH] Authorization result:`, isAuthor);
   return isAuthor;
+};
+
+const getCourseAccessStatus = async (courseId, userId) => {
+  const courseResult = await pool.query(
+    'SELECT id, is_public, author_id FROM courses WHERE id = $1',
+    [courseId]
+  );
+
+  if (courseResult.rows.length === 0) {
+    return null;
+  }
+
+  const course = courseResult.rows[0];
+  const isAuthor = Boolean(userId && course.author_id === userId);
+
+  if (!userId) {
+    return {
+      courseId: course.id,
+      isPublic: course.is_public,
+      isAuthor: false,
+      isEnrolled: false,
+      hasAccess: false,
+      canViewContent: course.is_public,
+    };
+  }
+
+  const [enrollmentResult, accessResult] = await Promise.all([
+    pool.query(
+      'SELECT 1 FROM user_enrollments WHERE course_id = $1 AND user_id = $2 LIMIT 1',
+      [courseId, userId]
+    ),
+    pool.query(
+      'SELECT 1 FROM course_access WHERE course_id = $1 AND user_id = $2 LIMIT 1',
+      [courseId, userId]
+    ),
+  ]);
+
+  const isEnrolled = enrollmentResult.rows.length > 0;
+  const hasAccess = accessResult.rows.length > 0;
+  const canViewContent = Boolean(course.is_public || isAuthor || isEnrolled || hasAccess);
+
+  return {
+    courseId: course.id,
+    isPublic: course.is_public,
+    isAuthor,
+    isEnrolled,
+    hasAccess,
+    canViewContent,
+  };
 };
 
 // POST /api/courses - Create a new course
@@ -24,7 +80,11 @@ router.post('/', authenticateSession, async (req, res) => {
     tags, 
     specialty, 
     targetAudience, 
-    aboutCourse 
+    aboutCourse,
+    courseSkills,
+    courseTools,
+    certificateText,
+    jobTitle
   } = req.body;
   const authorId = req.user.userId;
 
@@ -43,8 +103,12 @@ router.post('/', authenticateSession, async (req, res) => {
         tags, 
         specialty, 
         target_audience, 
-        about_course
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING *`,
+        about_course,
+        course_skills,
+        course_tools,
+        certificate_text,
+        job_title
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
       [
         title, 
         description || null, 
@@ -54,7 +118,11 @@ router.post('/', authenticateSession, async (req, res) => {
         tags || [], 
         specialty || null, 
         targetAudience || null, 
-        aboutCourse || null
+        aboutCourse || null,
+        courseSkills || [],
+        courseTools || [],
+        certificateText || null,
+        jobTitle || null
       ]
     );
     res.status(201).json(result.rows[0]);
@@ -96,6 +164,10 @@ router.get('/', optionalAuthenticateSession, async (req, res) => {
           COALESCE(c.specialty, NULL) as specialty,
           COALESCE(c.target_audience, NULL) as target_audience,
           COALESCE(c.about_course, NULL) as about_course,
+          COALESCE(c.course_skills, ARRAY[]::TEXT[]) as course_skills,
+          COALESCE(c.course_tools, ARRAY[]::TEXT[]) as course_tools,
+          COALESCE(c.certificate_text, NULL) as certificate_text,
+          COALESCE(c.job_title, NULL) as job_title,
           NULL as level,
           NULL as language,
           0 as price,
@@ -155,6 +227,10 @@ router.get('/', optionalAuthenticateSession, async (req, res) => {
           COALESCE(c.specialty, NULL) as specialty,
           COALESCE(c.target_audience, NULL) as target_audience,
           COALESCE(c.about_course, NULL) as about_course,
+          COALESCE(c.course_skills, ARRAY[]::TEXT[]) as course_skills,
+          COALESCE(c.course_tools, ARRAY[]::TEXT[]) as course_tools,
+          COALESCE(c.certificate_text, NULL) as certificate_text,
+          COALESCE(c.job_title, NULL) as job_title,
           NULL as level,
           NULL as language,
           0 as price,
@@ -210,10 +286,60 @@ router.get('/my', authenticateSession, async (req, res) => {
   }
 });
 
-// GET /api/courses/:id - Get a single course by ID with nested structure (Optimized)
-router.get('/:id', authenticateSession, async (req, res) => {
-  const { id } = req.params;
+// GET /api/courses/:id/access-status - Get current user's access status for a course
+router.get('/:id/access-status', optionalAuthenticateSession, async (req, res) => {
+  const { id: courseId } = req.params;
+  const userId = req.user?.userId || null;
+
+  try {
+    const status = await getCourseAccessStatus(courseId, userId);
+
+    if (!status) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    return res.status(200).json(status);
+  } catch (error) {
+    console.error(`Error fetching access status for course ${courseId}:`, error.message);
+    return res.status(500).json({ error: 'Failed to fetch course access status' });
+  }
+});
+
+// POST /api/courses/:id/enroll - Enroll current user to the course
+router.post('/:id/enroll', authenticateSession, async (req, res) => {
+  const { id: courseId } = req.params;
   const userId = req.user.userId;
+
+  try {
+    const status = await getCourseAccessStatus(courseId, userId);
+
+    if (!status) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+
+    if (!status.isPublic && !status.isAuthor && !status.hasAccess) {
+      return res.status(403).json({ error: 'You are not authorized to enroll in this private course' });
+    }
+
+    await pool.query(
+      `INSERT INTO user_enrollments (user_id, course_id)
+       VALUES ($1, $2)
+       ON CONFLICT (user_id, course_id) DO NOTHING`,
+      [userId, courseId]
+    );
+
+    return res.status(200).json({ message: 'Enrolled successfully' });
+  } catch (error) {
+    console.error(`Error enrolling user ${userId} to course ${courseId}:`, error.message);
+    return res.status(500).json({ error: 'Failed to enroll to course' });
+  }
+});
+
+// GET /api/courses/:id - Get a single course by ID with nested structure (Optimized)
+// Restrict :id to numeric values so static routes like /favorites are not shadowed.
+router.get('/:id(\\d+)', optionalAuthenticateSession, async (req, res) => {
+  const { id } = req.params;
+  const userId = req.user?.userId || null;
 
   const query = `
     SELECT
@@ -229,6 +355,22 @@ router.get('/:id', authenticateSession, async (req, res) => {
       COALESCE(c.specialty, NULL) as specialty,
       COALESCE(c.target_audience, NULL) as target_audience,
       COALESCE(c.about_course, NULL) as about_course,
+      COALESCE(c.course_skills, ARRAY[]::TEXT[]) as course_skills,
+      COALESCE(c.course_tools, ARRAY[]::TEXT[]) as course_tools,
+      COALESCE(c.certificate_text, NULL) as certificate_text,
+      COALESCE(c.job_title, NULL) as job_title,
+      COALESCE(c.price, 0) as price,
+      COALESCE((SELECT COUNT(*) FROM user_enrollments ue WHERE ue.course_id = c.id), 0) as "studentsCount",
+      EXISTS (
+        SELECT 1
+        FROM user_enrollments ue
+        WHERE ue.course_id = c.id AND ue.user_id = $2::uuid
+      ) as is_enrolled,
+      EXISTS (
+        SELECT 1
+        FROM course_access ca
+        WHERE ca.course_id = c.id AND ca.user_id = $2::uuid
+      ) as has_access,
       COALESCE(p.first_name || ' ' || p.last_name, 'Преподаватель') as instructor_name,
       COALESCE(p.avatar_url, NULL) as instructor_avatar,
       COALESCE(
@@ -285,7 +427,7 @@ router.get('/:id', authenticateSession, async (req, res) => {
   `;
 
   try {
-    const result = await pool.query(query, [id]);
+    const result = await pool.query(query, [id, userId]);
     const course = result.rows[0];
 
     if (!course) {
@@ -293,14 +435,12 @@ router.get('/:id', authenticateSession, async (req, res) => {
     }
 
     // Check permissions for private courses
-    if (!course.is_public && course.author_id !== userId) {
-      const accessResult = await pool.query(
-        'SELECT * FROM course_access WHERE course_id = $1 AND user_id = $2',
-        [id, userId]
-      );
-      if (accessResult.rows.length === 0) {
-        return res.status(403).json({ error: 'You are not authorized to view this course' });
-      }
+    const isAuthor = Boolean(userId && course.author_id === userId);
+    const isEnrolled = Boolean(course.is_enrolled);
+    const hasAccess = Boolean(course.has_access);
+
+    if (!course.is_public && !isAuthor && !isEnrolled && !hasAccess) {
+      return res.status(403).json({ error: 'You are not authorized to view this course' });
     }
 
     res.status(200).json(course);
@@ -311,7 +451,7 @@ router.get('/:id', authenticateSession, async (req, res) => {
 });
 
 // PUT /api/courses/:id - Update a course
-router.put('/:id', authenticateSession, async (req, res) => {
+router.put('/:id', ensureBaseUrl('/api/courses'), authenticateSession, async (req, res) => {
   const { id } = req.params;
   const { 
     title, 
@@ -321,7 +461,11 @@ router.put('/:id', authenticateSession, async (req, res) => {
     tags, 
     specialty, 
     targetAudience, 
-    aboutCourse 
+    aboutCourse,
+    courseSkills,
+    courseTools,
+    certificateText,
+    jobTitle
   } = req.body;
   const authorId = req.user.userId;
 
@@ -340,8 +484,12 @@ router.put('/:id', authenticateSession, async (req, res) => {
         specialty = $6, 
         target_audience = $7, 
         about_course = $8, 
+        course_skills = $9,
+        course_tools = $10,
+        certificate_text = $11,
+        job_title = $12,
         updated_at = NOW() 
-      WHERE id = $9 RETURNING *`,
+      WHERE id = $13 RETURNING *`,
       [
         title, 
         description, 
@@ -351,6 +499,10 @@ router.put('/:id', authenticateSession, async (req, res) => {
         specialty, 
         targetAudience, 
         aboutCourse, 
+        courseSkills || [],
+        courseTools || [],
+        certificateText || null,
+        jobTitle || null,
         id
       ]
     );
@@ -363,7 +515,7 @@ router.put('/:id', authenticateSession, async (req, res) => {
 });
 
 // DELETE /api/courses/:id - Delete a course
-router.delete('/:id', authenticateSession, async (req, res) => {
+router.delete('/:id', ensureBaseUrl('/api/courses'), authenticateSession, async (req, res) => {
   const { id } = req.params;
   const authorId = req.user.userId;
 
@@ -479,7 +631,7 @@ router.post('/:courseId/chapters', authenticateSession, async (req, res) => {
 
 // PUT /api/chapters/:id - Update a chapter
 // Note: This route is mounted at /api/chapters in server.js
-router.put('/:id', authenticateSession, async (req, res) => {
+router.put('/:id', ensureBaseUrl('/api/chapters'), authenticateSession, async (req, res) => {
   const { id } = req.params;
   const { title, order, canvasData } = req.body;
   const authorId = req.user.userId;
@@ -558,7 +710,7 @@ router.put('/:id/canvas', authenticateSession, async (req, res) => {
 });
 
 // DELETE /api/chapters/:id - Delete a chapter
-router.delete('/:id', authenticateSession, async (req, res) => {
+router.delete('/:id', ensureBaseUrl('/api/chapters'), authenticateSession, async (req, res) => {
   const { id } = req.params;
   const authorId = req.user.userId;
 
@@ -600,7 +752,29 @@ router.get('/:chapterId/subchapters', authenticateSession, async (req, res) => {
     }
 
     const result = await pool.query(
-      'SELECT * FROM subchapters WHERE chapter_id = $1 ORDER BY "order" ASC',
+      `SELECT
+        s.*,
+        COALESCE(
+          (
+            SELECT JSON_AGG(cb_agg.*)
+            FROM (
+              SELECT
+                cb.id,
+                cb.subchapter_id,
+                cb.type,
+                cb.content,
+                cb.answer,
+                cb."order"
+              FROM content_blocks cb
+              WHERE cb.subchapter_id = s.id
+              ORDER BY cb."order"
+            ) AS cb_agg
+          ),
+          '[]'::json
+        ) AS content_blocks
+      FROM subchapters s
+      WHERE s.chapter_id = $1
+      ORDER BY s."order" ASC`,
       [chapterId]
     );
     res.status(200).json(result.rows);
@@ -643,7 +817,7 @@ router.post('/:chapterId/subchapters', authenticateSession, async (req, res) => 
 });
 
 // PUT /api/subchapters/:id - Update a subchapter
-router.put('/:id', authenticateSession, async (req, res) => {
+router.put('/:id', ensureBaseUrl('/api/subchapters'), authenticateSession, async (req, res) => {
   const { id } = req.params;
   const { title, order } = req.body;
   const authorId = req.user.userId;
@@ -678,7 +852,7 @@ router.put('/:id', authenticateSession, async (req, res) => {
 });
 
 // DELETE /api/subchapters/:id - Delete a subchapter
-router.delete('/:id', authenticateSession, async (req, res) => {
+router.delete('/:id', ensureBaseUrl('/api/subchapters'), authenticateSession, async (req, res) => {
   const { id } = req.params;
   const authorId = req.user.userId;
 
@@ -722,6 +896,9 @@ router.post('/:subchapterId/contentblocks', authenticateSession, async (req, res
   if (type === 'task' && (answer === undefined || answer === null)) {
     return res.status(400).json({ error: 'Answer is required for task type content blocks' });
   }
+  if (type === 'test' && (answer === undefined || answer === null)) {
+    return res.status(400).json({ error: 'Answer options are required for test type content blocks' });
+  }
 
   try {
     const subchapterCheck = await pool.query('SELECT chapter_id FROM subchapters WHERE id = $1', [subchapterId]);
@@ -753,7 +930,7 @@ router.post('/:subchapterId/contentblocks', authenticateSession, async (req, res
 });
 
 // PUT /api/contentblocks/:id - Update a content block
-router.put('/:id', authenticateSession, async (req, res) => {
+router.put('/:id', ensureBaseUrl('/api/contentblocks'), authenticateSession, async (req, res) => {
   const { id } = req.params;
   const { type, content, answer, order } = req.body;
   const authorId = req.user.userId;
@@ -767,6 +944,10 @@ router.put('/:id', authenticateSession, async (req, res) => {
   if (type === 'task' && (answer === undefined || answer === null)) {
     console.log(`❌ [API] Answer required for task type content block ${id}`);
     return res.status(400).json({ error: 'Answer is required for task type content blocks' });
+  }
+  if (type === 'test' && (answer === undefined || answer === null)) {
+    console.log(`❌ [API] Answer options required for test type content block ${id}`);
+    return res.status(400).json({ error: 'Answer options are required for test type content blocks' });
   }
 
   try {
@@ -823,7 +1004,7 @@ router.put('/:id', authenticateSession, async (req, res) => {
 });
 
 // DELETE /api/contentblocks/:id - Delete a content block
-router.delete('/:id', authenticateSession, async (req, res) => {
+router.delete('/:id', ensureBaseUrl('/api/contentblocks'), authenticateSession, async (req, res) => {
   const { id } = req.params;
   const authorId = req.user.userId;
 
@@ -860,6 +1041,105 @@ router.delete('/:id', authenticateSession, async (req, res) => {
   }
 });
 
+// GET /api/subchapters/:subchapterId/answers - Get current user's saved answers for subchapter
+router.get('/:subchapterId/answers', ensureBaseUrl('/api/subchapters'), authenticateSession, async (req, res) => {
+  const { subchapterId } = req.params;
+  const userId = req.user.userId;
+
+  try {
+    const subchapterCheck = await pool.query('SELECT chapter_id FROM subchapters WHERE id = $1', [subchapterId]);
+    const subchapterData = subchapterCheck.rows[0];
+    if (!subchapterData) {
+      return res.status(404).json({ message: 'Subchapter not found' });
+    }
+
+    const chapterCheck = await pool.query('SELECT course_id FROM chapters WHERE id = $1', [subchapterData.chapter_id]);
+    const chapterData = chapterCheck.rows[0];
+    if (!chapterData) {
+      return res.status(404).json({ message: 'Chapter not found' });
+    }
+
+    const accessStatus = await getCourseAccessStatus(chapterData.course_id, userId);
+    if (!accessStatus?.canViewContent) {
+      return res.status(403).json({ error: 'You are not authorized to access this subchapter' });
+    }
+
+    const result = await pool.query(
+      `SELECT
+        content_block_id,
+        user_answer,
+        is_correct,
+        answered_at,
+        updated_at
+      FROM user_content_block_answers
+      WHERE user_id = $1 AND subchapter_id = $2`,
+      [userId, subchapterId]
+    );
+
+    return res.status(200).json(result.rows);
+  } catch (error) {
+    console.error(`Error fetching answers for subchapter ${subchapterId}:`, error.message);
+    return res.status(500).json({ error: 'Failed to fetch user answers' });
+  }
+});
+
+// PUT /api/contentblocks/:id/answer - Save current user's answer for a content block
+router.put('/:id/answer', ensureBaseUrl('/api/contentblocks'), authenticateSession, async (req, res) => {
+  const { id: contentBlockId } = req.params;
+  const { userAnswer, isCorrect } = req.body;
+  const userId = req.user.userId;
+
+  if (typeof userAnswer !== 'string') {
+    return res.status(400).json({ error: 'userAnswer must be a string' });
+  }
+  if (typeof isCorrect !== 'boolean') {
+    return res.status(400).json({ error: 'isCorrect must be a boolean' });
+  }
+
+  try {
+    const blockCheck = await pool.query('SELECT subchapter_id FROM content_blocks WHERE id = $1', [contentBlockId]);
+    const blockData = blockCheck.rows[0];
+    if (!blockData) {
+      return res.status(404).json({ message: 'Content block not found' });
+    }
+
+    const subchapterCheck = await pool.query('SELECT chapter_id FROM subchapters WHERE id = $1', [blockData.subchapter_id]);
+    const subchapterData = subchapterCheck.rows[0];
+    if (!subchapterData) {
+      return res.status(404).json({ message: 'Subchapter not found' });
+    }
+
+    const chapterCheck = await pool.query('SELECT course_id FROM chapters WHERE id = $1', [subchapterData.chapter_id]);
+    const chapterData = chapterCheck.rows[0];
+    if (!chapterData) {
+      return res.status(404).json({ message: 'Chapter not found' });
+    }
+
+    const accessStatus = await getCourseAccessStatus(chapterData.course_id, userId);
+    if (!accessStatus?.canViewContent) {
+      return res.status(403).json({ error: 'You are not authorized to answer this content block' });
+    }
+
+    const saveResult = await pool.query(
+      `INSERT INTO user_content_block_answers (
+        user_id, content_block_id, subchapter_id, user_answer, is_correct, answered_at, updated_at
+      ) VALUES ($1, $2, $3, $4, $5, NOW(), NOW())
+      ON CONFLICT (user_id, content_block_id)
+      DO UPDATE SET
+        user_answer = EXCLUDED.user_answer,
+        is_correct = EXCLUDED.is_correct,
+        updated_at = NOW()
+      RETURNING *`,
+      [userId, contentBlockId, blockData.subchapter_id, userAnswer, isCorrect]
+    );
+
+    return res.status(200).json(saveResult.rows[0]);
+  } catch (error) {
+    console.error(`Error saving answer for content block ${contentBlockId}:`, error.message);
+    return res.status(500).json({ error: 'Failed to save user answer' });
+  }
+});
+
 // --- Favorites ---
 // GET /api/courses/favorites - Get user's favorite courses
 router.get('/favorites', authenticateSession, async (req, res) => {
@@ -893,23 +1173,15 @@ router.post('/:id/favorite', authenticateSession, async (req, res) => {
       return res.status(404).json({ error: 'Course not found' });
     }
     
-    // Check if already in favorites
-    const existing = await pool.query(
-      'SELECT * FROM favorites WHERE user_id = $1 AND course_id = $2',
-      [userId, courseId]
-    );
-    
-    if (existing.rows.length > 0) {
-      return res.status(409).json({ message: 'Course already in favorites' });
-    }
-    
-    // Add to favorites
+    // Idempotent add: keep successful response even if already in favorites
     await pool.query(
-      'INSERT INTO favorites (user_id, course_id) VALUES ($1, $2)',
+      `INSERT INTO favorites (user_id, course_id) 
+       VALUES ($1, $2)
+       ON CONFLICT (user_id, course_id) DO NOTHING`,
       [userId, courseId]
     );
     
-    res.status(201).json({ message: 'Course added to favorites' });
+    res.status(200).json({ message: 'Course is in favorites' });
   } catch (error) {
     console.error(`Error adding course ${courseId} to favorites:`, error.message);
     res.status(500).json({ error: 'Failed to add course to favorites' });
