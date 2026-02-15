@@ -1,4 +1,4 @@
-import React, { useRef, useCallback } from 'react';
+import React, { useRef, useCallback, useEffect } from 'react';
 
 interface RichTextEditorProps {
   value: string;
@@ -16,10 +16,30 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   disabled = false,
 }) => {
   const editorRef = useRef<HTMLDivElement>(null);
+  const lastSyncedValueRef = useRef<string>(value);
+  const isEmpty = !value || value.replace(/<[^>]*>/g, '').trim().length === 0;
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    // Do not rewrite innerHTML while typing, otherwise caret jumps to the start.
+    if (document.activeElement === editor) return;
+
+    if (editor.innerHTML !== value) {
+      editor.innerHTML = value || '';
+      lastSyncedValueRef.current = value;
+    }
+  }, [value]);
 
   const handleInput = useCallback(() => {
-    if (editorRef.current) {
-      onChange(editorRef.current.innerHTML);
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const nextValue = editor.innerHTML;
+    if (nextValue !== lastSyncedValueRef.current) {
+      lastSyncedValueRef.current = nextValue;
+      onChange(nextValue);
     }
   }, [onChange]);
 
@@ -109,31 +129,28 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       </div>
 
       {/* Editor */}
-      <div
-        ref={editorRef}
-        contentEditable={!disabled}
-        onInput={handleInput}
-        onKeyDown={handleKeyDown}
-        className={`
-          min-h-[200px] p-3 border border-gray-300 border-t-0 rounded-b-md
-          focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent
-          ${disabled ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}
-        `}
-        dangerouslySetInnerHTML={{ __html: value }}
-        data-placeholder={placeholder}
-        style={{
-          display: 'block',
-        }}
-      />
-
-      {/* Placeholder styling */}
-      <style jsx>{`
-        .rich-text-editor [contenteditable]:empty:before {
-          content: attr(data-placeholder);
-          color: #9ca3af;
-          pointer-events: none;
-        }
-      `}</style>
+      <div className="relative">
+        {isEmpty && (
+          <div className="absolute top-3 left-3 text-sm text-gray-400 pointer-events-none z-10">
+            {placeholder}
+          </div>
+        )}
+        <div
+          ref={editorRef}
+          contentEditable={!disabled}
+          suppressContentEditableWarning
+          onInput={handleInput}
+          onKeyDown={handleKeyDown}
+          className={`
+            min-h-[200px] p-3 border border-gray-300 border-t-0 rounded-b-md
+            focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent
+            ${disabled ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}
+          `}
+          style={{
+            display: 'block',
+          }}
+        />
+      </div>
     </div>
   );
 };

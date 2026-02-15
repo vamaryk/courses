@@ -1,11 +1,12 @@
 import { useState } from "react";
-import { ChevronDown, BookOpen, FileCheck, Lightbulb } from "lucide-react";
-// import { CheckCircle2, PlayCircle, FileText, Flame, Clock } from "lucide-react";
+import { ChevronDown, CheckCircle2, PlayCircle, FileText, Flame, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 interface Module {
   id: string;
   title: string;
+  subchapterId?: number;
   description?: string;
   duration?: string;
   isCompleted?: boolean;
@@ -16,25 +17,20 @@ interface Module {
 interface Section {
   id: string;
   title: string;
-  description?: string;
+  chapterId?: number;
+  firstSubchapterId?: number;
   modules: Module[];
-  stats?: {
-    lectures: number;
-    tests: number;
-    tasks: number;
-  };
 }
 
 interface CourseModulesProps {
   sections?: Section[];
+  onStartChapter?: (chapterId: number, subchapterId: number) => void;
 }
 
 const defaultSections: Section[] = [
   {
     id: "1",
     title: "1. Введение",
-    description: "В этой главе вы познакомитесь с основами веб-разработки и узнаете, что такое HTML и CSS.",
-    stats: { lectures: 15, tests: 3, tasks: 10 },
     modules: [
       { id: "1-1", title: "Введение в HTML и CSS", isCompleted: true },
       { id: "1-2", title: "Структура документа", isPlaying: true },
@@ -44,8 +40,6 @@ const defaultSections: Section[] = [
   {
     id: "2",
     title: "2. Базовые понятия интернета",
-    description: "Изучите основные концепции интернета: протоколы, адресацию и передачу данных.",
-    stats: { lectures: 8, tests: 2, tasks: 5 },
     modules: [
       { 
         id: "2-1", 
@@ -58,207 +52,122 @@ const defaultSections: Section[] = [
       { id: "2-3", title: "Структура HTTP запросов и ответов" },
     ],
   },
-  {
-    id: "3",
-    title: "3. HTML основы",
-    description: "Освойте основные теги HTML и научитесь создавать структуру веб-страниц.",
-    stats: { lectures: 12, tests: 4, tasks: 8 },
-    modules: [
-      { id: "3-1", title: "Теги и атрибуты HTML" },
-      { id: "3-2", title: "Семантические теги" },
-      { id: "3-3", title: "Формы и поля ввода" },
-    ],
-  },
-  {
-    id: "4",
-    title: "4. CSS основы",
-    description: "Изучите базовые концепции CSS: селекторы, свойства и значения.",
-    stats: { lectures: 10, tests: 3, tasks: 7 },
-    modules: [
-      { id: "4-1", title: "Селекторы и специфичность" },
-      { id: "4-2", title: "Блочная модель" },
-      { id: "4-3", title: "Цвета и шрифты" },
-    ],
-  },
-  {
-    id: "5",
-    title: "5. Адаптивный дизайн",
-    description: "Научитесь создавать сайты, которые хорошо выглядят на всех устройствах.",
-    stats: { lectures: 9, tests: 2, tasks: 6 },
-    modules: [
-      { id: "5-1", title: "Медиа-запросы" },
-      { id: "5-2", title: "Flexbox" },
-      { id: "5-3", title: "Grid Layout" },
-    ],
-  },
 ];
 
-const CourseModules = ({ sections = defaultSections }: CourseModulesProps) => {
-  const [expandedSections, setExpandedSections] = useState<string[]>([]);
-  // const [expandedModules, setExpandedModules] = useState<string[]>(["2-1"]);
+const CourseModules = ({ sections = defaultSections, onStartChapter }: CourseModulesProps) => {
+  const [expandedModules, setExpandedModules] = useState<string[]>(["2-1"]);
   const [showMore, setShowMore] = useState(false);
 
-  const toggleSection = (sectionId: string) => {
-    setExpandedSections(prev => 
-      prev.includes(sectionId) 
-        ? prev.filter(id => id !== sectionId)
-        : [...prev, sectionId]
+  const toggleModule = (moduleId: string) => {
+    setExpandedModules(prev => 
+      prev.includes(moduleId) 
+        ? prev.filter(id => id !== moduleId)
+        : [...prev, moduleId]
     );
   };
 
-  // const toggleModule = (moduleId: string) => {
-  //   setExpandedModules(prev => 
-  //     prev.includes(moduleId) 
-  //       ? prev.filter(id => id !== moduleId)
-  //       : [...prev, moduleId]
-  //   );
-  // };
-
-  // Определяем, какие главы показывать
-  const visibleSections = showMore ? sections : sections.slice(0, 3);
-
   return (
-    <div className="border rounded-lg p-4">
-        <div className="space-y-2">
-        {visibleSections.map((section) => {
-          const isSectionExpanded = expandedSections.includes(section.id);
-          
-          return (
-            <div key={section.id} className="border rounded-lg overflow-hidden">
-              {/* Section header - clickable */}
-              <button
-                onClick={() => toggleSection(section.id)}
-                className="w-full flex items-center justify-between gap-3 p-4 bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
-              >
-                <div className="flex items-center gap-3 flex-1">
-                  <h3 className="text-sm font-semibold text-foreground text-left">
-                    {section.title}
-                  </h3>
-                </div>
-                
-                <ChevronDown 
-                  className={cn(
-                    "w-4 h-4 text-muted-foreground transition-transform duration-200",
-                    isSectionExpanded && "rotate-180"
-                  )} 
-                />
-              </button>
-              
-              {/* Section content - expanded */}
-              {isSectionExpanded && (
-                <div className="px-4 py-3 bg-background animate-fade-in border-t">
-                  {/* Brief info */}
-                  <p className="text-sm text-muted-foreground leading-relaxed mb-4">
-                    {section.description || "Краткая информация"}
-                  </p>
-                  <p className="text-sm text-muted-foreground leading-relaxed mb-4">изменить на ссылку "Перейти к изучению"</p>
-                  
-                  {/* изменить ссылки, добавить количество */}
-                  <div className="flex gap-4 mb-4">
-                    <a 
-                      href="#" 
-                      className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
-                    >
-                      <BookOpen className="w-3.5 h-3.5" />
-                      <span>Лекций: {section.stats?.lectures || 0}</span>
-                    </a>
-                    <a 
-                      href="#" 
-                      className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
-                    >
-                      <FileCheck className="w-3.5 h-3.5" />
-                      <span>Тестов: {section.stats?.tests || 0}</span>
-                    </a>
-                    <a 
-                      href="#" 
-                      className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
-                    >
-                      <Lightbulb className="w-3.5 h-3.5" />
-                      <span>Заданий: {section.stats?.tasks || 0}</span>
-                    </a>
-                  </div>
-                  
-                  {/* Modules */}
-                  {/* <div className="space-y-2 pt-2">
-                    {section.modules.map((module) => {
-                      const isExpanded = expandedModules.includes(module.id);
-                      
-                      return (
-                        <div 
-                          key={module.id}
-                          className={cn(
-                            "rounded-lg border border-border/50 overflow-hidden transition-all duration-200",
-                            isExpanded && "bg-muted/30"
-                          )}
-                        >
-                          <button
-                            onClick={() => toggleModule(module.id)}
-                            className="w-full flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors"
-                          >
-                            <div className="flex-shrink-0">
-                              {module.isCompleted ? (
-                                <CheckCircle2 className="w-4 h-4 text-primary" />
-                              ) : module.isPlaying ? (
-                                <PlayCircle className="w-4 h-4 text-muted-foreground" />
-                              ) : (
-                                <FileText className="w-4 h-4 text-muted-foreground" />
-                              )}
-                            </div>
-                            
-                            <span className="flex-1 text-left text-sm font-medium text-foreground">
-                              {module.title}
-                            </span>
-                            
-                            {module.duration && (
-                              <span className="text-xs text-muted-foreground">
-                                {module.duration}
-                              </span>
-                            )}
-                            
-                            <ChevronDown 
-                              className={cn(
-                                "w-3 h-3 text-muted-foreground transition-transform duration-200",
-                                isExpanded && "rotate-180"
-                              )} 
-                            />
-                          </button>
-                          
-                          {isExpanded && module.description && (
-                            <div className="px-3 pb-3 animate-fade-in">
-                              <div className="pl-7">
-                                <p className="text-xs text-muted-foreground leading-relaxed mb-2">
-                                  {module.description}
-                                </p>
-                                
-                                <div className="flex items-center gap-3">
-                                  {module.hasFireIcon && (
-                                    <Flame className="w-3 h-3 text-orange-400" />
-                                  )}
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div> */}
-                </div>
+    <div className="card-elevated p-6">
+      
+      <div className="space-y-6">
+        {sections.map((section) => (
+          <div key={section.id}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-muted-foreground">
+                {section.title}
+              </h3>
+              {section.chapterId && section.firstSubchapterId && onStartChapter && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => onStartChapter(section.chapterId, section.firstSubchapterId)}
+                  className="h-8 px-3"
+                >
+                  <PlayCircle className="w-4 h-4 mr-1" />
+                  Пуск
+                </Button>
               )}
             </div>
-          );
-        })}
+            
+            <div className="space-y-2">
+              {section.modules.map((module) => {
+                const isExpanded = expandedModules.includes(module.id);
+                
+                return (
+                  <div 
+                    key={module.id}
+                    className={cn(
+                      "rounded-xl border border-border/50 overflow-hidden transition-all duration-200",
+                      isExpanded && "bg-muted/30"
+                    )}
+                  >
+                    <button
+                      onClick={() => toggleModule(module.id)}
+                      className="w-full flex items-center gap-3 p-4 hover:bg-muted/50 transition-colors"
+                    >
+                      {/* Status icon */}
+                      <div className="flex-shrink-0">
+                        {module.isCompleted ? (
+                          <CheckCircle2 className="w-5 h-5 text-primary" />
+                        ) : module.isPlaying ? (
+                          <PlayCircle className="w-5 h-5 text-muted-foreground" />
+                        ) : (
+                          <FileText className="w-5 h-5 text-muted-foreground" />
+                        )}
+                      </div>
+                      
+                      {/* Title */}
+                      <span className="flex-1 text-left text-sm font-medium text-foreground">
+                        {module.title}
+                      </span>
+                      
+                      {/* Expand icon */}
+                      <ChevronDown 
+                        className={cn(
+                          "w-4 h-4 text-muted-foreground transition-transform duration-200",
+                          isExpanded && "rotate-180"
+                        )} 
+                      />
+                    </button>
+                    
+                    {/* Expanded content */}
+                    {isExpanded && module.description && (
+                      <div className="px-4 pb-4 animate-fade-in">
+                        <div className="pl-8">
+                          <p className="text-sm text-muted-foreground leading-relaxed mb-3">
+                            {module.description}
+                          </p>
+                          
+                          <div className="flex items-center gap-4">
+                            {module.duration && (
+                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                                <Clock className="w-3 h-3" />
+                                {module.duration}
+                              </div>
+                            )}
+                            {module.hasFireIcon && (
+                              <Flame className="w-4 h-4 text-orange-400" />
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
       
-      {sections.length > 3 && (
-        <div className="mt-6 flex justify-center">
-          <button 
-            onClick={() => setShowMore(!showMore)}
-            className="px-6 py-2 rounded-full border border-border text-sm font-medium text-foreground hover:bg-muted transition-colors"
-          >
-            {showMore ? "свернуть" : "показать все"}
-          </button>
-        </div>
-      )}
+      <div className="mt-6 flex justify-center">
+        <button 
+          onClick={() => setShowMore(!showMore)}
+          className="px-6 py-2 rounded-full border border-border text-sm font-medium text-foreground hover:bg-muted transition-colors"
+        >
+          Показать больше
+        </button>
+      </div>
     </div>
   );
 };
