@@ -34,7 +34,6 @@ export function SideCalendar({ currentDate, onDateChange, tasks }: SideCalendarP
   };
 
   return (
-    // Удалены классы фиксированного позиционирования. Используем flex-col и h-full, чтобы растянуться по высоте родителя.
     <div className="h-full flex flex-col"> 
       
       {/* Заголовок */}
@@ -50,7 +49,7 @@ export function SideCalendar({ currentDate, onDateChange, tasks }: SideCalendarP
       {/* Навигация по неделям */}
       <div className="p-1 border-[1px] border-solid rounded-[12px] mt-[15px] border-[#E5E5E5]">
         <div className="flex items-center justify-between mb-2 pt-[10px]">
-          <button
+          <button className="cursor-pointer"
             onClick={() => onDateChange(addDays(currentDate, -7))}
           >
             <ChevronLeft className="w-4 h-4 ml-[15px] text-gray-600" />
@@ -63,7 +62,7 @@ export function SideCalendar({ currentDate, onDateChange, tasks }: SideCalendarP
             </span>
           </div>
 
-          <button
+          <button className="cursor-pointer"
             onClick={() => onDateChange(addDays(currentDate, 7))}
           >
             <ChevronRight className="w-4 h-4 mr-[15px] text-gray-600" />
@@ -118,6 +117,13 @@ export function SideCalendar({ currentDate, onDateChange, tasks }: SideCalendarP
           {getTodaysTasks().length === 0 && (
             <p className="text-gray-500 text-sm font-montserrat">Нет задач на сегодня</p>
           )}
+        </div>
+        {/* Daily Task */}
+        <div className="bg-purple-50 p-3 mt-3 border-[1px] border-solid rounded-[12px] border-[#E5E5E5] cursor-pointer">
+            <div className="flex items-center gap-3">
+            <span className="text-2xl">🦄</span>
+            <span className="font-medium text-foreground">Daily</span>
+            </div>
         </div>
       </div>
     </div>

@@ -1,3 +1,13 @@
+import { useState, useEffect } from "react";
+
+const API_URL = import.meta.env.VITE_API_URL || '/api';
+
+interface ProgressData {
+  title: string;
+  progress: number;
+  color: string;
+}
+
 interface ProgressRingProps {
   title: string;
   progress: number;
@@ -46,19 +56,11 @@ const ProgressRing = ({ title, progress, color, size = 140 }: ProgressRingProps)
   );
 };
 
-import { useState, useEffect } from "react";
-
-const API_URL = import.meta.env.VITE_API_URL || '/api';
-
-interface ProgressData {
-  title: string;
-  progress: number;
-  color: string;
-}
-
 const ProgressRings = () => {
   const [progressData, setProgressData] = useState<ProgressData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showAll, setShowAll] = useState(false);
+  const [maxItemsToShowInitially, setMaxItemsToShowInitially] = useState(1);
 
   useEffect(() => {
     const fetchProgress = async () => {
@@ -69,9 +71,13 @@ const ProgressRings = () => {
         if (response.ok) {
           const data = await response.json();
           setProgressData(data);
+        } else {
+          console.error('Не удалось получить прогресс:', response.statusText);
+          setProgressData([]);
         }
       } catch (error) {
-        console.error('Error fetching progress:', error);
+        console.error('Ошибка при получении прогресса:', error);
+        setProgressData([]);
       } finally {
         setLoading(false);
       }
@@ -80,11 +86,41 @@ const ProgressRings = () => {
     fetchProgress();
   }, []);
 
+  // Эффект для обновления maxItemsToShowInitially в зависимости от ширины экрана
+  useEffect(() => {
+    const updateMaxItems = () => {
+      const width = window.innerWidth;
+      if (width >= 1024) {
+        setMaxItemsToShowInitially(4);
+      } else if (width >= 768) {
+        setMaxItemsToShowInitially(3);
+      } else if (width >= 640) {
+        setMaxItemsToShowInitially(2);
+      } else {
+        setMaxItemsToShowInitially(1);
+      }
+    };
+
+    updateMaxItems();
+    window.addEventListener('resize', updateMaxItems);
+    return () => window.removeEventListener('resize', updateMaxItems);
+  }, []);
+
+  const progressDataToDisplay = showAll
+    ? progressData
+    : progressData.slice(0, maxItemsToShowInitially);
+
+  const showToggleButton = progressData.length > maxItemsToShowInitially;
+
+  const handleToggleShowAll = () => {
+    setShowAll(prev => !prev);
+  };
+
   if (loading) {
     return (
       <section className="mb-8">
         <h2 className="text-xl font-semibold text-foreground mb-6">Прогресс ваших курсов</h2>
-        <div className="glass-card rounded-3xl p-8">
+        <div className="rounded-3xl p-8">
           <div className="flex justify-center">
             <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary"></div>
           </div>
@@ -97,7 +133,7 @@ const ProgressRings = () => {
     return (
       <section className="mb-8">
         <h2 className="text-xl font-semibold text-foreground mb-6">Прогресс ваших курсов</h2>
-        <div className="glass-card rounded-3xl p-8">
+        <div className="rounded-3xl p-8">
           <div className="text-sm text-muted-foreground text-center py-8">
             У вас пока нет активных курсов
           </div>
@@ -108,10 +144,20 @@ const ProgressRings = () => {
 
   return (
     <section className="mb-8">
-      <h2 className="text-xl font-semibold text-foreground mb-6">Прогресс ваших курсов</h2>
-      <div className="glass-card rounded-3xl p-8">
-        <div className="flex justify-around">
-          {progressData.map((data, index) => (
+      <div className="flex items-center justify-between mb-4">
+        <h2 className="text-xl font-semibold text-foreground">Прогресс ваших курсов</h2>
+        {showToggleButton && (
+          <button
+            onClick={handleToggleShowAll}
+            className="text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+          >
+            {showAll ? 'свернуть' : 'показать все'}
+          </button>
+        )}
+      </div>
+      <div className="rounded-3xl p-8">
+        <div className="flex flex-wrap justify-around gap-y-8">
+          {progressDataToDisplay.map((data, index) => (
             <ProgressRing key={index} {...data} />
           ))}
         </div>

@@ -39,7 +39,7 @@ const HeroHeader = ({
   ];
 
   return (
-    <div className="relative rounded-3xl overflow-hidden mb-6">
+    <div className="relative rounded-xl overflow-hidden mb-4">
       {/* Background image */}
       <div 
         className="absolute inset-0 bg-cover bg-center bg-no-repeat"
@@ -50,23 +50,23 @@ const HeroHeader = ({
       <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/60 to-transparent" />
       
       {/* Content */}
-      <div className="relative z-10 p-8 min-h-[280px] flex flex-col justify-between">
+      <div className="relative z-10 p-6 md:p-8 min-h-[280px] flex flex-col justify-between">
         {/* Top row */}
-        <div className="flex justify-between items-start">
-          <div>
+        <div className="flex flex-col md:flex-row justify-between items-start gap-6">
+          <div className="flex-1">
             <button 
               onClick={() => navigate("/courses")}
               className="flex items-center gap-2 text-white/80 hover:text-white transition-colors text-sm mb-4"
             >
               <ChevronLeft className="w-4 h-4" />
-              Мои курсы
+              Все курсы
             </button>
             
-            <h1 className="text-3xl md:text-4xl font-bold text-white mb-3">
+            <h1 className="text-2xl md:text-2xl lg:text-3xl font-Xolonium font-bold text-white mb-3">
               {courseTitle}
             </h1>
             
-            <p className="text-white/70 text-sm max-w-lg leading-relaxed mb-6">
+            <p className="text-white/70 text-sm max-w-lg leading-relaxed mb-6 line-clamp-3 md:line-clamp-4">
               {courseDescription}
             </p>
             
@@ -78,12 +78,12 @@ const HeroHeader = ({
             </div>
           </div>
           
-          {/* Tags */}
-          <div className="flex gap-2 flex-wrap">
+          {/* Tags - only show on medium+ screens */}
+          <div className="hidden md:block flex gap-2 flex-wrap">
             {tags.map((tag, index) => (
               <span 
                 key={index}
-                className="px-4 py-2 rounded-full bg-white/10 backdrop-blur-sm text-white text-sm font-medium border border-white/20"
+                className="px-3 py-1.5 md:px-4 md:py-2 rounded-full bg-white/10 backdrop-blur-sm text-white text-xs md:text-sm font-medium border border-white/20"
               >
                 {tag}
               </span>
@@ -91,29 +91,47 @@ const HeroHeader = ({
           </div>
         </div>
         
-        {/* Stats row */}
-        <div className="flex items-center gap-8 pt-4 border-t border-white/10">
-          {defaultStats.map((stat, index) => {
-            const Icon = stat.icon;
-            return (
-              <div key={index} className="flex items-center gap-2">
-                <Icon className="w-4 h-4 text-white/60" />
-                <span className="text-white font-semibold">{stat.value}</span>
-                <span className="text-white/60 text-sm">{stat.label}</span>
-              </div>
-            );
-          })}
+        {/* Stats row - responsive grid for mobile */}
+        <div className="mt-2 mb-6">
+          <div className="grid grid-cols-2 md:flex md:items-center md:gap-8 gap-4 pt-4">
+            {defaultStats.map((stat, index) => {
+              const Icon = stat.icon;
+              return (
+                <div key={index} className="flex items-center gap-2">
+                  <Icon className="w-4 h-4 text-white/60" />
+                  <span className="text-white font-semibold text-sm">{stat.value}</span>
+                  <span className="text-white/60 text-xs md:text-sm">{stat.label}</span>
+                </div>
+              );
+            })}
+          </div>
         </div>
         
         {/* Progress bar */}
-        <div className="mt-4">
-          <div className="h-1 bg-white/20 rounded-full overflow-hidden">
+        <div>
+          <div className="flex justify-between text-white/70 text-sm mb-2">
+            <span>Ваш прогресс</span>
+            <span>{progress}%</span>
+          </div>
+          <div className="h-2 bg-white/10 rounded-full overflow-hidden">
             <div 
-              className="h-full bg-gradient-to-r from-primary to-primary/80 rounded-full transition-all duration-500" 
+              className="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-500" 
               style={{ width: `${progress}%` }}
             />
           </div>
         </div>
+      </div>
+      
+      {/* Tags for mobile - shown only on small screens */}
+      <div className="md:hidden absolute bottom-4 right-4 flex gap-2 flex-wrap">
+        {tags.map((tag, index) => (
+          <span 
+            key={index}
+            className="px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-sm text-white text-xs font-medium border border-white/20"
+          >
+            {tag}
+          </span>
+        ))}
       </div>
     </div>
   );

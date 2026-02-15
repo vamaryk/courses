@@ -10,7 +10,7 @@ const AboutCourse = ({
   programText = "Интенсивная программа с короткими видео-уроками и большим количеством практики. Изучаем HTML5 и CSS3 на примере реального Photoshop-макета."
 }: AboutCourseProps) => {
   return (
-    <div className="space-y-6 mt-6">
+    <div className="space-y-2 px-2 mt-6">
       <div>
         <h3 className="text-base font-semibold text-foreground mb-2">О курсе</h3>
         <p className="text-sm text-muted-foreground leading-relaxed">

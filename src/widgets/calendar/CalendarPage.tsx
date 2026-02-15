@@ -96,7 +96,7 @@ function CalendarPage() {
                 <div className="flex items-center justify-between flex-wrap gap-4">
                   <div className="flex items-center mb-6">
                     <button className="flex items-center text-gray-600 text-[12px] hover:text-gray-900">
-                      Мои курсы
+                      Обучение
                     </button>
                   </div>
                   <button

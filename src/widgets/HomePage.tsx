@@ -1,4 +1,4 @@
-import { Users, Star, BookOpen, Search, ChevronDown, Clock, GraduationCap, Globe, Tag, Palette, Megaphone, Briefcase, Database, MessageSquare, X } from 'lucide-react';
+import { Users, Star, BookOpen, Search, ChevronDown, Clock, GraduationCap, Globe, Tag, Palette, Megaphone, Briefcase, Database, MessageSquare, Heart, CreditCard, X } from 'lucide-react';
 import { useState, useEffect, Dispatch, SetStateAction } from 'react'; // Добавлен Dispatch и SetStateAction для FilterContentProps
 import { coursesApi, type Course } from '@/shared/api/courses';
 import { Input } from '@/components/ui/input';
@@ -557,6 +557,102 @@ export default function HomePage() {
     isDevelopmentSelected, handlePriceInput, handleDurationInput
   };
 
+  // Добавляем состояние для текущей страницы
+    const [currentPage, setCurrentPage] = useState(1);
+    const COURSES_PER_PAGE = 15;
+
+    // Вычисляем общее количество страниц
+    const totalPages = Math.ceil(sortedCourses.length / COURSES_PER_PAGE);
+
+    // Получаем курсы для текущей страницы
+    const paginatedCourses = sortedCourses.slice(
+    (currentPage - 1) * COURSES_PER_PAGE,
+    currentPage * COURSES_PER_PAGE
+    );
+
+    // Функция прокрутки к блоку "Курсы"
+    const scrollToCourses = () => {
+    document.getElementById('courses-grid')?.scrollIntoView({ 
+        behavior: 'smooth', 
+        block: 'start' 
+    });
+    };
+
+    // Функции навигации
+    const goToPage = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+        setCurrentPage(page);
+        scrollToCourses();
+    }
+    };
+
+    const nextPage = () => {
+    if (currentPage < totalPages) {
+        setCurrentPage(prev => prev + 1);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    };
+
+    const prevPage = () => {
+    if (currentPage > 1) {
+        setCurrentPage(prev => prev - 1);
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+    };
+
+    // Генерируем массив номеров страниц для отображения
+    const getPageNumbers = () => {
+    const pages: (number | '...')[] = [];
+    const maxVisible = 5; // Максимальное количество видимых номеров страниц
+
+    if (totalPages <= maxVisible) {
+        // Если страниц мало, показываем все
+        for (let i = 1; i <= totalPages; i++) {
+        pages.push(i);
+        }
+    } else {
+        // Если страниц много, показываем сокращённый список
+        if (currentPage <= 3) {
+        // Начало: 1, 2, 3, 4, ..., последняя
+        for (let i = 1; i <= 4; i++) {
+            pages.push(i);
+        }
+        pages.push('...');
+        pages.push(totalPages);
+        } else if (currentPage >= totalPages - 2) {
+        // Конец: первая, ..., предпоследние, последняя
+        pages.push(1);
+        pages.push('...');
+        for (let i = totalPages - 3; i <= totalPages; i++) {
+            pages.push(i);
+        }
+        } else {
+        // Середина: первая, ..., текущая-1, текущая, текущая+1, ..., последняя
+        pages.push(1);
+        pages.push('...');
+        for (let i = currentPage - 1; i <= currentPage + 1; i++) {
+            pages.push(i);
+        }
+        pages.push('...');
+        pages.push(totalPages);
+        }
+    }
+
+    return pages;
+    };
+
+    // Состояние для избранного
+    const [favorites, setFavorites] = useState<number[]>([]);
+
+    // Функция переключения избранного
+    const toggleFavorite = (courseId: number) => {
+    setFavorites(prev => 
+        prev.includes(courseId)
+        ? prev.filter(id => id !== courseId)
+        : [...prev, courseId]
+    );
+    };
+
   return (
     <div className="bg-background">
       {/* Hero Section */}
@@ -576,9 +672,9 @@ export default function HomePage() {
         {/* Основной белый блок с градиентом и блюром */}
         <div className="relative">
             <div className="text-center">
-            <div className="bg-gradient-to-r from-white/10 to-white/30 backdrop-blur-lg rounded-3xl px-4 py-35 shadow-lg border border-white/30">
+            <div className="bg-gradient-to-r from-white/10 to-white/30 backdrop-blur-lg rounded-3xl px-4 py-35 shadow-md border border-white/30">
                 <h1 className="text-3xl sm:text-4xl lg:text-5xl font-Xolonium text-gray-800 leading-tight mb-4">
-                САМАЯ ЛУЧШАЯ <br />
+                САМАЯ ЛУЧШАЯ<sup>*</sup> <br />
                 ПЛОЩАДКА <span className="font-RubikGlitch">ОНЛАЙН-</span>КУРСОВ
                 </h1>
                 <p className="text-sm sm:text-base text-gray-600 mt-4">
@@ -588,18 +684,20 @@ export default function HomePage() {
             </div>
 
             {/* Шесть блоков с градиентной обводкой и иконками */}
-            <div className="mt-8 sm:mt-12">
-            <div className="flex flex-wrap justify-center gap-2">
-                {CATEGORIES.map((item, index) => (
-                <div
-                    key={index}
-                    className={`flex items-center justify-center p-4 sm:p-5 rounded-xl border-2 border-purple/30 bg-gradient-to-r from-white/10 to-white/30 backdrop-blur-lg transition-all duration-300 transform hover:scale-105 cursor-pointer`}
-                >
-                    <item.icon className="w-6 h-6 sm:w-8 sm:h-8 text-gray-700" />
-                    <span className="ml-2 text-xs sm:text-sm font-medium text-gray-700">{item.label}</span>
+            <div className="mt-4 sm:mt-8">
+                <div className="flex flex-wrap justify-center gap-4">
+                    {CATEGORIES.map((item, index) => (
+                    <div
+                        key={index}
+                        className="animated-gradient animated-gradient-block flex items-center justify-center p-4 sm:p-5 border-2 border-purple/30 backdrop-blur-lg shadow-sm rounded-2xl transition-all duration-300"
+                    >
+                        <item.icon className="w-6 h-6 sm:w-8 sm:h-8 text-gray-700" />
+                        <span className="ml-2 text-xs sm:text-sm font-medium text-gray-700">
+                        {item.label}
+                        </span>
+                    </div>
+                    ))}
                 </div>
-                ))}
-            </div>
             </div>
         </div>
         </div>
@@ -607,16 +705,16 @@ export default function HomePage() {
       {/* Popular Courses Section */}
       <div className="bg-background py-12 lg:py-16">
         <div className="px-4 sm:px-6 lg:px-[40px]">
-          <div className="text-center mb-8 lg:mb-12">
+          <div className="text-center mb-4 lg:mb-8">
             <h2 className="text-2xl sm:text-3xl font-semibold font-Xolonium text-gray-900">
               Популярно на этой неделе
             </h2>
-            <div className="mt-4 h-1 w-20 bg-gradient-to-r from-purple-500 to-blue-500 mx-auto rounded-full"></div>
+            <div className="mt-4 h-1 w-20 bg-gradient-to-r from-purple to-blue mx-auto rounded-full"></div>
           </div>
 
           {/* Course Grid */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-            {filteredCourses.length > 0 ? filteredCourses.slice(0, 4).map((course) => (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-4 lg:gap-4">
+            {filteredCourses.length > 0 ? filteredCourses.slice(0, 5).map((course) => (
               <div 
                 key={course.id} 
                 className="bg-background rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300"
@@ -629,11 +727,11 @@ export default function HomePage() {
                   </div>
                 </div>
                 
-                <div className="p-4">
-                  <h3 className="font-semibold text-gray-900 mb-2 line-clamp-2">
+                <div className="p-3 sm:p-4 lg:p-3">
+                  <h3 className="font-semibold text-gray-900 mb-2 line-clamp-1">
                     {course.title}
                   </h3>
-                  <p className="text-sm text-gray-600 mb-4 line-clamp-2">
+                  <p className="text-sm text-gray-600 mb-4 line-clamp-1">
                     {course.description || 'Описание отсутствует'}
                   </p>
                   
@@ -654,7 +752,7 @@ export default function HomePage() {
                     </div>
                   </div>
                   
-                  <Button asChild className="w-full mt-4 bg-purple-600 hover:bg-purple-700">
+                  <Button asChild className="w-full mt-4 bg-purple-600 text-white font-medium hover:bg-purple-700">
                     <Link to={`/courses/${course.id}`}>
                       Подробнее
                     </Link>
@@ -673,24 +771,24 @@ export default function HomePage() {
       </div>
 
       {/* Main Courses Section */}
-      <div className="py-8 sm:py-12 lg:py-16 bg-background">
+      <div className="py-2 sm:py-4 lg:py-6 bg-background">
         <div className="px-4 sm:px-6 lg:px-[40px]">
-          <div className="text-center mb-8 sm:mb-10 lg:mb-12">
+          <div className="text-center mb-4 sm:mb-5 lg:mb-6">
             <h2 className="text-2xl sm:text-3xl font-semibold font-Xolonium text-gray-900 mb-3 sm:mb-4">Курсы</h2>
 
             {/* Course tags as buttons */}
             <div className="flex flex-wrap justify-center gap-2 sm:gap-3 mb-6 sm:mb-8">
-              {[
+            {[
                 'Программирование', 'Дизайн', 'Маркетинг', 'Бизнес', 'React',
                 'JavaScript', 'Python', 'UI/UX', 'SEO', 'Копирайтинг'
-              ].map((tag) => (
+            ].map((tag) => (
                 <button
-                  key={tag}
-                  className="px-3 sm:px-4 py-1.5 sm:py-2 bg-gradient-to-r from-purple-500 to-cyan-500 text-white font-medium rounded-full text-xs sm:text-sm hover:shadow-lg transition-all duration-300 transform hover:scale-105"
+                key={tag}
+                className="animated-gradient animated-gradient-button px-3 sm:px-4 py-2 sm:py-2.5 border-2 border-purple/30 text-gray-700 font-medium rounded-xl text-xs sm:text-sm hover:shadow-lg transition-all duration-300"
                 >
-                  {tag}
+                {tag}
                 </button>
-              ))}
+            ))}
             </div>
           </div>
 
@@ -703,7 +801,7 @@ export default function HomePage() {
             </div>
 
             {/* Courses Grid */}
-            <div className="flex-1">
+            <div id="courses-grid" className="flex-1">
               
               {/* Header: Sort, Filter Button (Mobile), Search */}
               <div className="flex flex-col gap-4 mb-6 sm:mb-8 lg:flex-row lg:items-center lg:justify-between">
@@ -770,70 +868,74 @@ export default function HomePage() {
               </div>
 
               {/* Course Cards Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6 lg:gap-8">
-                {sortedCourses.length > 0 ? sortedCourses.map((course) => (
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-4">
+                {paginatedCourses.length > 0 ? paginatedCourses.map((course) => (
                   <div key={course.id} className="relative bg-background rounded-xl sm:rounded-2xl shadow-md overflow-hidden group hover:shadow-lg transition-shadow duration-300">
                     {/* Course Image - Full block */}
                     <div className="aspect-video bg-gradient-to-r from-purple-100 to-blue-100 relative">
-                      <div className="absolute top-2 left-2 flex gap-2">
-                        <span className="px-2 py-1 bg-purple-600 text-white text-xs rounded-full">
-                          {course.is_public ? 'Публичный' : 'Приватный'}
-                        </span>
+                        {/* Кнопка "В избранное" */}
+                        <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            toggleFavorite(course.id);
+                        }}
+                        className={`absolute top-2 right-2 p-1 rounded-full transition-all ${
+                            favorites.includes(course.id)
+                            ? 'bg-white text-red-500'
+                            : 'bg-white/70 hover:bg-white text-gray-500'
+                        }`}
+                        aria-label={favorites.includes(course.id) ? 'Убрать из избранного' : 'Добавить в избранное'}
+                        >
+                        <Heart 
+                            className={`w-4 h-4 ${
+                            favorites.includes(course.id) ? 'fill-current' : ''
+                            }`} 
+                        />
+                        </button>
+
+                        <div className="absolute top-2 left-2 flex gap-2">
                         {course.language && (
-                          <span className="px-2 py-1 bg-cyan-600 text-white text-xs rounded-full">
+                            <span className="px-2 py-1 bg-cyan-600 text-white text-xs rounded-full">
                             {course.language}
-                          </span>
+                            </span>
                         )}
-                      </div>
-                      {course.durationHours && course.durationHours > 0 && (
-                        <div className="absolute bottom-2 right-2 flex items-center gap-1 px-2 py-1 bg-black/50 text-white text-xs rounded-full backdrop-blur-sm">
-                            <Clock className="w-3 h-3" />
-                            <span>{course.durationHours} ч</span>
                         </div>
-                      )}
                     </div>
 
                     {/* Course Content */}
-                    <div className="p-4 sm:p-6 flex-1 flex flex-col">
-                      <h3 className="text-lg sm:text-xl font-semibold text-gray-900 mb-2 line-clamp-2">
+                    <Link 
+                        to={`/courses/${course.id}`} 
+                        className="block flex-1 p-3 sm:p-4 lg:p-3"
+                    >
+                        <h3 className="lg:text-lg sm:text-xs font-semibold text-gray-900 mb-2 line-clamp-1">
                         {course.title}
-                      </h3>
-                      <p className="text-sm text-gray-600 mb-4 line-clamp-2">
+                        </h3>
+                        <p className="text-sm text-gray-600 mb-1 line-clamp-1">
                         {course.description || 'Описание отсутствует'}
-                      </p>
-                      
-                      <div className="mt-auto">
-                        <div className="flex items-center justify-between mb-3">
-                          <div className="flex items-center gap-2">
-                            <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center">
-                              <Users className="w-4 h-4 text-gray-500" />
-                            </div>
-                            <span className="text-xs text-gray-500">
-                              {course.author?.name || 'Автор не указан'}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Star className="w-4 h-4 text-yellow-400 fill-current" />
-                            <span className="text-sm font-medium">
-                              {course.rating?.toFixed(1) || 'Нет оценок'}
-                            </span>
-                          </div>
-                        </div>
+                        </p>
                         
-                        <div className="flex items-center justify-between pt-3 border-t border-gray-100">
-                          <span className="text-lg font-bold text-gray-900">
-                            {course.price ? `${course.price}₽` : 'Бесплатно'}
-                          </span>
-                          <Link 
-                            to={`/courses/${course.id}`}
-                            className="text-sm font-medium text-purple-600 hover:text-purple-700"
-                          >
-                            Подробнее
-                          </Link>
+                        <div className="border-t border-gray-100">
+                        {/* Автор и Цена */}
+                        <div className="pt-1 flex items-center justify-between flex-wrap gap-2 mb-1">
+                            <div className="flex items-center gap-2 min-w-[120px] flex-1">
+                            <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
+                                <Users className="w-4 h-4 text-gray-500" />
+                            </div>
+                            <span className="text-xs text-gray-500 line-clamp-1">
+                                {course.author?.name || 'Автор не указан'}
+                            </span>
+                            </div>
+                            
+                            <div className="flex items-center gap-1 border-2 rounded-full px-2 py-1">
+                            <CreditCard className="w-4 h-4 text-gray-500" />
+                            <span className="text-xs font-bold text-gray-900">
+                                {course.price ? `${course.price} ₽` : 'Бесплатно'}
+                            </span>
+                            </div>
                         </div>
-                      </div>
+                        </div>
+                    </Link>
                     </div>
-                  </div>
                 )) : (
                   <div className="col-span-full text-center py-12">
                     <BookOpen className="w-12 h-12 text-gray-300 mx-auto mb-4" />
@@ -850,7 +952,7 @@ export default function HomePage() {
                         setDurationRange([DURATION_MIN, DURATION_MAX]);
                       }}
                       variant="outline"
-                      className="mt-4"
+                      className="mt-4 cursor-pointer"
                     >
                       Сбросить фильтры
                     </Button>
@@ -858,25 +960,57 @@ export default function HomePage() {
                 )}
               </div>
 
-              {sortedCourses.length > 0 && (
-                <div className="flex items-center justify-center mt-8 sm:mt-10 lg:mt-12 gap-2">
-                  <button className="px-2 sm:px-3 py-1.5 sm:py-2 bg-gray-200 text-gray-700 rounded text-sm hover:bg-gray-300">
+              {totalPages > 1 && (
+                <div className="flex items-center justify-center mt-8 sm:mt-10 lg:mt-12 gap-1 sm:gap-2 flex-wrap">
+                    <button
+                    onClick={prevPage}
+                    disabled={currentPage === 1}
+                    className={`px-2 sm:px-4 py-1.5 sm:py-2 rounded text-sm font-medium transition-all ${
+                        currentPage === 1
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                    }`}
+                    >
                     Назад
-                  </button>
-                  <button className="px-2 sm:px-3 py-1.5 sm:py-2 bg-purple-600 text-white rounded text-sm">
-                    1
-                  </button>
-                  <button className="px-2 sm:px-3 py-1.5 sm:py-2 bg-gray-200 text-gray-700 rounded text-sm hover:bg-gray-300">
-                    2
-                  </button>
-                  <span className="px-2 sm:px-3 py-1.5 sm:py-2 text-gray-500 text-sm">
-                    ...
-                  </span>
-                  <button className="px-2 sm:px-3 py-1.5 sm:py-2 bg-gray-200 text-gray-700 rounded text-sm hover:bg-gray-300">
-                    Дальше
-                  </button>
+                    </button>
+
+                    {/* Номера страниц */}
+                    {getPageNumbers().map((page, index) =>
+                    page === '...' ? (
+                        <span
+                        key={`ellipsis-${index}`}
+                        className="px-2 sm:px-4 py-1.5 sm:py-2 text-gray-500 text-sm"
+                        >
+                        ...
+                        </span>
+                    ) : (
+                        <button
+                        key={page}
+                        onClick={() => goToPage(page as number)}
+                        className={`px-2 sm:px-4 py-1.5 sm:py-2 rounded text-sm font-medium transition-all ${
+                            currentPage === page
+                            ? 'bg-purple-600 text-white'
+                            : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                        }`}
+                        >
+                        {page}
+                        </button>
+                    )
+                    )}
+
+                    <button
+                    onClick={nextPage}
+                    disabled={currentPage === totalPages}
+                    className={`px-2 sm:px-4 py-1.5 sm:py-2 rounded text-sm font-medium transition-all ${
+                        currentPage === totalPages
+                        ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                        : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                    }`}
+                    >
+                    Далее
+                    </button>
                 </div>
-              )}
+                )}
             </div>
           </div>
         </div>
@@ -886,7 +1020,7 @@ export default function HomePage() {
       {/* MOBILE FILTER MODAL (Всплывающее окно снизу) */}
       {/* ================================================================= */}
       {isMobileFilterOpen && (
-        <div className="fixed inset-0 z-50 flex items-end justify-center lg:hidden">
+        <div className="fixed inset-0 z-102 flex items-end justify-center lg:hidden">
           {/* Overlay */}
           <div 
             className="absolute inset-0 bg-black/50 backdrop-blur-sm" 
@@ -898,8 +1032,7 @@ export default function HomePage() {
             
             {/* Header */}
             <div className="flex justify-between items-center pb-4 border-b border-gray-200">
-                <h3 className="text-xl font-semibold font-Xolonium">Фильтры</h3>
-                <button onClick={() => setIsMobileFilterOpen(false)} className="text-gray-500 hover:text-gray-800">
+                <button onClick={() => setIsMobileFilterOpen(false)} className="ml-auto text-gray-500 hover:text-gray-800">
                     <X className="w-6 h-6" />
                 </button>
             </div>
@@ -912,7 +1045,7 @@ export default function HomePage() {
             {/* Footer / Action Button */}
             <div className="pt-4 border-t border-gray-200 mt-4">
                 <Button 
-                    className="w-full bg-purple-600 hover:bg-purple-700"
+                    className="w-full bg-purple-600 text-white font-medium hover:bg-purple-7000"
                     onClick={() => setIsMobileFilterOpen(false)}
                 >
                     Применить фильтры
