@@ -11,7 +11,7 @@ interface CrCourseCardProps {
 
 const CrCourseCard = ({ id, title, image, favoritesCount, studentsCount }: CrCourseCardProps) => {
   return (
-    <div className="course-card w-full">
+    <div className="w-full hover:-translate-y-0.5">
       <div className="relative h-44 overflow-hidden rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300">
         <img
           src={image}
@@ -22,7 +22,7 @@ const CrCourseCard = ({ id, title, image, favoritesCount, studentsCount }: CrCou
         
         {/* Edit button */}
         <Link 
-          to={`/courses/${id}/edit`}
+          to={`/courses/${id}/manage`}
           className="absolute top-2 right-2 p-2 bg-black/40 hover:bg-black/60 rounded-lg transition-colors"
         >
           <Pencil className="h-4 w-4 text-white" />

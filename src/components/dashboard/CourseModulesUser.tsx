@@ -1,10 +1,11 @@
 import { useState } from "react";
-import { ChevronDown, BookOpen, FileCheck, Lightbulb } from "lucide-react";
+import { ChevronDown, CheckCircle2, PlayCircle, FileText, Flame, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Module {
   id: string;
   title: string;
+  subchapterId?: number;
   description?: string;
   duration?: string;
   isCompleted?: boolean;
@@ -15,159 +16,175 @@ interface Module {
 interface Section {
   id: string;
   title: string;
-  description?: string;
+  chapterId?: number;
+  firstSubchapterId?: number;
   modules: Module[];
-  stats?: {
-    lectures: number;
-    tests: number;
-    tasks: number;
-  };
 }
 
 interface CourseModulesProps {
   sections?: Section[];
+  onStartChapter?: (chapterId: number, subchapterId: number) => void;
 }
 
 const defaultSections: Section[] = [
   {
     id: "1",
     title: "1. Введение",
-    description: "В этой главе вы познакомитесь с основами веб-разработки и узнаете, что такое HTML и CSS.",
-    stats: { lectures: 15, tests: 3, tasks: 10 },
     modules: [
-      { id: "1-1", title: "Введение в HTML и CSS", isCompleted: true },
-      { id: "1-2", title: "Структура документа", isPlaying: true },
-      { id: "1-3", title: "Задачи верстки и верстальщика" },
+      { 
+        id: "1-1", 
+        title: "Введение в HTML и CSS", 
+        isCompleted: true,
+        description: "Знакомство с основами веб-разработки. Что такое HTML теги и CSS стили."
+      },
+      { 
+        id: "1-2", 
+        title: "Структура документа", 
+        isPlaying: true,
+        description: "Разбор базовой структуры HTML5 документа: head, body, meta теги."
+      },
+      { 
+        id: "1-3", 
+        title: "Задачи верстки и верстальщика",
+        description: "Что входит в обязанности фронтенд-разработчика и верстальщика."
+      },
     ],
   },
   {
     id: "2",
     title: "2. Базовые понятия интернета",
-    description: "Изучите основные концепции интернета: протоколы, адресацию и передачу данных.",
-    stats: { lectures: 8, tests: 2, tasks: 5 },
     modules: [
       { 
         id: "2-1", 
         title: "IP - адрес, домен, DNS",
-        description: "В этом блоке курса будут изучены основные понятия IP-адресов, доменных имен и системы DNS. Вы узнаете, как работает разрешение доменных имен и как настраивать DNS для эффективного управления сетевыми ресурсами.",
+        description: "В этом блоке курса будут изучены основные понятия IP-адресов, доменных имен и системы DNS.",
         duration: "41 : 40",
         hasFireIcon: true,
       },
-      { id: "2-2", title: "HTTP, HTTP2 и HTTPS" },
-      { id: "2-3", title: "Структура HTTP запросов и ответов" },
+      { id: "2-2", title: "HTTP, HTTP2 и HTTPS", description: "Протоколы передачи данных. Различия между версиями протокола." },
+      { id: "2-3", title: "Структура HTTP запросов и ответов", description: "Детальный разбор заголовков, методов и кодов состояния." },
     ],
   },
   {
     id: "3",
-    title: "3. HTML основы",
-    description: "Освойте основные теги HTML и научитесь создавать структуру веб-страниц.",
-    stats: { lectures: 12, tests: 4, tasks: 8 },
+    title: "3. Основы CSS",
     modules: [
-      { id: "3-1", title: "Теги и атрибуты HTML" },
-      { id: "3-2", title: "Семантические теги" },
-      { id: "3-3", title: "Формы и поля ввода" },
+      { id: "3-1", title: "Селекторы и специфичность", description: "Как браузер понимает, какие стили применять к элементам." },
+      { id: "3-2", title: "Блочная модель", description: "Margin, padding, border, content. Как элементы занимают место." },
     ],
   },
   {
     id: "4",
-    title: "4. CSS основы",
-    description: "Изучите базовые концепции CSS: селекторы, свойства и значения.",
-    stats: { lectures: 10, tests: 3, tasks: 7 },
+    title: "4. Продвинутая верстка",
     modules: [
-      { id: "4-1", title: "Селекторы и специфичность" },
-      { id: "4-2", title: "Блочная модель" },
-      { id: "4-3", title: "Цвета и шрифты" },
-    ],
-  },
-  {
-    id: "5",
-    title: "5. Адаптивный дизайн",
-    description: "Научитесь создавать сайты, которые хорошо выглядят на всех устройствах.",
-    stats: { lectures: 9, tests: 2, tasks: 6 },
-    modules: [
-      { id: "5-1", title: "Медиа-запросы" },
-      { id: "5-2", title: "Flexbox" },
-      { id: "5-3", title: "Grid Layout" },
+      { id: "4-1", title: "Flexbox и Grid", description: "Современные методы расположения элементов на странице." },
     ],
   },
 ];
 
-const CourseModulesUser = ({ sections = defaultSections }: CourseModulesProps) => {
-  const [expandedSections, setExpandedSections] = useState<string[]>([]);
+const CourseModules = ({ sections = defaultSections }: CourseModulesProps) => {
+  const [expandedModules, setExpandedModules] = useState<string[]>(["2-1"]);
   const [showMore, setShowMore] = useState(false);
 
-  const toggleSection = (sectionId: string) => {
-    setExpandedSections(prev => 
-      prev.includes(sectionId) 
-        ? prev.filter(id => id !== sectionId)
-        : [...prev, sectionId]
+  const toggleModule = (moduleId: string) => {
+    setExpandedModules(prev => 
+      prev.includes(moduleId) 
+        ? prev.filter(id => id !== moduleId)
+        : [...prev, moduleId]
     );
   };
 
   const visibleSections = showMore ? sections : sections.slice(0, 3);
 
   return (
-    <div className="border rounded-lg p-4">
-      <div className="space-y-2">
-        {visibleSections.map((section) => {
-          const isSectionExpanded = expandedSections.includes(section.id);
-          
-          return (
-            <div key={section.id} className="border rounded-lg overflow-hidden">
-              <button
-                onClick={() => toggleSection(section.id)}
-                className="w-full flex items-center justify-between gap-3 p-4 bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
-              >
-                <div className="flex items-center gap-3 flex-1">
-                  <h3 className="text-sm font-semibold text-foreground text-left">
-                    {section.title}
-                  </h3>
-                </div>
-                
-                <ChevronDown 
-                  className={cn(
-                    "w-4 h-4 text-muted-foreground transition-transform duration-200",
-                    isSectionExpanded && "rotate-180"
-                  )} 
-                />
-              </button>
-              
-              {isSectionExpanded && (
-                <div className="px-4 py-3 bg-background animate-fade-in border-t">
-                  <p className="text-sm text-muted-foreground leading-relaxed mb-4">
-                    {section.description || "Краткая информация"}
-                  </p>
-                  
-                  <div className="flex gap-4 mb-4">
-                    <a 
-                      href="#" 
-                      className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
-                    >
-                      <BookOpen className="w-3.5 h-3.5" />
-                      <span>Лекций: {section.stats?.lectures || 0}</span>
-                    </a>
-                    <a 
-                      href="#" 
-                      className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
-                    >
-                      <FileCheck className="w-3.5 h-3.5" />
-                      <span>Тестов: {section.stats?.tests || 0}</span>
-                    </a>
-                    <a 
-                      href="#" 
-                      className="flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors"
-                    >
-                      <Lightbulb className="w-3.5 h-3.5" />
-                      <span>Заданий: {section.stats?.tasks || 0}</span>
-                    </a>
-                  </div>
-                </div>
-              )}
+    <div>
+      <div className="border rounded-lg p-4 space-y-4">
+        {visibleSections.map((section) => (
+          <div key={section.id}>
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-medium text-muted-foreground">
+                {section.title}
+              </h3>
             </div>
-          );
-        })}
+            
+            <div className="space-y-2">
+              {section.modules.map((module) => {
+                const isExpanded = expandedModules.includes(module.id);
+                
+                return (
+                  <div 
+                    key={module.id}
+                    className={cn(
+                      "rounded-xl border border-border/50 overflow-hidden transition-all duration-200",
+                      isExpanded && "bg-muted/30"
+                    )}
+                  >
+                    <button
+                      onClick={() => toggleModule(module.id)}
+                      className="w-full flex items-center gap-3 p-4 hover:bg-muted/50 transition-colors"
+                    >
+                      {/* Status icon */}
+                      <div className="flex-shrink-0">
+                        {module.isCompleted ? (
+                          <CheckCircle2 className="w-5 h-5 text-primary" />
+                        ) : module.isPlaying ? (
+                          <PlayCircle className="w-5 h-5 text-muted-foreground" />
+                        ) : (
+                          <FileText className="w-5 h-5 text-muted-foreground" />
+                        )}
+                      </div>
+                      
+                      {/* Title */}
+                      <span className="flex-1 text-left text-sm font-medium text-foreground">
+                        {module.title}
+                      </span>
+                      
+                      {/* Expand icon */}
+                      <ChevronDown 
+                        className={cn(
+                          "w-4 h-4 text-muted-foreground transition-transform duration-200",
+                          isExpanded && "rotate-180"
+                        )} 
+                      />
+                    </button>
+                    
+                    {/* Expanded content */}
+                    {isExpanded && (
+                      <div className="px-4 pb-4 pt-0 animate-in fade-in slide-in-from-top-1 duration-200">
+                        <div className="pl-8 border-l-2 border-muted ml-3 py-2">
+                          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                            Краткая информация
+                          </h4>
+                          <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+                            {module.description || "Описание отсутствует"}
+                          </p>
+                          
+                          <div className="flex items-center gap-4">
+                            {module.duration && (
+                              <div className="flex items-center gap-1.5 text-xs font-medium text-foreground bg-background border rounded-md px-2 py-1 shadow-sm">
+                                <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+                                {module.duration}
+                              </div>
+                            )}
+                            {module.hasFireIcon && (
+                              <div className="flex items-center gap-1.5 text-xs font-medium text-orange-600 bg-orange-50 border border-orange-100 rounded-md px-2 py-1">
+                                <Flame className="w-3.5 h-3.5 fill-orange-500" />
+                                Популярное
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
       </div>
       
+      {/* Кнопка Показать все / Скрыть */}
       {sections.length > 3 && (
         <div className="mt-6 flex justify-center">
           <button 
@@ -182,4 +199,4 @@ const CourseModulesUser = ({ sections = defaultSections }: CourseModulesProps) =
   );
 };
 
-export default CourseModulesUser;
+export default CourseModules;

@@ -20,6 +20,7 @@ export default function LecturePage() {
   const [answersByBlockId, setAnswersByBlockId] = useState<
     Record<number, { userAnswer: string; isCorrect: boolean }>
   >({});
+  const [currentBlockType, setCurrentBlockType] = useState<'theory' | 'task' | 'test'>('theory');
 
   useEffect(() => {
     const loadCourse = async () => {
@@ -40,6 +41,7 @@ export default function LecturePage() {
     loadCourse();
   }, [courseId]);
 
+  // 1. Сначала вычисляем зависимости
   const sortedChapters = useMemo(
     () =>
       (course?.chapters ? [...course.chapters].sort((a, b) => a.order - b.order) : []).map((chapter) => ({
@@ -63,6 +65,11 @@ export default function LecturePage() {
     () => currentChapter?.subchapters?.find((subchapter) => subchapter.id === Number(subchapterId)) || null,
     [currentChapter, subchapterId]
   );
+
+  // 2. Теперь используем currentSubchapter в useEffect (после объявления)
+  useEffect(() => {
+    setCurrentBlockType('theory');
+  }, [currentSubchapter?.id]);
 
   useEffect(() => {
     if (!sortedChapters.length || (currentChapter && currentSubchapter)) return;
@@ -141,6 +148,7 @@ export default function LecturePage() {
         title={currentSubchapter.title}
         meta={durationLabel}
         onToggleOutline={() => setOutlineOpen(true)}
+        blockType={currentBlockType}
       >
         <LectureBlocks
           key={currentSubchapter.id}
@@ -153,6 +161,7 @@ export default function LecturePage() {
               [contentBlockId]: { userAnswer, isCorrect },
             }));
           }}
+          onBlockTypeChange={setCurrentBlockType}
         />
       </LectureLayout>
       <LectureOutline

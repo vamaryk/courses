@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import Header from "@/widgets/navigation/Header/Header";
-import MenuSidebar from "@/widgets/navigation/MenuSidebar/MenuSidebar";
 import CoverUpload from "@/components/dashboard/CoverUpload";
 import CourseHeaderCard from "@/components/dashboard/CourseHeaderCard";
 import CategorizationCard from "@/components/dashboard/CategorizationCard";
@@ -231,12 +229,10 @@ function CourseManagePage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header />
-      <MenuSidebar />
       {/* Main Content Area */}
-      <div className="mt-[4em] lg:ml-[100px] md:ml-[100px] sm:ml-0">
+      <div className="px-4 sm:px-6 lg:px-[20px] mb-5">
         {/* Page Content */}
-        <main className="max-w-7xl mx-auto px-8 pb-12">
+        <main>
           {/* Cover Upload Section */}
           <CoverUpload
             coverImage={formData.coverImage}
@@ -255,9 +251,9 @@ function CourseManagePage() {
           />
 
           {/* Main Content Grid */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4">
             {/* Left Column */}
-            <div className="space-y-6">
+            <div className="space-y-4">
               <CourseHeaderCard
                 title={formData.title}
                 description={formData.description}
@@ -273,7 +269,7 @@ function CourseManagePage() {
             </div>
 
             {/* Right Column */}
-            <div className="space-y-6">
+            <div className="space-y-4">
               <CategorizationCard
                 specialty={formData.specialty}
                 tags={formData.tags}

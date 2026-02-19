@@ -3,6 +3,12 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { coursesApi, type Chapter } from "@/shared/api/courses";
 import { toast } from "sonner";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface ChaptersCardProps {
   chapters: Chapter[];
@@ -83,42 +89,53 @@ const ChaptersCard = ({ chapters, courseId, onChaptersChange, isCreatePage }: Ch
     navigate(`/courses/${courseId}/chapters/${chapter.id}/subchapters`);
   };
 
-
   return (
-    <div className="card-blue animate-fade-in" style={{ animationDelay: "0.2s" }}>
+    <div className="border rounded-xl p-4 bg-white animate-fade-in" style={{ animationDelay: "0.2s" }}>
       <h3 className="text-foreground font-semibold mb-4">Главы</h3>
 
       {/* Chapter List */}
       <div className="space-y-3 mb-4">
         {localChapters.map((chapter, index) => (
-            <div key={chapter.id || index} className="space-y-2">
-              <div className="flex items-center gap-3">
-                <span className="text-muted-foreground text-sm w-5">{index + 1}.</span>
-                <div className="flex-1 relative">
-                  <input
-                    type="text"
-                    placeholder="Введите название главы..."
-                    className="input-field pr-10"
-                    value={chapter.title}
-                    onChange={(e) => handleChapterTitleChange(index, e.target.value)}
-                  />
-                  <button
-                    onClick={() => handleEditChapter(chapter)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-primary hover:scale-110 transition-transform"
-                    title="Редактировать подглавы"
-                  >
-                    <Pencil className="w-4 h-4" />
-                  </button>
-                </div>
+          <div key={chapter.id || index} className="space-y-2">
+            <div className="flex items-center gap-3">
+              <span className="text-muted-foreground text-sm w-5">{index + 1}.</span>
+              <div className="flex-1 relative">
+                <input
+                  type="text"
+                  placeholder="Введите название главы..."
+                  className="input-field pr-10"
+                  value={chapter.title}
+                  onChange={(e) => handleChapterTitleChange(index, e.target.value)}
+                />
+                
+                {/* Edit button with Tooltip */}
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        onClick={() => handleEditChapter(chapter)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-primary hover:scale-110 transition-transform p-1 rounded-md hover:bg-primary/10 cursor-pointer"
+                        aria-label="Редактировать подглавы"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" align="end" className="max-w-[200px] bg-white">
+                      <p>Редактировать подглавы</p>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+                
               </div>
             </div>
+          </div>
         ))}
       </div>
 
       {/* Add Chapter Button */}
       <button
         onClick={addChapter}
-        className="flex items-center gap-2 px-4 py-2 rounded-full border-2 border-primary text-primary font-medium hover:bg-primary/10 transition-colors"
+        className="flex items-center gap-2 px-4 py-2 rounded-xl cursor-pointer border-2 border-primary text-primary font-medium hover:bg-primary/10 transition-colors"
       >
         Добавить главу
         <Plus className="w-4 h-4" />

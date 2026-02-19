@@ -14,6 +14,7 @@ import {
   SiAdobephotoshop,
   SiCanva,
 } from "react-icons/si";
+import { Award, Star, Zap, Lightbulb, Rocket, GraduationCap, ChevronRight } from "lucide-react";
 import type { IconType } from "react-icons";
 
 interface Tool {
@@ -47,6 +48,17 @@ const defaultTools = [
   { name: "Framer", color: "#0055FF", icon: SiFramer },
   { name: "HTML5", color: "#E34F26", icon: SiHtml5 },
   { name: "CSS3", color: "#1572B6", icon: SiCss3 },
+];
+
+// Иконки для маркеров списка (циклически повторяются)
+const skillIcons = [
+  { icon: Award, color: "text-blue-500" },
+  { icon: Lightbulb, color: "text-yellow-500" },
+  { icon: Star, color: "text-purple-500" },
+  { icon: Zap, color: "text-orange-500" },
+  { icon: Rocket, color: "text-cyan-500" },
+  { icon: GraduationCap, color: "text-pink-500" },
+  { icon: ChevronRight, color: "text-indigo-500" },
 ];
 
 const getToolMeta = (toolName: string): Tool => {
@@ -117,33 +129,40 @@ const ResumeSection = ({
   });
 
   return (
-    <div className="mt-8">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-xl font-bold text-foreground">Резюме после обучения</h2>
+    <div className="mt-8 mb-2">
+      <div className="flex items-center justify-between mb-2">
+        <h2 className="text-xl font-semibold text-foreground">Резюме после обучения</h2>
         <span className="text-muted-foreground text-sm">{jobTitle}</span>
       </div>
       
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
         {/* Skills card */}
-        <div className="lg:col-span-2 card-elevated p-6">
+        <div className="lg:col-span-3 border rounded-lg p-4">
           <h3 className="text-primary font-semibold mb-4">Навыки</h3>
           <ul className="space-y-3">
-            {skills.map((skill, index) => (
-              <li 
-                key={index}
-                className="flex items-start gap-2 text-sm text-muted-foreground"
-              >
-                <span className="text-foreground mt-1.5">•</span>
-                <span>{skill}</span>
-              </li>
-            ))}
+            {skills.map((skill, index) => {
+              const { icon: Icon, color } = skillIcons[index % skillIcons.length];
+              return (
+                <li 
+                  key={index}
+                  className="flex items-start gap-3 group transition-all duration-200 hover:bg-muted/50 p-2 rounded-lg"
+                >
+                  <div className={`flex-shrink-0 mt-0.5 ${color}`}>
+                    <Icon className="w-4 h-4" />
+                  </div>
+                  <span className="text-sm text-muted-foreground group-hover:text-foreground transition-colors">
+                    {skill}
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         </div>
         
         {/* Tools & Certificate column */}
-        <div className="space-y-4">
+        <div className="lg:col-span-2 space-y-6">
           {/* Tools card */}
-          <div className="card-elevated p-6">
+          <div className="border rounded-lg p-4">
             <h3 className="text-primary font-semibold mb-4">Инструменты</h3>
             <div className="flex flex-wrap gap-3">
               {normalizedTools.map((tool, index) => (
@@ -153,10 +172,10 @@ const ResumeSection = ({
           </div>
           
           {/* Certificate card */}
-          <div className="card-elevated p-6">
+          <div className="border rounded-lg p-4">
             <h3 className="text-primary font-semibold mb-4">Сертификат</h3>
             <div className="flex gap-4">
-              <div className="w-20 h-28 bg-muted rounded-lg flex items-center justify-center">
+              <div className="w-20 h-28 bg-muted rounded-lg flex items-center justify-center border-2">
                 <div className="text-xs text-muted-foreground">Preview</div>
               </div>
               <div className="flex-1">

@@ -2,7 +2,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { coursesApi, type Course, type Chapter, type Subchapter, type ContentBlock } from '@/shared/api/courses';
 import HeroHeaderUser from "@/components/dashboard/HeroHeaderUser";
-import CourseModules from "@/components/dashboard/CourseModules";
+import CourseModulesUser from "@/components/dashboard/CourseModulesUser";
 import CourseStats from "@/components/dashboard/CourseStats";
 import AboutCourse from "@/components/dashboard/AboutCourse";
 import ResumeSection from "@/components/dashboard/ResumeSection";
@@ -212,11 +212,11 @@ export default function CourseDetailPageUser({ onEnrolled }: CourseDetailPageUse
       <main className="px-4 sm:px-6 lg:px-[20px] mb-5">
         <div>
           {/* Header with Edit button */}
-          <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center justify-between">
             {isAuthor && (
               <Button
                 onClick={() => navigate(`/courses/${id}/manage`)}
-                className="flex items-center gap-2 cursor-pointer"
+                className="flex items-center gap-2 cursor-pointer mb-2"
                 variant="outline"
               >
                 <Edit className="w-4 h-4" />
@@ -250,7 +250,7 @@ export default function CourseDetailPageUser({ onEnrolled }: CourseDetailPageUse
             {/* Left column - Course content */}
             <div className="lg:col-span-3 space-y-6">
                 <h2 className="text-lg font-semibold text-foreground mb-2">Программа курса</h2>      
-                <CourseModules
+                <CourseModulesUser
                   sections={sections}
                   onStartChapter={(chapterId, subchapterId) =>
                     navigate(`/courses/${id}/learn/${chapterId}/${subchapterId}`)

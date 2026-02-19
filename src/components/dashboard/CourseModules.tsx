@@ -32,9 +32,23 @@ const defaultSections: Section[] = [
     id: "1",
     title: "1. Введение",
     modules: [
-      { id: "1-1", title: "Введение в HTML и CSS", isCompleted: true },
-      { id: "1-2", title: "Структура документа", isPlaying: true },
-      { id: "1-3", title: "Задачи верстки и верстальщика" },
+      { 
+        id: "1-1", 
+        title: "Введение в HTML и CSS", 
+        isCompleted: true,
+        description: "Знакомство с основами веб-разработки. Что такое HTML теги и CSS стили."
+      },
+      { 
+        id: "1-2", 
+        title: "Структура документа", 
+        isPlaying: true,
+        description: "Разбор базовой структуры HTML5 документа: head, body, meta теги."
+      },
+      { 
+        id: "1-3", 
+        title: "Задачи верстки и верстальщика",
+        description: "Что входит в обязанности фронтенд-разработчика и верстальщика."
+      },
     ],
   },
   {
@@ -44,12 +58,27 @@ const defaultSections: Section[] = [
       { 
         id: "2-1", 
         title: "IP - адрес, домен, DNS",
-        description: "В этом блоке курса будут изучены основные понятия IP-адресов, доменных имен и системы DNS. Вы узнаете, как работает разрешение доменных имен и как настраивать DNS для эффективного управления сетевыми ресурсами.",
+        description: "В этом блоке курса будут изучены основные понятия IP-адресов, доменных имен и системы DNS.",
         duration: "41 : 40",
         hasFireIcon: true,
       },
-      { id: "2-2", title: "HTTP, HTTP2 и HTTPS" },
-      { id: "2-3", title: "Структура HTTP запросов и ответов" },
+      { id: "2-2", title: "HTTP, HTTP2 и HTTPS", description: "Протоколы передачи данных. Различия между версиями протокола." },
+      { id: "2-3", title: "Структура HTTP запросов и ответов", description: "Детальный разбор заголовков, методов и кодов состояния." },
+    ],
+  },
+  {
+    id: "3",
+    title: "3. Основы CSS",
+    modules: [
+      { id: "3-1", title: "Селекторы и специфичность", description: "Как браузер понимает, какие стили применять к элементам." },
+      { id: "3-2", title: "Блочная модель", description: "Margin, padding, border, content. Как элементы занимают место." },
+    ],
+  },
+  {
+    id: "4",
+    title: "4. Продвинутая верстка",
+    modules: [
+      { id: "4-1", title: "Flexbox и Grid", description: "Современные методы расположения элементов на странице." },
     ],
   },
 ];
@@ -66,11 +95,12 @@ const CourseModules = ({ sections = defaultSections, onStartChapter }: CourseMod
     );
   };
 
+  const visibleSections = showMore ? sections : sections.slice(0, 3);
+
   return (
-    <div className="card-elevated p-6">
-      
-      <div className="space-y-6">
-        {sections.map((section) => (
+    <div>
+      <div className="border rounded-lg p-4 space-y-4">
+        {visibleSections.map((section) => (
           <div key={section.id}>
             <div className="flex items-center justify-between mb-3">
               <h3 className="text-sm font-medium text-muted-foreground">
@@ -81,7 +111,7 @@ const CourseModules = ({ sections = defaultSections, onStartChapter }: CourseMod
                   variant="outline"
                   size="sm"
                   onClick={() => onStartChapter(section.chapterId, section.firstSubchapterId)}
-                  className="h-8 px-3"
+                  className="h-8 px-3 cursor-pointer"
                 >
                   <PlayCircle className="w-4 h-4 mr-1" />
                   Пуск
@@ -131,22 +161,28 @@ const CourseModules = ({ sections = defaultSections, onStartChapter }: CourseMod
                     </button>
                     
                     {/* Expanded content */}
-                    {isExpanded && module.description && (
-                      <div className="px-4 pb-4 animate-fade-in">
-                        <div className="pl-8">
-                          <p className="text-sm text-muted-foreground leading-relaxed mb-3">
-                            {module.description}
+                    {isExpanded && (
+                      <div className="px-4 pb-4 pt-0 animate-in fade-in slide-in-from-top-1 duration-200">
+                        <div className="pl-8 border-l-2 border-muted ml-3 py-2">
+                          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                            Краткая информация
+                          </h4>
+                          <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+                            {module.description || "Описание отсутствует"}
                           </p>
                           
                           <div className="flex items-center gap-4">
                             {module.duration && (
-                              <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                                <Clock className="w-3 h-3" />
+                              <div className="flex items-center gap-1.5 text-xs font-medium text-foreground bg-background border rounded-md px-2 py-1 shadow-sm">
+                                <Clock className="w-3.5 h-3.5 text-muted-foreground" />
                                 {module.duration}
                               </div>
                             )}
                             {module.hasFireIcon && (
-                              <Flame className="w-4 h-4 text-orange-400" />
+                              <div className="flex items-center gap-1.5 text-xs font-medium text-orange-600 bg-orange-50 border border-orange-100 rounded-md px-2 py-1">
+                                <Flame className="w-3.5 h-3.5 fill-orange-500" />
+                                Популярное
+                              </div>
                             )}
                           </div>
                         </div>
@@ -160,14 +196,17 @@ const CourseModules = ({ sections = defaultSections, onStartChapter }: CourseMod
         ))}
       </div>
       
-      <div className="mt-6 flex justify-center">
-        <button 
-          onClick={() => setShowMore(!showMore)}
-          className="px-6 py-2 rounded-full border border-border text-sm font-medium text-foreground hover:bg-muted transition-colors"
-        >
-          Показать больше
-        </button>
-      </div>
+      {/* Кнопка Показать все / Скрыть */}
+      {sections.length > 3 && (
+        <div className="mt-6 flex justify-center">
+          <button 
+            onClick={() => setShowMore(!showMore)}
+            className="px-6 py-2 rounded-full border border-border text-sm font-medium text-foreground hover:bg-muted transition-colors"
+          >
+            {showMore ? "свернуть" : "показать все"}
+          </button>
+        </div>
+      )}
     </div>
   );
 };

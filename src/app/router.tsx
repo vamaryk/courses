@@ -25,7 +25,9 @@ export const Router = () => {
         path="/courses/create" 
         element={
           <ProtectedRoute>
-            <CourseManagePage />
+            <AppLayout>
+              <CourseManagePage />
+            </AppLayout>
           </ProtectedRoute>
         } 
       />
@@ -33,7 +35,9 @@ export const Router = () => {
         path="/courses/:id/manage" 
         element={
           <ProtectedRoute>
-            <CourseManagePage />
+            <AppLayout>
+              <CourseManagePage />
+            </AppLayout>
           </ProtectedRoute>
         } 
       />
@@ -41,7 +45,9 @@ export const Router = () => {
         path="/courses/:courseId/chapters/:chapterId/canvas" 
         element={
           <ProtectedRoute>
-            <ChapterCanvasPage />
+            <AppLayout>
+              <ChapterCanvasPage />
+            </AppLayout>
           </ProtectedRoute>
         } 
       />
@@ -49,13 +55,15 @@ export const Router = () => {
         path="/courses/:courseId/chapters/:chapterId/subchapters" 
         element={
           <ProtectedRoute>
-            <SubchapterEditPage />
+            <AppLayout>
+              <SubchapterEditPage />
+            </AppLayout>
           </ProtectedRoute>
         } 
       />
       <Route path="/courses/:id/statistics" element={<AppLayout><CourseStatisticsPage /></AppLayout>} />
-      <Route path="/courses/:id" element={<CourseDetailPage />} />
-      <Route path="/courses/:courseId/learn/:chapterId/:subchapterId" element={<LecturePage />} />
+      <Route path="/courses/:id" element={<AppLayout><CourseDetailPage /></AppLayout>} />
+      <Route path="/courses/:courseId/learn/:chapterId/:subchapterId" element={<AppLayout><LecturePage /></AppLayout>} />
       <Route path="/profile" element={<AppLayout><ProfilePage /></AppLayout>} />
       <Route path="/settings" element={<AppLayout><SettingsPage /></AppLayout>} />
       <Route path="/glossary" element={<AppLayout><GlossaryPage /></AppLayout>} />

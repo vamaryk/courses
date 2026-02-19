@@ -1,10 +1,8 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect, useState, useRef } from 'react';
 import { coursesApi, type Course, type Chapter, type Subchapter, type ContentBlock } from '@/shared/api/courses';
-import Header from "@/widgets/navigation/Header/Header";
-import MenuSidebar from "@/widgets/navigation/MenuSidebar/MenuSidebar";
 import HeroHeader from "@/components/dashboard/HeroHeader";
-import CourseProgress from "@/components/dashboard/CourseProgress";
+// import CourseProgress from "@/components/dashboard/CourseProgress";
 import CourseModules from "@/components/dashboard/CourseModules";
 import ActivitySection from "@/components/dashboard/ActivitySection";
 import AboutCourse from "@/components/dashboard/AboutCourse";
@@ -193,12 +191,12 @@ export default function CourseDetailPage() {
   })) || [];
 
   // Prepare progress data
-  const progressData = [
-    { value: String(Math.ceil((course.totalDuration || 0) / 60)), label: "часов", progress: 45, color: "purple" as const },
-    { value: `${progressPercentage}%`, label: "пройдено", progress: progressPercentage, color: "blue" as const },
-    { value: String(course.totalLessons || 0), label: "лекций", progress: 78, color: "green" as const },
-    { value: String(course.studentsCount || 0), label: "процесс", progress: 60, color: "orange" as const },
-  ];
+//   const progressData = [
+//     { value: String(Math.ceil((course.totalDuration || 0) / 60)), label: "часов", progress: 45, color: "purple" as const },
+//     { value: `${progressPercentage}%`, label: "пройдено", progress: progressPercentage, color: "blue" as const },
+//     { value: String(course.totalLessons || 0), label: "лекций", progress: 78, color: "green" as const },
+//     { value: String(course.studentsCount || 0), label: "процесс", progress: 60, color: "orange" as const },
+//   ];
 
   // Prepare stats for HeroHeader
   const stats = {
@@ -213,18 +211,15 @@ export default function CourseDetailPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header />
-      <MenuSidebar />
       {/* Main content */}
-      <main className="mt-[4em] lg:ml-[100px] md:ml-[100px] sm:ml-0 p-6">
-        <div className="max-w-7xl mx-auto">
+      <main className="px-4 sm:px-6 lg:px-[20px] mb-5">
+        <div>
           {/* Header with Edit button */}
-          <div className="flex items-center justify-between mb-6">
-            <h1 className="text-3xl font-bold text-foreground">{course.title}</h1>
+          <div className="flex items-center justify-between">
             {isAuthor && (
               <Button
                 onClick={() => navigate(`/courses/${id}/manage`)}
-                className="flex items-center gap-2"
+                className="flex items-center gap-2 mb-2 cursor-pointer"
                 variant="outline"
               >
                 <Edit className="w-4 h-4" />
@@ -242,12 +237,13 @@ export default function CourseDetailPage() {
             tags={tags}
             progress={progressPercentage}
           />
-          
+          <div className="bg-white rounded-xl shadow p-5">
           {/* Main grid layout */}
           <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
             {/* Left column - Course content */}
             <div className="lg:col-span-3 space-y-6">
-              <CourseProgress progressData={progressData} />
+              {/* <CourseProgress progressData={progressData} /> */}
+              <h2 className="text-lg font-semibold text-foreground mb-2">Программа курса</h2>
               <CourseModules
                 sections={sections}
                 onStartChapter={(chapterId, subchapterId) =>
@@ -279,6 +275,7 @@ export default function CourseDetailPage() {
             certificateText={course.certificate_text || undefined}
             jobTitle={course.job_title || undefined}
           />
+        </div>
         </div>
       </main>
     </div>

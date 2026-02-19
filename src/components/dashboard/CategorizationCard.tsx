@@ -152,7 +152,7 @@ const CategorizationCard = ({
   onAboutCourseChange,
 }: CategorizationCardProps) => {
   return (
-    <div className="card-blue animate-fade-in" style={{ animationDelay: "0.15s" }}>
+    <div className="border rounded-xl p-4 bg-white animate-fade-in" style={{ animationDelay: "0.15s" }}>
       {/* Specialty Combobox */}
       <div className="mb-4">
         <Combobox
@@ -185,7 +185,7 @@ const CategorizationCard = ({
 
       {/* About Course Textarea */}
       <textarea
-        placeholder="О чем ваш курс?..."
+        placeholder="О чём Ваш курс?..."
         className="input-field min-h-[100px] resize-none"
         rows={4}
         value={aboutCourse || ""}

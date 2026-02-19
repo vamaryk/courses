@@ -79,7 +79,7 @@ const OutcomesCard = ({
   };
 
   return (
-    <div className="card-blue animate-fade-in" style={{ animationDelay: "0.25s" }}>
+    <div className="border rounded-xl p-4 bg-white animate-fade-in" style={{ animationDelay: "0.25s" }}>
       <h3 className="text-foreground font-semibold mb-4">Резюме после обучения</h3>
 
       {/* Job Title Input */}

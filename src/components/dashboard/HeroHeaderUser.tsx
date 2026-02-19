@@ -58,7 +58,7 @@ const HeroHeaderUser = ({
           <div className="flex-1">
             <button 
               onClick={() => navigate("/courses")}
-              className="flex items-center gap-2 text-white/80 hover:text-white transition-colors text-sm mb-4"
+              className="flex items-center gap-2 text-white/80 hover:text-white transition-colors text-sm mb-4 cursor-pointer"
             >
               <ChevronLeft className="w-4 h-4" />
               Все курсы

@@ -1,13 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import Header from "@/widgets/navigation/Header/Header";
-import MenuSidebar from "@/widgets/navigation/MenuSidebar/MenuSidebar";
 import { coursesApi, type Subchapter, type ContentBlock, type Course } from '@/shared/api/courses';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import RichTextEditor from '@/components/RichTextEditor';
-import { ArrowLeft, Plus, Trash2, Save, ChevronRight, Check } from 'lucide-react';
+import { ChevronLeft, Plus, Trash2, Save, List, X, Check, BookOpen, HelpCircle } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -16,6 +14,12 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 type QuizSelectionType = 'single' | 'multiple';
 
@@ -25,41 +29,87 @@ interface QuizOption {
   isCorrect: boolean;
 }
 
-interface QuizAnswerPayload {
-  format: 'quiz_v1';
+interface QuizQuestion {
+  id: string;
+  question: string;
   selectionType: QuizSelectionType;
   options: QuizOption[];
 }
 
+interface QuizAnswerPayload {
+  format: 'quiz_v1';
+  questions: QuizQuestion[];
+}
+
 const createDefaultQuizPayload = (legacyAnswer?: string | null): QuizAnswerPayload => ({
   format: 'quiz_v1',
-  selectionType: 'single',
-  options: [
-    { id: 'opt-1', text: legacyAnswer || '', isCorrect: true },
-    { id: 'opt-2', text: '', isCorrect: false },
+  questions: [
+    {
+      id: crypto.randomUUID(),
+      question: '',
+      selectionType: 'single',
+      options: [
+        { id: 'opt-1', text: legacyAnswer || '', isCorrect: true },
+        { id: 'opt-2', text: '', isCorrect: false },
+      ],
+    },
   ],
 });
 
 const parseQuizPayload = (answer?: string | null): QuizAnswerPayload | null => {
   if (!answer) return null;
   try {
-    const parsed = JSON.parse(answer) as Partial<QuizAnswerPayload>;
+    const parsed = JSON.parse(answer) as any;
+    
+    // Новый формат: с массивом questions
     if (
-      parsed &&
-      parsed.format === 'quiz_v1' &&
+      parsed?.format === 'quiz_v1' &&
+      Array.isArray(parsed.questions) &&
+      parsed.questions.length > 0
+    ) {
+      return {
+        format: 'quiz_v1',
+        questions: parsed.questions.map((q: any, qIndex: number) => ({
+          id: q.id || `q-${qIndex + 1}`,
+          question: q.question || '',
+          selectionType: q.selectionType === 'multiple' ? 'multiple' : 'single',
+          options: Array.isArray(q.options)
+            ? q.options.map((opt: any, oIndex: number) => ({
+                id: opt.id || `opt-${oIndex + 1}`,
+                text: opt.text || '',
+                isCorrect: Boolean(opt.isCorrect),
+              }))
+            : [
+                { id: 'opt-1', text: '', isCorrect: true },
+                { id: 'opt-2', text: '', isCorrect: false },
+              ],
+        })),
+      };
+    }
+    
+    // Старый формат: обратная совместимость
+    if (
+      parsed?.format === 'quiz_v1' &&
       (parsed.selectionType === 'single' || parsed.selectionType === 'multiple') &&
       Array.isArray(parsed.options)
     ) {
       return {
         format: 'quiz_v1',
-        selectionType: parsed.selectionType,
-        options: parsed.options.map((option, index) => ({
-          id: option.id || `opt-${index + 1}`,
-          text: option.text || '',
-          isCorrect: Boolean(option.isCorrect),
-        })),
+        questions: [
+          {
+            id: 'q-1',
+            question: '',
+            selectionType: parsed.selectionType,
+            options: parsed.options.map((opt: any, index: number) => ({
+              id: opt.id || `opt-${index + 1}`,
+              text: opt.text || '',
+              isCorrect: Boolean(opt.isCorrect),
+            })),
+          },
+        ],
       };
     }
+    
     return null;
   } catch {
     return null;
@@ -81,6 +131,8 @@ function SubchapterEditPage() {
   const [dirtyBlocks, setDirtyBlocks] = useState<Set<number>>(new Set());
   const [contentBlocksMap, setContentBlocksMap] = useState<Map<number, ContentBlock[]>>(new Map());
   const [quizPayloads, setQuizPayloads] = useState<Map<number, QuizAnswerPayload>>(new Map());
+  
+  const [isMobileSubchaptersOpen, setIsMobileSubchaptersOpen] = useState(false);
 
   const fetchSubchapters = useCallback(async () => {
     try {
@@ -131,10 +183,9 @@ function SubchapterEditPage() {
           setChapterTitle(foundChapter.title);
         }
       } catch {
-        // Non-blocking for page UX: chapter title fallback remains.
+        // Non-blocking
       }
     };
-
     fetchChapterMeta();
   }, [courseId, chapterId]);
 
@@ -188,9 +239,7 @@ function SubchapterEditPage() {
   };
 
   const handleDeleteSubchapter = async (subchapterId: number) => {
-    if (!confirm('Вы уверены, что хотите удалить эту подглаву?')) {
-      return;
-    }
+    if (!confirm('Вы уверены, что хотите удалить эту подглаву?')) return;
     try {
       await coursesApi.deleteSubchapter(subchapterId);
       const nextSubchapters = subchapters.filter((s) => s.id !== subchapterId);
@@ -289,17 +338,19 @@ function SubchapterEditPage() {
       if (currentBlock.type === 'test') {
         const payload = parseQuizPayload(currentBlock.answer) || quizPayloads.get(blockId);
         if (!payload) {
-          toast.error('Добавьте варианты ответов для теста');
+          toast.error('Добавьте вопросы для теста');
           return;
         }
-        const nonEmptyOptions = payload.options.filter((opt) => opt.text.trim().length > 0);
-        if (nonEmptyOptions.length < 2) {
-          toast.error('Для теста нужно минимум 2 заполненных варианта');
-          return;
-        }
-        if (!nonEmptyOptions.some((opt) => opt.isCorrect)) {
-          toast.error('Отметьте хотя бы один правильный ответ');
-          return;
+        for (const q of payload.questions) {
+          const nonEmptyOptions = q.options.filter((opt) => opt.text.trim().length > 0);
+          if (nonEmptyOptions.length < 2) {
+            toast.error('Для каждого вопроса нужно минимум 2 заполненных варианта');
+            return;
+          }
+          if (!nonEmptyOptions.some((opt) => opt.isCorrect)) {
+            toast.error('Отметьте хотя бы один правильный ответ для каждого вопроса');
+            return;
+          }
         }
       }
       if (currentBlock.type === 'task') {
@@ -329,9 +380,7 @@ function SubchapterEditPage() {
   };
 
   const handleDeleteContentBlock = async (blockId: number, subchapterId: number) => {
-    if (!confirm('Вы уверены, что хотите удалить этот блок контента?')) {
-      return;
-    }
+    if (!confirm('Вы уверены, что хотите удалить этот блок контента?')) return;
     try {
       await coursesApi.deleteContentBlock(blockId);
       setContentBlocksMap(prev => {
@@ -352,6 +401,44 @@ function SubchapterEditPage() {
     ? contentBlocksMap.get(selectedSubchapterId) || []
     : [];
 
+  // Reusable subchapters list
+  const SubchaptersList = ({ isMobile = false }: { isMobile?: boolean }) => (
+    <div className={`flex flex-wrap gap-2 ${isMobile ? '' : ''}`}>
+      {subchapters.length === 0 ? (
+        <div className="text-sm text-muted-foreground w-full">
+          Нет подглав. Добавьте первую подглаву.
+        </div>
+      ) : (
+        subchapters.map((subchapter, index) => {
+          const isActive = subchapter.id === selectedSubchapterId;
+          const blockCount = (contentBlocksMap.get(subchapter.id) || []).length;
+          return (
+            <button
+              key={subchapter.id}
+              type="button"
+              onClick={() => {
+                setSelectedSubchapterId(subchapter.id);
+                if (isMobile) setIsMobileSubchaptersOpen(false);
+              }}
+              className={`text-left border rounded-lg p-2.5 transition-colors min-w-[140px] flex-1 cursor-pointer ${
+                isActive 
+                  ? 'border-primary bg-primary/5' 
+                  : 'hover:bg-muted/40'
+              }`}
+            >
+              <div className="font-medium text-sm truncate">
+                {index + 1}. {subchapter.title || 'Без названия'}
+              </div>
+              <div className="text-xs text-muted-foreground mt-0.5">
+                Блоков: {blockCount}
+              </div>
+            </button>
+          );
+        })
+      )}
+    </div>
+  );
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -370,96 +457,121 @@ function SubchapterEditPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <Header />
-      <MenuSidebar />
-      <div className="mt-[4em] lg:ml-[100px] md:ml-[100px] sm:ml-0">
-        <main className="max-w-7xl mx-auto px-8 pb-12">
-          <div className="flex items-center justify-between mb-6">
-            <Button
-              variant="ghost"
-              onClick={() => navigate(`/courses/${courseId}/manage`)}
-              className="flex items-center gap-2"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Назад к редактированию курса
-            </Button>
-          </div>
-
-          <div className="bg-card rounded-lg border p-6">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-2xl font-semibold">Редактирование подглав</h2>
-              <Button
-                onClick={handleAddSubchapter}
-                className="flex items-center gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                Добавить подглаву
-              </Button>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-              <div className="lg:col-span-4 border rounded-lg p-4 h-fit">
-                <h3 className="text-sm font-semibold text-muted-foreground mb-3">Подглавы</h3>
-                {subchapters.length === 0 ? (
-                  <div className="text-sm text-muted-foreground">
-                    Нет подглав. Добавьте первую подглаву.
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    {subchapters.map((subchapter, index) => {
-                      const isActive = subchapter.id === selectedSubchapterId;
-                      const blockCount = (contentBlocksMap.get(subchapter.id) || []).length;
-                      return (
-                        <button
-                          key={subchapter.id}
-                          type="button"
-                          onClick={() => setSelectedSubchapterId(subchapter.id)}
-                          className={`w-full text-left border rounded-lg p-3 transition-colors ${
-                            isActive ? 'border-primary bg-primary/5' : 'hover:bg-muted/40'
-                          }`}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <div className="font-medium text-sm truncate">
-                              {index + 1}. {subchapter.title || 'Без названия'}
-                            </div>
-                            <ChevronRight className="w-4 h-4 text-muted-foreground" />
-                          </div>
-                          <div className="text-xs text-muted-foreground mt-1">
-                            Блоков контента: {blockCount}
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+      <div className="px-4 sm:px-6 lg:px-[20px] mb-5">
+        <main>
+          {/* Layout: content left, sidebar right */}
+          <div className="flex flex-col lg:flex-row gap-5">
+            {/* Main content area - on LEFT */}
+            <div className="flex-1 min-w-0 bg-white rounded-xl shadow p-4">
+              {/* Header */}
+              <div className="flex mb-6">
+                <Button
+                  variant="ghost"
+                  onClick={() => navigate(`/courses/${courseId}/manage`)}
+                  className="flex items-center pl-0 gap-2 cursor-pointer"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  Назад к редактированию курса
+                </Button>
               </div>
 
-              <div className="lg:col-span-8 border rounded-lg p-5">
-                {selectedSubchapter ? (
-                  <div className="space-y-5">
-                    <div className="text-right">
-                      <div className="text-xs uppercase tracking-wide text-muted-foreground mb-1">
-                        Редактируемая глава
-                      </div>
-                      <div className="text-sm font-semibold">{chapterTitle}</div>
-                    </div>
+              {/* Title */}
+              <div className="mb-4">
+              <h2 className="text-xl font-semibold text-gray-800">
+                  Редактирование главы{' '}
+                  <span className="inline-block px-2 py-1 text-sm bg-purple text-white font-semibold rounded-xl border-2 border-purple">
+                  {chapterTitle}
+                  </span>
+              </h2>
+              </div>
 
-                    <div className="border rounded-lg p-4">
-                      <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
-                        <div className="md:col-span-4">
-                          <Label className="text-sm mb-2">Название подглавы</Label>
-                          <Input
-                            value={selectedSubchapter.title}
-                            onChange={(e) =>
-                              handleSubchapterFieldChange(selectedSubchapter.id, {
-                                title: e.target.value,
-                              })
-                            }
-                            placeholder="Название подглавы"
-                          />
-                        </div>
-                        <div className="md:col-span-2">
-                          <Label className="text-sm mb-2">Порядок</Label>
+              {selectedSubchapter ? (
+                <div className="space-y-5">
+                  {/* Subchapter settings - Desktop: inline layout */}
+                  <div className="border rounded-lg p-4">
+                    {/* Desktop: all fields + buttons in one row */}
+                    <div className="hidden md:flex items-end gap-3 flex-wrap">
+                      <div className="flex-1 min-w-[200px]">
+                        <Label className="text-sm mb-1 block">Название подглавы</Label>
+                        <Input
+                          value={selectedSubchapter.title}
+                          onChange={(e) =>
+                            handleSubchapterFieldChange(selectedSubchapter.id, {
+                              title: e.target.value,
+                            })
+                          }
+                          placeholder="Название подглавы"
+                          className="bg-white"
+                        />
+                      </div>
+                      <div className="w-24">
+                        <Label className="text-sm mb-1 block">Порядок</Label>
+                        <Input
+                          type="number"
+                          value={selectedSubchapter.order}
+                          onChange={(e) =>
+                            handleSubchapterFieldChange(selectedSubchapter.id, {
+                              order: Number(e.target.value) || 1,
+                            })
+                          }
+                          className="bg-white text-center"
+                        />
+                      </div>
+                      <div className="flex items-center gap-2 pt-5">
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                variant="destructive"
+                                size="icon"
+                                onClick={() => handleDeleteSubchapter(selectedSubchapter.id)}
+                                className="cursor-pointer p-1 rounded-md hover:bg-destructive/10"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" align="end" className="max-w-[200px] bg-white">
+                              <p>Удалить подглаву</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <Button
+                                onClick={() => handleSaveSubchapter(selectedSubchapter.id)}
+                                disabled={!dirtySubchapters.has(selectedSubchapter.id)}
+                                className="cursor-pointer p-1 rounded-md hover:bg-primary/10"
+                              >
+                                <Save className="w-4 h-4" />
+                              </Button>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" align="end" className="max-w-[200px] bg-white">
+                              <p>Сохранить подглаву</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      </div>
+                    </div>
+                    
+                    {/* Mobile: stacked layout */}
+                    <div className="md:hidden space-y-3">
+                      <div>
+                        <Label className="text-sm mb-1 block">Название подглавы</Label>
+                        <Input
+                          value={selectedSubchapter.title}
+                          onChange={(e) =>
+                            handleSubchapterFieldChange(selectedSubchapter.id, {
+                              title: e.target.value,
+                            })
+                          }
+                          placeholder="Название подглавы"
+                          className="bg-white"
+                        />
+                      </div>
+                      <div className="flex items-end gap-2">
+                        <div className="flex-1">
+                          <Label className="text-sm mb-1 block">Порядок</Label>
                           <Input
                             type="number"
                             value={selectedSubchapter.order}
@@ -468,88 +580,156 @@ function SubchapterEditPage() {
                                 order: Number(e.target.value) || 1,
                               })
                             }
+                            className="bg-white text-center"
                           />
                         </div>
-                      </div>
-                      <div className="flex items-center justify-end gap-2 mt-4">
-                        <Button
-                          variant="destructive"
-                          onClick={() => handleDeleteSubchapter(selectedSubchapter.id)}
-                        >
-                          <Trash2 className="w-4 h-4 mr-2" />
-                          Удалить подглаву
-                        </Button>
-                        <Button
-                          onClick={() => handleSaveSubchapter(selectedSubchapter.id)}
-                          disabled={!dirtySubchapters.has(selectedSubchapter.id)}
-                        >
-                          <Save className="w-4 h-4 mr-2" />
-                          Сохранить подглаву
-                        </Button>
+                        <div className="flex items-center gap-2 pt-5">
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  variant="destructive"
+                                  size="icon"
+                                  onClick={() => handleDeleteSubchapter(selectedSubchapter.id)}
+                                  className="cursor-pointer p-1 rounded-md hover:bg-destructive/10"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" align="end" className="max-w-[200px] bg-white">
+                                <p>Удалить подглаву</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger asChild>
+                                <Button
+                                  onClick={() => handleSaveSubchapter(selectedSubchapter.id)}
+                                  disabled={!dirtySubchapters.has(selectedSubchapter.id)}
+                                  className="cursor-pointer p-1 rounded-md hover:bg-primary/10"
+                                >
+                                  <Save className="w-4 h-4" />
+                                </Button>
+                              </TooltipTrigger>
+                              <TooltipContent side="top" align="end" className="max-w-[200px] bg-white">
+                                <p>Сохранить подглаву</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
+                        </div>
                       </div>
                     </div>
+                  </div>
 
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between">
-                        <h3 className="text-lg font-semibold">Блоки контента</h3>
-                        <Button
-                          variant="outline"
-                          onClick={() => handleAddContentBlock(selectedSubchapter.id)}
-                          className="flex items-center gap-2"
-                        >
-                          <Plus className="w-4 h-4" />
-                          Добавить блок контента
-                        </Button>
+                  {/* Content blocks */}
+                  <div className="space-y-4">
+                    <div className="flex flex-wrap items-center justify-between gap-3 mb-2">
+                      <h3 className="text-lg font-semibold">Блоки контента</h3>
+                    </div>
+
+                    {selectedContentBlocks.length === 0 ? (
+                      <div className="text-sm text-muted-foreground border rounded-lg p-6 text-center">
+                        Для этой подглавы пока нет контента.
                       </div>
-
-                      {selectedContentBlocks.length === 0 ? (
-                        <div className="text-sm text-muted-foreground border rounded-lg p-6 text-center">
-                          Для этой подглавы пока нет контента.
-                        </div>
-                      ) : (
-                        selectedContentBlocks.map((block, blockIndex) => (
-                          <div key={block.id} className="border rounded-lg p-4 bg-background">
-                            <div className="flex items-start justify-between gap-3 mb-3">
-                              <div className="text-sm text-muted-foreground pt-2">
-                                Блок {blockIndex + 1}
-                              </div>
-                              <Button
-                                variant="destructive"
-                                size="sm"
-                                onClick={() => handleDeleteContentBlock(block.id, selectedSubchapter.id)}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
+                    ) : (
+                      selectedContentBlocks.map((block, blockIndex) => (
+                        <div key={block.id} className="border rounded-lg p-4">
+                          <div className="space-y-3">
+                            {/* Block label - kept separate, not inline */}
+                            <div className="text-sm text-muted-foreground pt-2">
+                              Блок {blockIndex + 1}
                             </div>
-
-                            <div className="space-y-3">
-                              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                <div>
-                                  <Label className="text-sm mb-2">Тип блока</Label>
-                                  <Select
-                                    value={block.type}
-                                    onValueChange={(value: 'theory' | 'task' | 'test') =>
-                                      handleContentBlockFieldChange(block.id, selectedSubchapter.id, {
-                                        type: value,
-                                        answer:
-                                          value === 'test'
-                                            ? serializeQuizPayload(getQuizPayloadForBlock(block))
-                                            : '',
-                                      })
-                                    }
-                                  >
-                                    <SelectTrigger className="bg-white opacity-100">
-                                      <SelectValue />
-                                    </SelectTrigger>
-                                    <SelectContent className="bg-white opacity-100 border shadow-md">
-                                      <SelectItem value="theory">Теория</SelectItem>
-                                      <SelectItem value="task">Задание</SelectItem>
-                                      <SelectItem value="test">Тест</SelectItem>
-                                    </SelectContent>
-                                  </Select>
-                                </div>
-                                <div>
-                                  <Label className="text-sm mb-2">Порядок</Label>
+                            
+                            {/* Desktop: type, order, delete in one row */}
+                            <div className="hidden md:flex items-end gap-3 flex-wrap">
+                              <div className="w-40">
+                                <Label className="text-sm mb-1 block">Тип</Label>
+                                <Select
+                                  value={block.type}
+                                  onValueChange={(value: 'theory' | 'task' | 'test') =>
+                                    handleContentBlockFieldChange(block.id, selectedSubchapter.id, {
+                                      type: value,
+                                      answer:
+                                        value === 'test'
+                                          ? serializeQuizPayload(getQuizPayloadForBlock(block))
+                                          : '',
+                                    })
+                                  }
+                                >
+                                  <SelectTrigger className="bg-white cursor-pointer">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent className="bg-white">
+                                    <SelectItem value="theory" className="cursor-pointer">Теория</SelectItem>
+                                    <SelectItem value="task" className="cursor-pointer">Задание</SelectItem>
+                                    <SelectItem value="test" className="cursor-pointer">Тест</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="w-20">
+                                <Label className="text-sm mb-1 block">Порядок</Label>
+                                <Input
+                                  type="number"
+                                  value={block.order}
+                                  onChange={(e) =>
+                                    handleContentBlockFieldChange(block.id, selectedSubchapter.id, {
+                                      order: Number(e.target.value) || 1,
+                                    })
+                                  }
+                                  className="bg-white text-center"
+                                />
+                              </div>
+                              <div className="pt-5">
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Button
+                                        variant="destructive"
+                                        size="icon"
+                                        onClick={() => handleDeleteContentBlock(block.id, selectedSubchapter.id)}
+                                        className="cursor-pointer p-1 rounded-md hover:bg-destructive/10"
+                                      >
+                                        <Trash2 className="w-4 h-4" />
+                                      </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent side="top" align="end" className="max-w-[200px] bg-white">
+                                      <p>Удалить блок</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
+                              </div>
+                            </div>
+                            
+                            {/* Mobile: stacked layout */}
+                            <div className="md:hidden space-y-3">
+                              <div>
+                                <Label className="text-sm mb-1 block">Тип блока</Label>
+                                <Select
+                                  value={block.type}
+                                  onValueChange={(value: 'theory' | 'task' | 'test') =>
+                                    handleContentBlockFieldChange(block.id, selectedSubchapter.id, {
+                                      type: value,
+                                      answer:
+                                        value === 'test'
+                                          ? serializeQuizPayload(getQuizPayloadForBlock(block))
+                                          : '',
+                                    })
+                                  }
+                                >
+                                  <SelectTrigger className="bg-white cursor-pointer">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent className="bg-white">
+                                    <SelectItem value="theory" className="cursor-pointer">Теория</SelectItem>
+                                    <SelectItem value="task" className="cursor-pointer">Задание</SelectItem>
+                                    <SelectItem value="test" className="cursor-pointer">Тест</SelectItem>
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                              <div className="flex items-end gap-2">
+                                <div className="flex-1">
+                                  <Label className="text-sm mb-1 block">Порядок</Label>
                                   <Input
                                     type="number"
                                     value={block.order}
@@ -558,182 +738,385 @@ function SubchapterEditPage() {
                                         order: Number(e.target.value) || 1,
                                       })
                                     }
+                                    className="bg-white text-center"
                                   />
+                                </div>
+                                <div className="pt-5">
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <Button
+                                          variant="destructive"
+                                          size="icon"
+                                          onClick={() => handleDeleteContentBlock(block.id, selectedSubchapter.id)}
+                                          className="cursor-pointer p-1 rounded-md hover:bg-destructive/10"
+                                        >
+                                          <Trash2 className="w-4 h-4" />
+                                        </Button>
+                                      </TooltipTrigger>
+                                      <TooltipContent side="top" align="end" className="max-w-[200px] bg-white">
+                                        <p>Удалить блок</p>
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
                                 </div>
                               </div>
+                            </div>
 
-                              {block.type !== 'test' && (
-                                <div>
-                                  <Label className="text-sm mb-2">Содержание</Label>
-                                  <RichTextEditor
-                                    value={block.content}
-                                    onChange={(e) =>
-                                      handleContentBlockFieldChange(block.id, selectedSubchapter.id, {
-                                        content: e,
-                                      })
-                                    }
-                                    placeholder="Введите содержание блока"
-                                  />
-                                </div>
-                              )}
+                            {block.type !== 'test' && (
+                              <div>
+                                <Label className="text-sm mb-2 flex items-center gap-2">
+                                  <BookOpen className="w-4 h-4 text-muted-foreground" />
+                                  Содержание
+                                </Label>
+                                <RichTextEditor
+                                  value={block.content}
+                                  onChange={(e) =>
+                                    handleContentBlockFieldChange(block.id, selectedSubchapter.id, {
+                                      content: e,
+                                    })
+                                  }
+                                  placeholder="Введите содержание блока"
+                                />
+                              </div>
+                            )}
 
-                              {block.type === 'task' && (
-                                <div>
-                                  <Label className="text-sm mb-2">Ответ на задание</Label>
-                                  <Input
-                                    value={block.answer || ''}
-                                    onChange={(e) =>
-                                      handleContentBlockFieldChange(block.id, selectedSubchapter.id, {
-                                        answer: e.target.value,
-                                      })
-                                    }
-                                    placeholder="Введите правильный ответ"
-                                    className="bg-white"
-                                  />
-                                </div>
-                              )}
+                            {block.type === 'task' && (
+                              <div>
+                                <Label className="text-sm mb-2">Ответ на задание</Label>
+                                <Input
+                                  value={block.answer || ''}
+                                  onChange={(e) =>
+                                    handleContentBlockFieldChange(block.id, selectedSubchapter.id, {
+                                      answer: e.target.value,
+                                    })
+                                  }
+                                  placeholder="Введите правильный ответ"
+                                  className="bg-white"
+                                />
+                              </div>
+                            )}
 
-                              {block.type === 'test' && (
-                                <div className="border rounded-lg p-3 bg-muted/20 space-y-3">
-                                  <div>
-                                    <Label className="text-sm mb-2">Тип теста</Label>
-                                    <Select
-                                      value={getQuizPayloadForBlock(block).selectionType}
-                                      onValueChange={(value: QuizSelectionType) =>
-                                        updateQuizPayload(block.id, selectedSubchapter.id, (prev) => ({
-                                          ...prev,
-                                          selectionType: value,
-                                          options:
-                                            value === 'single' && prev.options.filter((o) => o.isCorrect).length > 1
-                                              ? prev.options.map((o, i) => ({ ...o, isCorrect: i === 0 ? o.isCorrect : false }))
-                                              : prev.options,
-                                        }))
-                                      }
-                                    >
-                                      <SelectTrigger className="bg-white opacity-100">
-                                        <SelectValue />
-                                      </SelectTrigger>
-                                      <SelectContent className="bg-white opacity-100 border shadow-md">
-                                        <SelectItem value="single">Один правильный ответ</SelectItem>
-                                        <SelectItem value="multiple">Несколько правильных ответов</SelectItem>
-                                      </SelectContent>
-                                    </Select>
-                                  </div>
-
-                                  <div className="space-y-2">
-                                    <Label className="text-sm mb-1">Варианты ответов</Label>
-                                    {getQuizPayloadForBlock(block).options.map((option, optionIndex) => (
-                                      <div key={option.id} className="flex items-center gap-2">
-                                        <button
-                                          type="button"
-                                          onClick={() =>
-                                            updateQuizPayload(block.id, selectedSubchapter.id, (prev) => ({
-                                              ...prev,
-                                              options: prev.options.map((opt) => {
-                                                if (opt.id !== option.id) {
-                                                  return prev.selectionType === 'single'
-                                                    ? { ...opt, isCorrect: false }
-                                                    : opt;
-                                                }
-                                                return {
-                                                  ...opt,
-                                                  isCorrect:
-                                                    prev.selectionType === 'single'
-                                                      ? true
-                                                      : !opt.isCorrect,
-                                                };
-                                              }),
-                                            }))
-                                          }
-                                          className={`w-8 h-8 rounded border flex items-center justify-center transition-colors ${
-                                            option.isCorrect
-                                              ? 'bg-green-500 border-green-500 text-white'
-                                              : 'bg-white border-gray-300 text-gray-400'
-                                          }`}
-                                          title="Отметить как правильный"
-                                        >
-                                          <Check className="w-4 h-4" />
-                                        </button>
-
-                                        <Input
-                                          value={option.text}
-                                          onChange={(e) =>
-                                            updateQuizPayload(block.id, selectedSubchapter.id, (prev) => ({
-                                              ...prev,
-                                              options: prev.options.map((opt) =>
-                                                opt.id === option.id ? { ...opt, text: e.target.value } : opt
-                                              ),
-                                            }))
-                                          }
-                                          placeholder={`Вариант ${optionIndex + 1}`}
-                                          className="bg-white"
-                                        />
-
+                            {block.type === 'test' && (
+                              <div className="bg-muted/20 space-y-4">
+                                {getQuizPayloadForBlock(block).questions.map((question, qIndex) => (
+                                  <div key={question.id} className="space-y-3 p-3 bg-white rounded-md border">
+                                    <div className="flex items-center justify-between">
+                                      <Label className="text-sm font-medium flex items-center gap-2">
+                                        <HelpCircle className="w-4 h-4 text-purple-500" />
+                                        Вопрос {qIndex + 1}
+                                      </Label>
+                                      {getQuizPayloadForBlock(block).questions.length > 1 && (
                                         <Button
                                           type="button"
-                                          variant="outline"
+                                          variant="ghost"
                                           size="sm"
                                           onClick={() =>
                                             updateQuizPayload(block.id, selectedSubchapter.id, (prev) => ({
                                               ...prev,
-                                              options: prev.options.length > 2
-                                                ? prev.options.filter((opt) => opt.id !== option.id)
-                                                : prev.options,
+                                              questions: prev.questions.filter((q) => q.id !== question.id),
                                             }))
                                           }
-                                          disabled={getQuizPayloadForBlock(block).options.length <= 2}
+                                          className="text-destructive hover:text-destructive cursor-pointer"
                                         >
-                                          <Trash2 className="w-4 h-4" />
+                                          <Trash2 className="w-4 h-4 mr-1" />
+                                          Удалить вопрос
                                         </Button>
-                                      </div>
-                                    ))}
+                                      )}
+                                    </div>
+                                    
+                                    <div>
+                                      <Label className="text-sm mb-1 block">Текст вопроса</Label>
+                                      <Input
+                                        value={question.question}
+                                        onChange={(e) =>
+                                          updateQuizPayload(block.id, selectedSubchapter.id, (prev) => ({
+                                            ...prev,
+                                            questions: prev.questions.map((q) =>
+                                              q.id === question.id ? { ...q, question: e.target.value } : q
+                                            ),
+                                          }))
+                                        }
+                                        placeholder="Введите текст вопроса"
+                                        className="bg-white"
+                                      />
+                                    </div>
 
-                                    <Button
-                                      type="button"
-                                      variant="outline"
-                                      onClick={() =>
-                                        updateQuizPayload(block.id, selectedSubchapter.id, (prev) => ({
-                                          ...prev,
-                                          options: [
-                                            ...prev.options,
-                                            { id: crypto.randomUUID(), text: '', isCorrect: false },
-                                          ],
-                                        }))
-                                      }
-                                      className="w-full"
-                                    >
-                                      <Plus className="w-4 h-4 mr-2" />
-                                      Добавить вариант ответа
-                                    </Button>
+                                    <div>
+                                      <Label className="text-sm mb-2">Тип ответа</Label>
+                                      <Select
+                                        value={question.selectionType}
+                                        onValueChange={(value: QuizSelectionType) =>
+                                          updateQuizPayload(block.id, selectedSubchapter.id, (prev) => ({
+                                            ...prev,
+                                            questions: prev.questions.map((q) =>
+                                              q.id === question.id
+                                                ? {
+                                                    ...q,
+                                                    selectionType: value,
+                                                    options:
+                                                      value === 'single' && q.options.filter((o) => o.isCorrect).length > 1
+                                                        ? q.options.map((o, i) => ({ ...o, isCorrect: i === 0 }))
+                                                        : q.options,
+                                                  }
+                                                : q
+                                            ),
+                                          }))
+                                        }
+                                      >
+                                        <SelectTrigger className="bg-white cursor-pointer">
+                                          <SelectValue />
+                                        </SelectTrigger>
+                                        <SelectContent className="bg-white">
+                                          <SelectItem value="single" className="cursor-pointer">Один правильный ответ</SelectItem>
+                                          <SelectItem value="multiple" className="cursor-pointer">Несколько правильных ответов</SelectItem>
+                                        </SelectContent>
+                                      </Select>
+                                    </div>
+
+                                    <div className="space-y-2">
+                                      <Label className="text-sm mb-1">Варианты ответов</Label>
+                                      {question.options.map((option, optionIndex) => (
+                                        <div key={option.id} className="flex flex-wrap items-center gap-2">
+                                          <button
+                                            type="button"
+                                            onClick={() =>
+                                              updateQuizPayload(block.id, selectedSubchapter.id, (prev) => ({
+                                                ...prev,
+                                                questions: prev.questions.map((q) =>
+                                                  q.id === question.id
+                                                    ? {
+                                                        ...q,
+                                                        options: q.options.map((opt) => {
+                                                          if (opt.id !== option.id) {
+                                                            return q.selectionType === 'single'
+                                                              ? { ...opt, isCorrect: false }
+                                                              : opt;
+                                                          }
+                                                          return {
+                                                            ...opt,
+                                                            isCorrect:
+                                                              q.selectionType === 'single'
+                                                                ? true
+                                                                : !opt.isCorrect,
+                                                          };
+                                                        }),
+                                                      }
+                                                    : q
+                                                ),
+                                              }))
+                                            }
+                                            className={`w-8 h-8 rounded border flex items-center justify-center transition-colors flex-shrink-0 cursor-pointer ${
+                                              option.isCorrect
+                                                ? 'bg-purple border-purple text-white'
+                                                : 'bg-background border-border hover:border-primary'
+                                            }`}
+                                            title="Отметить как правильный"
+                                          >
+                                            <Check className="w-4 h-4" />
+                                          </button>
+
+                                          <Input
+                                            value={option.text}
+                                            onChange={(e) =>
+                                              updateQuizPayload(block.id, selectedSubchapter.id, (prev) => ({
+                                                ...prev,
+                                                questions: prev.questions.map((q) =>
+                                                  q.id === question.id
+                                                    ? {
+                                                        ...q,
+                                                        options: q.options.map((opt) =>
+                                                          opt.id === option.id ? { ...opt, text: e.target.value } : opt
+                                                        ),
+                                                      }
+                                                    : q
+                                                ),
+                                              }))
+                                            }
+                                            placeholder={`Вариант ${optionIndex + 1}`}
+                                            className="flex-1 min-w-[120px] bg-white"
+                                          />
+
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() =>
+                                              updateQuizPayload(block.id, selectedSubchapter.id, (prev) => ({
+                                                ...prev,
+                                                questions: prev.questions.map((q) =>
+                                                  q.id === question.id && q.options.length > 2
+                                                    ? { ...q, options: q.options.filter((opt) => opt.id !== option.id) }
+                                                    : q
+                                                ),
+                                              }))
+                                            }
+                                            disabled={question.options.length <= 2}
+                                            className="flex-shrink-0 cursor-pointer"
+                                          >
+                                            <Trash2 className="w-4 h-4" />
+                                          </Button>
+                                        </div>
+                                      ))}
+
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        onClick={() =>
+                                          updateQuizPayload(block.id, selectedSubchapter.id, (prev) => ({
+                                            ...prev,
+                                            questions: prev.questions.map((q) =>
+                                              q.id === question.id
+                                                ? {
+                                                    ...q,
+                                                    options: [
+                                                      ...q.options,
+                                                      { id: crypto.randomUUID(), text: '', isCorrect: false },
+                                                    ],
+                                                  }
+                                                : q
+                                            ),
+                                          }))
+                                        }
+                                        className="w-full cursor-pointer"
+                                      >
+                                        <Plus className="w-4 h-4 mr-2" />
+                                        Добавить вариант
+                                      </Button>
+                                    </div>
                                   </div>
-                                </div>
-                              )}
+                                ))}
 
-                              <div className="flex justify-end">
+                                {/* Add new question button */}
                                 <Button
-                                  onClick={() => handleSaveContentBlock(block.id, selectedSubchapter.id)}
-                                  disabled={!dirtyBlocks.has(block.id)}
+                                  type="button"
+                                  variant="outline"
+                                  onClick={() =>
+                                    updateQuizPayload(block.id, selectedSubchapter.id, (prev) => ({
+                                      ...prev,
+                                      questions: [
+                                        ...prev.questions,
+                                        {
+                                          id: crypto.randomUUID(),
+                                          question: '',
+                                          selectionType: 'single',
+                                          options: [
+                                            { id: 'opt-1', text: '', isCorrect: true },
+                                            { id: 'opt-2', text: '', isCorrect: false },
+                                          ],
+                                        },
+                                      ],
+                                    }))
+                                  }
+                                  className="w-full cursor-pointer"
                                 >
-                                  <Save className="w-4 h-4 mr-2" />
-                                  Сохранить блок
+                                  <Plus className="w-4 h-4 mr-2" />
+                                  Добавить новый вопрос
                                 </Button>
                               </div>
+                            )}
+
+                            <div className="flex justify-end">
+                              <TooltipProvider>
+                                <Tooltip>
+                                  <TooltipTrigger asChild>
+                                    <Button
+                                      onClick={() => handleSaveContentBlock(block.id, selectedSubchapter.id)}
+                                      disabled={!dirtyBlocks.has(block.id)}
+                                      className="cursor-pointer"
+                                    >
+                                      <Save className="w-4 h-4 mr-2" />
+                                      Сохранить блок
+                                    </Button>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="top" align="end" className="max-w-[200px] bg-white">
+                                    <p>Сохранить изменения блока</p>
+                                  </TooltipContent>
+                                </Tooltip>
+                              </TooltipProvider>
                             </div>
                           </div>
-                        ))
-                      )}
-                    </div>
+                        </div>
+                      ))
+                    )}
+
+                    {/* Add block button */}
+                    <button
+                      onClick={() => handleAddContentBlock(selectedSubchapter.id)}
+                      className="w-full border-2 border-dashed border-purple-400 rounded-xl p-6 hover:bg-purple-50 transition-colors flex flex-col items-center justify-center gap-2 cursor-pointer"
+                    >
+                      <div className="w-12 h-12 rounded-full border-2 border-dashed border-primary flex items-center justify-center hover:scale-110">
+                        <Plus className="w-6 h-6 text-purple-500" />
+                      </div>
+                      <span className="text-sm font-medium text-purple-600">Добавить блок контента</span>
+                    </button>
                   </div>
-                ) : (
-                  <div className="text-center py-12 text-muted-foreground">
-                    Выберите подглаву слева для редактирования.
-                  </div>
-                )}
+                </div>
+              ) : (
+                <div className="text-center py-12 text-muted-foreground border rounded-lg">
+                  Выберите подглаву для редактирования.
+                </div>
+              )}
+            </div>
+
+            {/* Desktop sidebar: panel on RIGHT */}
+            <div className="hidden lg:flex flex-col gap-3 w-[300px] flex-shrink-0">
+              {/* Subchapters panel - starts from top of page */}
+              <div className="sticky top-[4em] rounded-xl shadow p-6 bg-white border">
+                <h3 className="text-xl font-semibold text-muted-foreground mb-2">Подглавы</h3>
+                <SubchaptersList />
+                {/* Add subchapter button - below the panel */}
+                <Button
+                  onClick={handleAddSubchapter}
+                  className="flex items-center justify-center gap-2 w-full mt-2 cursor-pointer"
+                >
+                  <Plus className="w-4 h-4" />
+                  Добавить подглаву
+                </Button>
               </div>
             </div>
           </div>
         </main>
       </div>
+
+      {/* Mobile: Floating button */}
+      <div className="lg:hidden fixed bottom-4 right-4 bg-purple text-white border-2 border-purple rounded-lg z-40">
+        <Button
+          onClick={() => setIsMobileSubchaptersOpen(true)}
+          className="flex items-center gap-2 shadow-lg font-semibold cursor-pointer"
+          size="lg"
+        >
+          <List className="w-5 h-5" />
+          Подглавы
+        </Button>
+      </div>
+
+      {/* Mobile modal */}
+      {isMobileSubchaptersOpen && (
+        <div className="lg:hidden fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+          <div 
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm cursor-pointer"
+            onClick={() => setIsMobileSubchaptersOpen(false)}
+          />
+          <div className="relative w-full sm:w-[400px] max-h-[85vh] bg-background rounded-t-2xl sm:rounded-2xl shadow-xl overflow-hidden">
+            <div className="sticky top-0 bg-background border-b px-4 py-3 flex items-center justify-between">
+              <h3 className="font-semibold text-lg">Подглавы</h3>
+              <Button variant="ghost" size="icon" onClick={() => setIsMobileSubchaptersOpen(false)} className="h-8 w-8 cursor-pointer">
+                <X className="w-5 h-5" />
+              </Button>
+            </div>
+            <div className="p-4 overflow-y-auto max-h-[calc(85vh-60px)]">
+              <SubchaptersList isMobile />
+            </div>
+            <div className="sticky bottom-0 bg-background border-t p-4">
+              <Button onClick={handleAddSubchapter} className="w-full flex items-center justify-center gap-2 cursor-pointer">
+                <Plus className="w-4 h-4" />
+                Добавить подглаву
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

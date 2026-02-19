@@ -21,7 +21,7 @@ export default function LectureOutline({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-40 bg-black/25" onClick={onClose}>
+    <div className="fixed inset-0 z-40 bg-grey/25" onClick={onClose}>
       <div
         className="absolute right-5 top-16 w-[min(420px,calc(100vw-2.5rem))] max-h-[calc(100vh-5rem)] overflow-y-auto rounded-2xl border border-[#e6e7f0] bg-white p-4 shadow-2xl"
         onClick={(event) => event.stopPropagation()}

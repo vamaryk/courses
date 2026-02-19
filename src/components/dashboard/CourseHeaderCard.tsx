@@ -1,4 +1,10 @@
 import { Sparkles } from "lucide-react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface CourseHeaderCardProps {
   title: string;
@@ -9,7 +15,7 @@ interface CourseHeaderCardProps {
 
 const CourseHeaderCard = ({ title, description, onTitleChange, onDescriptionChange }: CourseHeaderCardProps) => {
   return (
-    <div className="card-blue animate-fade-in" style={{ animationDelay: "0.1s" }}>
+    <div className="border rounded-xl p-4 bg-white animate-fade-in" style={{ animationDelay: "0.1s" }}>
       <h3 className="text-foreground font-semibold mb-4">Шапка курса</h3>
       
       {/* Course Title Input */}
@@ -25,14 +31,26 @@ const CourseHeaderCard = ({ title, description, onTitleChange, onDescriptionChan
       <div className="relative mb-4">
         <textarea
           placeholder="Введите описание курса..."
-          className="input-field min-h-[120px] resize-none pr-10"
+          className="input-field min-h-[120px] resize-none pr-12"
           rows={4}
           value={description}
           onChange={(e) => onDescriptionChange(e.target.value)}
         />
-        <button className="absolute top-3 right-3 text-primary hover:scale-110 transition-transform">
-          <Sparkles className="w-5 h-5" />
-        </button>
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button 
+                className="absolute top-3 right-4 text-primary hover:scale-110 transition-transform p-1 rounded-md hover:bg-primary/10 cursor-pointer"
+                aria-label="Сгенерировать описание с помощью ИИ"
+              >
+                <Sparkles className="w-5 h-5" />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="top" align="end" className="max-w-[200px] bg-white">
+              <p>Сгенерировать на основе информации в блоке "О чём Ваш курс?"</p>
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
 
       {/* Price Input - пока не используется в API */}

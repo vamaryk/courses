@@ -88,7 +88,7 @@ const FilterContent: React.FC<FilterContentProps> = ({
                                 checked={selectedCategories.includes(cat.id)}
                                 onChange={() => toggleCategory(cat.id)}
                             />
-                            <div className="w-4 h-4 bg-purple/50 rounded-md peer-checked:bg-purple-600 peer-checked:border-purple-600 border-2 border-gray-500 transition-all duration-300 ease-in-out"></div>
+                            <div className="w-4 h-4 bg-purple/50 rounded-md peer-checked:bg-purple peer-checked:border-purple-600 border-2 border-gray-500 transition-all duration-300 ease-in-out"></div>
                                 <div className="absolute opacity-0 w-2 h-2 bg-white rounded-sm left-1 top-1 scale-0 peer-checked:scale-75 peer-checked:opacity-100 transition-all duration-300 delay-100"></div>
                             </div>
                             <span>{cat.label}</span>
@@ -143,7 +143,7 @@ const FilterContent: React.FC<FilterContentProps> = ({
                             }
                         }}
                     />
-                    <div className="w-4 h-4 bg-purple/50 rounded-md peer-checked:bg-purple-600 peer-checked:border-purple-600 border-2 border-gray-500 transition-all duration-300 ease-in-out"></div>
+                    <div className="w-4 h-4 bg-purple/50 rounded-md peer-checked:bg-purple peer-checked:border-purple border-2 border-gray-500 transition-all duration-300 ease-in-out"></div>
                         <div className="absolute opacity-0 w-2 h-2 bg-white rounded-sm left-1 top-1 scale-0 peer-checked:scale-75 peer-checked:opacity-100 transition-all duration-300 delay-100"></div>
                     </div>
                     <span>{level}</span>
@@ -173,7 +173,7 @@ const FilterContent: React.FC<FilterContentProps> = ({
                             }
                             }}
                         />
-                        <div className="w-4 h-4 bg-purple/50 rounded-md peer-checked:bg-purple-600 peer-checked:border-purple-600 border-2 border-gray-500 transition-all duration-300 ease-in-out"></div>
+                        <div className="w-4 h-4 bg-purple/50 rounded-md peer-checked:bg-purple peer-checked:border-purple border-2 border-gray-500 transition-all duration-300 ease-in-out"></div>
                         <div className="absolute opacity-0 w-2 h-2 bg-white rounded-sm left-1 top-1 scale-0 peer-checked:scale-75 peer-checked:opacity-100 transition-all duration-300 delay-100"></div>
                     </div>
                     <span>{lang}</span>
@@ -662,7 +662,7 @@ export default function HomePage() {
             className="absolute top-10 left-20 w-32 h-32 rounded-full bg-gradient-to-r from-purple to-pink blur-xl"
             ></div>
             <div
-            className="absolute top-20 right-20 w-48 h-24 rounded-full bg-gradient-to-r from-pink to-purpleblur-2xl"
+            className="absolute top-20 right-20 w-48 h-24 rounded-full bg-gradient-to-r from-pink to-purple blur-2xl"
             ></div>
             <div
             className="absolute bottom-50 left-1/2 transform -translate-x-1/2 w-40 h-40 rounded-full bg-gradient-to-r from-purple to-pink blur-3xl"
@@ -752,7 +752,7 @@ export default function HomePage() {
                     </div>
                   </div>
                   
-                  <Button asChild className="w-full mt-4 bg-purple-600 text-white font-medium hover:bg-purple-700">
+                  <Button asChild className="w-full mt-4 bg-purple text-white font-medium hover:bg-purple-600">
                     <Link to={`/courses/${course.id}`}>
                       Подробнее
                     </Link>
@@ -989,7 +989,7 @@ export default function HomePage() {
                         onClick={() => goToPage(page as number)}
                         className={`px-2 sm:px-4 py-1.5 sm:py-2 rounded text-sm font-medium transition-all ${
                             currentPage === page
-                            ? 'bg-purple-600 text-white'
+                            ? 'bg-purple text-white'
                             : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
                         }`}
                         >
@@ -1045,7 +1045,7 @@ export default function HomePage() {
             {/* Footer / Action Button */}
             <div className="pt-4 border-t border-gray-200 mt-4">
                 <Button 
-                    className="w-full bg-purple-600 text-white font-medium hover:bg-purple-7000"
+                    className="w-full bg-purple text-white font-medium hover:bg-purple-600"
                     onClick={() => setIsMobileFilterOpen(false)}
                 >
                     Применить фильтры
