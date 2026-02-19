@@ -143,7 +143,7 @@ const FilterContent: React.FC<FilterContentProps> = ({
                             }
                         }}
                     />
-                    <div className="w-4 h-4 bg-purple/50 rounded-md peer-checked:bg-purple peer-checked:border-purple border-2 border-gray-500 transition-all duration-300 ease-in-out"></div>
+                    <div className="w-4 h-4 bg-purple/50 rounded-md peer-checked:bg-purple peer-checked:border-purple-600 border-2 border-gray-500 transition-all duration-300 ease-in-out"></div>
                         <div className="absolute opacity-0 w-2 h-2 bg-white rounded-sm left-1 top-1 scale-0 peer-checked:scale-75 peer-checked:opacity-100 transition-all duration-300 delay-100"></div>
                     </div>
                     <span>{level}</span>
@@ -173,7 +173,7 @@ const FilterContent: React.FC<FilterContentProps> = ({
                             }
                             }}
                         />
-                        <div className="w-4 h-4 bg-purple/50 rounded-md peer-checked:bg-purple peer-checked:border-purple border-2 border-gray-500 transition-all duration-300 ease-in-out"></div>
+                        <div className="w-4 h-4 bg-purple/50 rounded-md peer-checked:bg-purple peer-checked:border-purple-600 border-2 border-gray-500 transition-all duration-300 ease-in-out"></div>
                         <div className="absolute opacity-0 w-2 h-2 bg-white rounded-sm left-1 top-1 scale-0 peer-checked:scale-75 peer-checked:opacity-100 transition-all duration-300 delay-100"></div>
                     </div>
                     <span>{lang}</span>
@@ -721,7 +721,7 @@ export default function HomePage() {
               >
                 <div className="aspect-video bg-gradient-to-r from-purple-100 to-blue-100 relative p-4">
                   <div className="absolute top-2 left-2">
-                    <span className="px-2 py-1 bg-background/80 backdrop-blur-sm text-purple-700 text-xs font-medium rounded-full">
+                    <span className="px-2 py-1 bg-background/80 backdrop-blur-sm text-purple-600 text-xs font-medium rounded-full">
                       {course.is_public ? 'Публичный' : 'Приватный'}
                     </span>
                   </div>

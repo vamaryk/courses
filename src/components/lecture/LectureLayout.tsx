@@ -38,7 +38,7 @@ export default function LectureLayout({
       <main className="px-4 sm:px-6 lg:px-[20px]">
         <div className="max-w-[1920px]">
           <div 
-            className="w-full px-6 py-4 md:px-4 md:py-5 rounded-xl mb-1 md:mb-2 transition-all duration-300"
+            className="w-full py-4 px-4 md:py-5 rounded-xl mb-1 md:mb-2 transition-all duration-300"
             style={{ background: gradientStyle }}
           >
             <div className="mb-2 text-[15px] text-[#3c3d50]">{breadcrumb}</div>
