@@ -1,6 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { coursesApi, type Course, type Chapter, type Subchapter, type ContentBlock } from '@/shared/api/courses';
+import { getCoverImageUrl } from '@/shared/utils/courseTransform';
 import HeroHeaderUser from "@/components/dashboard/HeroHeaderUser";
 import CourseModulesUser from "@/components/dashboard/CourseModulesUser";
 import CourseStats from "@/components/dashboard/CourseStats";
@@ -230,6 +231,7 @@ export default function CourseDetailPageUser({ onEnrolled }: CourseDetailPageUse
             courseTitle={course.title}
             courseDescription={course.description || ''}
             authorName={course.instructor_name || course.author?.name || 'Неизвестный автор'}
+            coverImage={getCoverImageUrl(course.cover_image)}
             stats={{
               totalLectures: theoryCount,
               totalPrograms: 0,

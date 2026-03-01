@@ -1,0 +1,196 @@
+Metadata-Version: 2.4
+Name: gollossary
+Version: 0.1.0
+Summary: Локальный анализатор образовательных материалов с использованием LLM
+Author: Developer
+License: MIT
+Keywords: llm,education,glossary,mindmap,local
+Classifier: Development Status :: 3 - Alpha
+Classifier: Intended Audience :: Education
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Programming Language :: Python :: 3.11
+Classifier: Programming Language :: Python :: 3.12
+Requires-Python: >=3.11
+Description-Content-Type: text/markdown
+Requires-Dist: llama-cpp-python>=0.2.0
+Requires-Dist: pydantic>=2.0
+Requires-Dist: tenacity>=8.0
+Requires-Dist: rich>=13.0
+Requires-Dist: typer>=0.9
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"
+Requires-Dist: pytest-cov>=4.0; extra == "dev"
+
+# Gollossary
+
+**Локальный анализатор образовательных материалов** на основе LLM.
+
+Приложение анализирует учебные материалы (лекции, транскрипты) и генерирует структурированный глоссарий с визуализацией в виде Mind Map.
+
+## 🚀 Особенности
+
+- ✅ **Полностью локальная работа** — без облачных API
+- ✅ **Поддержка GGUF моделей** (Mistral, Llama и др.)
+- ✅ **Извлечение терминов** с определениями и примерами
+- ✅ **Построение связей** между терминами (иерархия)
+- ✅ **Экспорт в JSON и Mermaid** диаграммы
+- ✅ **GPU и CPU режимы**
+
+## 📋 Требования
+
+- Python 3.11+
+- 8+ GB RAM (для 7B моделей)
+- CUDA (опционально, для GPU-ускорения)
+
+## 📥 Установка
+
+### 1. Клонирование и установка зависимостей
+
+```bash
+cd d:\lms_work\gollossary_f_vol_
+
+# Создание виртуального окружения
+python -m venv venv
+venv\Scripts\activate  # Windows
+
+# Установка зависимостей
+pip install -r requirements.txt
+```
+
+### 2. Скачивание модели
+
+Скачайте GGUF модель, например **Mistral 7B Instruct**:
+
+```bash
+# Вариант 1: Через huggingface-hub
+pip install huggingface-hub
+huggingface-cli download TheBloke/Mistral-7B-Instruct-v0.2-GGUF mistral-7b-instruct-v0.2.Q4_K_M.gguf --local-dir ./models
+
+# Вариант 2: Скачать вручную
+# https://huggingface.co/TheBloke/Mistral-7B-Instruct-v0.2-GGUF
+```
+
+Рекомендуемые квантизации:
+- `Q4_K_M` — баланс качества и скорости (~4.4 GB)
+- `Q5_K_M` — лучше качество (~5.1 GB)
+
+### 3. Для GPU (опционально)
+
+Если хотите использовать CUDA:
+
+```bash
+pip uninstall llama-cpp-python
+CMAKE_ARGS="-DLLAMA_CUBLAS=on" pip install llama-cpp-python --force-reinstall --no-cache-dir
+```
+
+## 🎯 Использование
+
+### Базовый анализ
+
+```bash
+# Анализ лекции
+python -m gollossary data/examples/sample_lecture.md -m models/mistral-7b-instruct-v0.2.Q4_K_M.gguf
+
+# С указанием выходной директории
+python -m gollossary lecture.md -m model.gguf -o ./results
+
+# Только JSON
+python -m gollossary lecture.md -m model.gguf -f json
+```
+
+### С GPU ускорением
+
+```bash
+python -m gollossary lecture.md -m model.gguf --gpu
+```
+
+### Все параметры
+
+```
+Usage: gollossary [OPTIONS] INPUT_PATH
+
+Arguments:
+  INPUT_PATH    Путь к файлу или директории
+
+Options:
+  -m, --model PATH        Путь к GGUF модели [required]
+  -o, --output PATH       Директория для результатов [default: ./output]
+  -f, --format TEXT       Формат: json, mermaid, all [default: all]
+  --gpu                   Использовать GPU
+  -c, --context INTEGER   Размер контекста [default: 4096]
+  --max-terms INTEGER     Максимум терминов [default: 50]
+  --lang TEXT             Язык: ru, en [default: ru]
+```
+
+## 📤 Результаты
+
+После анализа в директории `output/` создаются:
+
+### glossary.json
+
+```json
+{
+  "topic": "Машинное обучение",
+  "terms": [
+    {
+      "term": "Нейронная сеть",
+      "definition": "Модель, имитирующая работу биологических нейронов",
+      "example": "model = nn.Sequential(...)",
+      "image_description": "Схема с узлами, соединёнными в слои",
+      "relations": {
+        "parent": null,
+        "children": ["Персептрон", "CNN"]
+      }
+    }
+  ]
+}
+```
+
+### mindmap.mmd (Mermaid)
+
+```mermaid
+mindmap
+  root((Машинное обучение))
+    Нейронная сеть
+      Персептрон
+      CNN
+    Функция потерь
+```
+
+Вставьте содержимое в [Mermaid Live Editor](https://mermaid.live) для визуализации.
+
+## 📁 Структура проекта
+
+```
+gollossary_f_vol_/
+├── src/gollossary/
+│   ├── main.py           # CLI
+│   ├── config.py         # Конфигурация
+│   ├── models/           # Pydantic модели (Term, MindMap)
+│   ├── llm/              # LLM абстракция
+│   ├── ingest/           # Загрузчики файлов
+│   ├── analysis/         # Извлечение тем и терминов
+│   ├── generation/       # Построение связей
+│   └── export/           # JSON, Mermaid экспорт
+├── data/examples/        # Примеры
+├── output/               # Результаты
+└── requirements.txt
+```
+
+## 🔧 Расширение
+
+### Добавление нового LLM провайдера
+
+1. Создайте класс, наследующий `BaseLLM`
+2. Реализуйте методы `generate()`, `stream()`, `count_tokens()`
+3. Подключите в `main.py`
+
+### Добавление нового формата вывода
+
+1. Создайте экспортёр в `export/`
+2. Реализуйте метод `export(mindmap, path)`
+3. Добавьте в CLI
+
+## 📄 Лицензия
+
+MIT

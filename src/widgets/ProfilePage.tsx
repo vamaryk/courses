@@ -34,7 +34,7 @@ export default function ProfilePage() {
   useEffect(() => {
     const fetchUserProfile = async () => {
       try {
-        const apiUrl = import.meta.env.VITE_API_URL || '/api';
+        const apiUrl = import.meta.env.VITE_API_URL || '';
         const response = await fetch(`${apiUrl}/api/auth/me`, {
           credentials: 'include',
         });
@@ -59,7 +59,7 @@ export default function ProfilePage() {
   useEffect(() => {
     const fetchTasks = async () => {
       try {
-        const apiUrl = import.meta.env.VITE_API_URL || '/api';
+        const apiUrl = import.meta.env.VITE_API_URL || '';
         const response = await fetch(`${apiUrl}/api/tasks`, {
           credentials: 'include',
         });

@@ -1,6 +1,47 @@
 import express from 'express';
 import pool from '../db.js';
 import { authenticateSession, optionalAuthenticateSession } from '../middleware/auth.js';
+import multer from 'multer';
+import path from 'path';
+import fs from 'fs/promises';
+import { fileURLToPath } from 'url';
+import { dirname } from 'path';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const coursesMediaRoot = path.join(__dirname, '..', 'data', 'courses');
+
+async function ensureCourseDir(courseId) {
+  const dir = path.join(coursesMediaRoot, String(courseId));
+  await fs.mkdir(dir, { recursive: true });
+  return dir;
+}
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: async (req, file, cb) => {
+      try {
+        const courseId = req.params.id || req.params.courseId;
+        const dir = await ensureCourseDir(courseId);
+        cb(null, dir);
+      } catch (err) {
+        cb(err);
+      }
+    },
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname);
+      const prefix = req.query.type === 'cover' ? 'cover' : Date.now().toString();
+      cb(null, `${prefix}${ext}`);
+    },
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = /jpeg|jpg|png|gif|webp|svg/;
+    const extOk = allowed.test(path.extname(file.originalname).toLowerCase());
+    const mimeOk = allowed.test(file.mimetype.split('/')[1]);
+    cb(null, extOk || mimeOk);
+  },
+});
 
 const router = express.Router();
 
@@ -93,6 +134,7 @@ router.post('/', authenticateSession, async (req, res) => {
   }
 
   try {
+    const price = req.body.price != null ? Number(req.body.price) : 0;
     const result = await pool.query(
       `INSERT INTO courses (
         title, 
@@ -100,6 +142,7 @@ router.post('/', authenticateSession, async (req, res) => {
         is_public, 
         author_id, 
         cover_image, 
+        price,
         tags, 
         specialty, 
         target_audience, 
@@ -108,13 +151,14 @@ router.post('/', authenticateSession, async (req, res) => {
         course_tools,
         certificate_text,
         job_title
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13) RETURNING *`,
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
       [
         title, 
         description || null, 
         isPublic || false, 
         authorId, 
         coverImage || null, 
+        Math.max(0, price),
         tags || [], 
         specialty || null, 
         targetAudience || null, 
@@ -125,10 +169,45 @@ router.post('/', authenticateSession, async (req, res) => {
         jobTitle || null
       ]
     );
+
+    await ensureCourseDir(result.rows[0].id);
     res.status(201).json(result.rows[0]);
   } catch (error) {
     console.error('Error creating course:', error.message);
     res.status(500).json({ error: 'Failed to create course' });
+  }
+});
+
+// POST /api/courses/:id/upload - Upload media file for a course
+router.post('/:id/upload', authenticateSession, upload.single('file'), async (req, res) => {
+  const { id } = req.params;
+  const authorId = req.user.userId;
+
+  try {
+    if (!(await isCourseAuthor(id, authorId))) {
+      if (req.file) {
+        await fs.unlink(req.file.path).catch(() => {});
+      }
+      return res.status(403).json({ error: 'You are not authorized to upload files to this course' });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    const fileUrl = `/course-media/${id}/${req.file.filename}`;
+
+    if (req.query.type === 'cover') {
+      await pool.query(
+        'UPDATE courses SET cover_image = $1, updated_at = NOW() WHERE id = $2',
+        [fileUrl, id]
+      );
+    }
+
+    res.status(200).json({ url: fileUrl, filename: req.file.filename });
+  } catch (error) {
+    console.error(`Error uploading file for course ${id}:`, error.message);
+    res.status(500).json({ error: 'Failed to upload file' });
   }
 });
 
@@ -458,6 +537,7 @@ router.put('/:id', ensureBaseUrl('/api/courses'), authenticateSession, async (re
     description, 
     isPublic, 
     coverImage, 
+    price,
     tags, 
     specialty, 
     targetAudience, 
@@ -468,6 +548,7 @@ router.put('/:id', ensureBaseUrl('/api/courses'), authenticateSession, async (re
     jobTitle
   } = req.body;
   const authorId = req.user.userId;
+  const priceNum = price != null ? Math.max(0, Number(price)) : undefined;
 
   try {
     if (!(await isCourseAuthor(id, authorId))) {
@@ -480,21 +561,23 @@ router.put('/:id', ensureBaseUrl('/api/courses'), authenticateSession, async (re
         description = $2, 
         is_public = $3, 
         cover_image = $4, 
-        tags = $5, 
-        specialty = $6, 
-        target_audience = $7, 
-        about_course = $8, 
-        course_skills = $9,
-        course_tools = $10,
-        certificate_text = $11,
-        job_title = $12,
+        price = COALESCE($5, price),
+        tags = $6, 
+        specialty = $7, 
+        target_audience = $8, 
+        about_course = $9, 
+        course_skills = $10,
+        course_tools = $11,
+        certificate_text = $12,
+        job_title = $13,
         updated_at = NOW() 
-      WHERE id = $13 RETURNING *`,
+      WHERE id = $14 RETURNING *`,
       [
         title, 
         description, 
         isPublic, 
         coverImage, 
+        priceNum,
         tags, 
         specialty, 
         targetAudience, 

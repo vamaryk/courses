@@ -8,14 +8,17 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@/components/ui/carousel";
+import { getCoverImageUrl } from "@/shared/utils/courseTransform";
 
 const API_URL = import.meta.env.VITE_API_URL || '';
+const defaultCourseImage = 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=400&h=300&fit=crop';
 
 interface CreatedCourse {
   id: string | number;
   title: string;
   description: string;
-  image: string;
+  cover_image?: string | null;
+  image?: string;
   favoritesCount: number;
   studentsCount: number;
   is_public: boolean;
@@ -124,7 +127,13 @@ const CrCourses = () => {
           {/* Created courses */}
           {courses.map((course) => (
             <CarouselItem key={course.id} className="pl-1 md:pl-2 basis-1/2 lg:basis-1/5">
-              <CrCourseCard {...course} />
+              <CrCourseCard
+                id={course.id}
+                title={course.title}
+                image={getCoverImageUrl(course.cover_image || course.image) || defaultCourseImage}
+                favoritesCount={course.favoritesCount || 0}
+                studentsCount={course.studentsCount || 0}
+              />
             </CarouselItem>
           ))}
         </CarouselContent>

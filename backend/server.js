@@ -29,15 +29,22 @@ pool.query('SELECT NOW()', (err, res) => {
 });
 
 import express from 'express';
+import { createServer } from 'http';
+import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { fileURLToPath } from 'url';
 import { dirname } from 'path';
 import path from 'path';
+import fs from 'fs/promises';
+import { setupSocketController } from './socket/socketController.js';
 
 // Get the current file and directory paths
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
+const chatsMediaRoot = path.join(__dirname, 'data', 'chats');
+const coursesMediaRoot = path.join(__dirname, 'data', 'courses');
+const achievementsMediaRoot = path.join(__dirname, 'data', 'achievements');
 
 // Import routes
 import authRoutes from './routes/auth.js';
@@ -45,17 +52,40 @@ import userRoutes from './routes/users.js';
 import courseRoutes from './routes/courses.js';
 import calendarRoutes from './routes/calendar.js';
 import statisticsRoutes from './routes/statistics.js';
+import friendsRoutes from './routes/friends.js';
+import groupsRoutes from './routes/groups.js';
 import { authenticateSession, authorizeRole } from './middleware/auth.js';
 
 const app = express();
+const httpServer = createServer(app);
 const port = process.env.PORT || 3002;
+
+// Allowed origins shared between CORS middleware and Socket.IO
+const allowedOrigins = ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000', 'http://localhost:3002', 'null'];
 
 console.log('🔧 [SERVER] Конфигурация сервера:');
 console.log('🔧 [SERVER] PORT:', port);
 console.log('🔧 [SERVER] NODE_ENV:', process.env.NODE_ENV || 'development');
 
-// CORS Configuration
-const allowedOrigins = ['http://localhost:5173', 'http://localhost:5174', 'http://localhost:3000', 'http://localhost:3002', 'null'];
+// ─── Socket.IO ────────────────────────────────────────────────────────────────
+const io = new SocketIOServer(httpServer, {
+  cors: {
+    origin: (origin, callback) => {
+      if (!origin || process.env.NODE_ENV === 'development' || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Socket.IO: origin not allowed'));
+      }
+    },
+    credentials: true,
+  },
+  transports: ['websocket', 'polling'],
+});
+
+setupSocketController(io);
+console.log('🔌 [SOCKET.IO] Сервер настроен');
+
+// ─── CORS ─────────────────────────────────────────────────────────────────────
 
 // Configure CORS with dynamic origin handling
 const corsOptions = {
@@ -114,6 +144,12 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
+await fs.mkdir(chatsMediaRoot, { recursive: true });
+await fs.mkdir(coursesMediaRoot, { recursive: true });
+await fs.mkdir(achievementsMediaRoot, { recursive: true });
+app.use('/chat-media', express.static(chatsMediaRoot));
+app.use('/course-media', express.static(coursesMediaRoot));
+app.use('/achievement-media', express.static(achievementsMediaRoot));
 
 console.log('🔗 [SERVER] Middleware настроены');
 
@@ -123,7 +159,9 @@ app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/courses', courseRoutes);
 app.use('/api/calendar', calendarRoutes);
-app.use('/api/statistics', statisticsRoutes); // Mount new calendar routes
+app.use('/api/statistics', statisticsRoutes);
+app.use('/api/friends', friendsRoutes);
+app.use('/api/groups', groupsRoutes);
 // Подключаем роуты для глав и подглав без префикса /courses
 app.use('/api/chapters', courseRoutes);
 app.use('/api/subchapters', courseRoutes);
@@ -158,17 +196,19 @@ app.use((err, req, res, next) => {
   });
 });
 
-// Start the server
-const server = app.listen(port, () => {
+// Start the HTTP server (Express + Socket.IO share the same port)
+httpServer.listen(port, '0.0.0.0', () => {
   console.log('🎉 [SERVER] Сервер успешно запущен!');
   console.log(`🚀 [SERVER] Доступен по адресу: http://localhost:${port}`);
+  console.log(`🌐 [SERVER] Доступен в локальной сети на порту ${port}`);
   console.log(`📚 [SERVER] API документация: http://localhost:${port}/api`);
+  console.log(`🔌 [SERVER] Socket.IO: ws://localhost:${port}`);
 });
 
 // Graceful shutdown
 process.on('SIGTERM', () => {
   console.log('📴 [SERVER] Получен сигнал SIGTERM, завершение работы...');
-  server.close(() => {
+  httpServer.close(() => {
     console.log('🔒 [SERVER] Сервер закрыт');
     pool.end(() => {
       console.log('💾 [SERVER] Подключение к БД закрыто');

@@ -3,6 +3,7 @@ export const Path = {
     Calendar: '/calendar',
     Courses: '/courses',
     Gloassary: '/glossary',
+    VirtualClass: '/virtual-class',
     Profile: '/profile',
     Settings: '/settings',
     Auth: '/auth'

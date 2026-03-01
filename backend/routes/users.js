@@ -276,8 +276,9 @@ router.get('/profile/courses', authenticateSession, async (req, res) => {
     );
 
     const courses = result.rows.map(course => ({
+      id: course.id,
       title: course.title,
-      image: course.image || 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=400&h=300&fit=crop',
+      image: course.image || null,
       progress: Math.round(parseFloat(course.progress) || 0),
       isCompleted: course.completion_status === 'completed'
     }));

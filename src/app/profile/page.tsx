@@ -25,7 +25,7 @@ export default function ProfilePage() {
   useEffect(() => {
     const fetchUserProfile = async () => {
       try {
-        const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3002';
+        const apiUrl = import.meta.env.VITE_API_URL || '';
         const response = await fetch(`${apiUrl}/api/auth/me`, {
           credentials: 'include',
         });
@@ -50,7 +50,7 @@ export default function ProfilePage() {
 
   const handleLogout = async () => {
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3002';
+      const apiUrl = import.meta.env.VITE_API_URL || '';
       const response = await fetch(`${apiUrl}/api/auth/signout`, {
         method: 'POST',
         credentials: 'include',
@@ -75,7 +75,7 @@ export default function ProfilePage() {
     setError(null);
 
     try {
-      const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:3002';
+      const apiUrl = import.meta.env.VITE_API_URL || '';
       const response = await fetch(`${apiUrl}/api/auth/profile`, {
         method: 'PUT',
         headers: {

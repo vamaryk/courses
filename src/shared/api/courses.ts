@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = import.meta.env.VITE_API_URL || '/api';
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 export interface Course {
   id: number;
@@ -67,6 +67,7 @@ export interface CreateCourseData {
   description: string;
   isPublic: boolean;
   coverImage?: string | null;
+  price?: number;
   tags?: string[];
   specialty?: string | null;
   targetAudience?: string | null;
@@ -82,6 +83,7 @@ export interface UpdateCourseData {
   description: string;
   isPublic: boolean;
   coverImage?: string | null;
+  price?: number;
   tags?: string[];
   specialty?: string | null;
   targetAudience?: string | null;
@@ -200,6 +202,28 @@ export const coursesApi = {
     const response = await axios.put(`${API_URL}/api/courses/${id}`, data, {
       withCredentials: true,
     });
+    return response.data;
+  },
+
+  async uploadCourseCover(courseId: number, file: File): Promise<{ url: string; filename: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await axios.post(
+      `${API_URL}/api/courses/${courseId}/upload?type=cover`,
+      formData,
+      { withCredentials: true, headers: { 'Content-Type': 'multipart/form-data' } }
+    );
+    return response.data;
+  },
+
+  async uploadCourseMedia(courseId: number, file: File): Promise<{ url: string; filename: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await axios.post(
+      `${API_URL}/api/courses/${courseId}/upload`,
+      formData,
+      { withCredentials: true, headers: { 'Content-Type': 'multipart/form-data' } }
+    );
     return response.data;
   },
 

@@ -1,0 +1,2 @@
+[console_scripts]
+gollossary = gollossary.main:app

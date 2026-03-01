@@ -1,4 +1,4 @@
-import { Home, LucideIcon, Calendar, User, BookOpen, Settings, Globe } from 'lucide-react';
+import { Home, LucideIcon, Calendar, User, BookOpen, Settings, Globe, Users } from 'lucide-react';
 import { Path } from '@/shared/routing/path';
 
 export interface MenuItem {
@@ -12,6 +12,7 @@ export const MenuItems: MenuItem[] = [
     { name: 'Календарь', path: Path.Calendar, icon: Calendar },
     { name: 'Курсы', path: Path.Courses, icon: BookOpen },
     { name: 'Глоссарий', path: Path.Gloassary, icon: Globe },
+    { name: 'Вирт. класс', path: Path.VirtualClass, icon: Users },
     { name: 'Профиль', path: Path.Profile, icon: User },
     { name: 'Настройки', path: Path.Settings, icon: Settings }
 ]

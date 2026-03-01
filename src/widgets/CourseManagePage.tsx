@@ -2,11 +2,13 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import CoverUpload from "@/components/dashboard/CoverUpload";
 import CourseHeaderCard from "@/components/dashboard/CourseHeaderCard";
+import CoursePriceCard from "@/components/dashboard/CoursePriceCard";
 import CategorizationCard from "@/components/dashboard/CategorizationCard";
 import ChaptersCard from "@/components/dashboard/ChaptersCard";
 import OutcomesCard from "@/components/dashboard/OutcomesCard";
 import FooterActions from "@/components/dashboard/FooterActions";
 import { coursesApi, type Course, type CreateCourseData, type UpdateCourseData, type Chapter } from '@/shared/api/courses';
+import { getCoverImageUrl } from '@/shared/utils/courseTransform';
 import { useAuth } from '@/app/providers/AuthProvider';
 import { toast } from 'sonner';
 
@@ -15,6 +17,7 @@ interface CourseFormData {
   description: string;
   isPublic: boolean;
   coverImage: string | null;
+  price: number;
   tags: string[];
   specialty: string | null;
   targetAudience: string | null;
@@ -44,6 +47,7 @@ function CourseManagePage() {
     description: '',
     isPublic: false,
     coverImage: null,
+    price: 0,
     tags: [],
     specialty: null,
     targetAudience: null,
@@ -87,6 +91,7 @@ function CourseManagePage() {
         description: course.description || '',
         isPublic: course.is_public || false,
         coverImage: course.cover_image || null,
+        price: typeof course.price === 'number' ? course.price : 0,
         tags: course.tags || [],
         specialty: course.specialty || null,
         targetAudience: course.target_audience || null,
@@ -131,25 +136,14 @@ function CourseManagePage() {
       setSaving(true);
       setError(null);
 
-      // Upload cover image if there's a new file
-      let coverImageUrl = formData.coverImage;
-      if (coverImageFileRef.current) {
-        // Convert file to base64 for storage
-        coverImageUrl = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            resolve(reader.result as string);
-          };
-          reader.onerror = reject;
-          reader.readAsDataURL(coverImageFileRef.current!);
-        });
-      }
+      const coverFile = coverImageFileRef.current;
 
       const courseData: CreateCourseData | UpdateCourseData = {
         title: formData.title.trim(),
         description: formData.description.trim(),
         isPublic: saveAsDraft ? false : formData.isPublic,
-        coverImage: coverImageUrl,
+        coverImage: coverFile ? formData.coverImage : formData.coverImage,
+        price: formData.price,
         tags: formData.tags,
         specialty: formData.specialty,
         targetAudience: formData.targetAudience,
@@ -162,9 +156,20 @@ function CourseManagePage() {
 
       if (isCreatePage) {
         const newCourse = await coursesApi.createCourse(courseData as CreateCourseData);
+
+        if (coverFile) {
+          try {
+            const uploadResult = await coursesApi.uploadCourseCover(newCourse.id, coverFile);
+            coverImageFileRef.current = null;
+            setFormData(prev => ({ ...prev, coverImage: uploadResult.url }));
+          } catch (uploadErr) {
+            console.error('Error uploading cover:', uploadErr);
+            toast.error('Курс создан, но не удалось загрузить обложку');
+          }
+        }
+
         toast.success(saveAsDraft ? 'Курс сохранен как черновик' : 'Курс успешно создан');
         
-        // Save chapters if any were created locally
         if (chapters.length > 0) {
           try {
             const savedChapters = await Promise.all(
@@ -184,9 +189,19 @@ function CourseManagePage() {
         
         navigate(`/courses/${newCourse.id}/manage`);
       } else {
+        if (coverFile) {
+          try {
+            const uploadResult = await coursesApi.uploadCourseCover(courseId, coverFile);
+            coverImageFileRef.current = null;
+            courseData.coverImage = uploadResult.url;
+          } catch (uploadErr) {
+            console.error('Error uploading cover:', uploadErr);
+            toast.error('Не удалось загрузить обложку');
+          }
+        }
+
         await coursesApi.updateCourse(courseId, courseData as UpdateCourseData);
         toast.success(saveAsDraft ? 'Курс сохранен как черновик' : 'Курс успешно обновлен');
-        // Refresh course data
         await fetchCourse();
       }
     } catch (err: unknown) {
@@ -235,15 +250,12 @@ function CourseManagePage() {
         <main>
           {/* Cover Upload Section */}
           <CoverUpload
-            coverImage={formData.coverImage}
+            coverImage={getCoverImageUrl(formData.coverImage) || formData.coverImage}
             onCoverImageChange={(file) => {
               coverImageFileRef.current = file;
               if (file) {
-                const reader = new FileReader();
-                reader.onloadend = () => {
-                  setFormData({ ...formData, coverImage: reader.result as string });
-                };
-                reader.readAsDataURL(file);
+                const previewUrl = URL.createObjectURL(file);
+                setFormData({ ...formData, coverImage: previewUrl });
               } else {
                 setFormData({ ...formData, coverImage: null });
               }
@@ -259,6 +271,10 @@ function CourseManagePage() {
                 description={formData.description}
                 onTitleChange={(title) => setFormData({ ...formData, title })}
                 onDescriptionChange={(description) => setFormData({ ...formData, description })}
+              />
+              <CoursePriceCard
+                price={formData.price}
+                onPriceChange={(price) => setFormData({ ...formData, price })}
               />
               <ChaptersCard
                 chapters={chapters}

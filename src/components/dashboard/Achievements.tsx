@@ -1,15 +1,35 @@
 import { useState, useEffect } from "react";
 import { achievementsApi, Achievement } from "../../shared/api/achievements";
 
-const AchievementCard = ({ achievement }: { achievement: Achievement }) => (
+const API_URL = import.meta.env.VITE_API_URL || '';
+
+function resolveAchievementIcon(iconUrl: string | null): string | null {
+  if (!iconUrl) return null;
+  if (iconUrl.startsWith('/achievement-media/')) {
+    return `${API_URL}${iconUrl}`;
+  }
+  if (iconUrl.startsWith('/icons/achievements/')) {
+    const filename = iconUrl.replace('/icons/achievements/', '');
+    return `${API_URL}/achievement-media/${filename}`;
+  }
+  if (iconUrl.startsWith('http') || iconUrl.startsWith('data:')) {
+    return iconUrl;
+  }
+  return `${API_URL}/achievement-media/${iconUrl}`;
+}
+
+const AchievementCard = ({ achievement }: { achievement: Achievement }) => {
+  const iconSrc = resolveAchievementIcon(achievement.icon_url);
+
+  return (
   <div className="flex items-center gap-3 bg-white/70 backdrop-blur-xl border-1 border-muted-foreground/30 rounded-2xl px-4 py-3 h-full w-full max-w-full overflow-hidden">
-    {achievement.icon_url ? (
+    {iconSrc ? (
       <img
-        src={achievement.icon_url}
+        src={iconSrc}
         alt={achievement.name}
         className="w-12 h-12 rounded-full object-cover flex-shrink-0"
         onError={(e) => {
-          (e.target as HTMLImageElement).src = '/icons/achievements/default.svg';
+          (e.target as HTMLImageElement).style.display = 'none';
         }}
       />
     ) : (
@@ -28,7 +48,8 @@ const AchievementCard = ({ achievement }: { achievement: Achievement }) => (
       )}
     </div>
   </div>
-);
+  );
+};
 
 const Achievements = () => {
   const [achievements, setAchievements] = useState<Achievement[]>([]);

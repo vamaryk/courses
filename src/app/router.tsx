@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Routes, Route } from "react-router-dom";
 import AppLayout from "./layouts/layout";
 import { CalendarPage } from "@/widgets/calendar";
@@ -14,6 +15,11 @@ import { CourseStatisticsPage } from "@/widgets/CourseStatisticsPage";
 import ChapterCanvasPage from "@/widgets/ChapterCanvasPage";
 import SubchapterEditPage from "@/widgets/SubchapterEditPage";
 import { ProtectedRoute } from "@/shared/routing/ProtectedRoute";
+
+// Lazy-load: socket.io-client (~300KB) грузится только при переходе на /virtual-class
+const VirtualClassPage = lazy(() => import("@/widgets/VirtualClassPage"));
+const InviteAcceptPage = lazy(() => import("@/pages/InviteAcceptPage"));
+const GroupInvitePage = lazy(() => import("@/pages/GroupInvitePage"));
 
 export const Router = () => {
   return (
@@ -67,6 +73,36 @@ export const Router = () => {
       <Route path="/profile" element={<AppLayout><ProfilePage /></AppLayout>} />
       <Route path="/settings" element={<AppLayout><SettingsPage /></AppLayout>} />
       <Route path="/glossary" element={<AppLayout><GlossaryPage /></AppLayout>} />
+      <Route
+        path="/virtual-class"
+        element={
+          <AppLayout>
+            <Suspense fallback={<div className="flex h-64 items-center justify-center text-gray-400 text-sm">Загрузка...</div>}>
+              <VirtualClassPage />
+            </Suspense>
+          </AppLayout>
+        }
+      />
+      <Route
+        path="/virtual-class/invite/:token"
+        element={
+          <AppLayout>
+            <Suspense fallback={<div className="flex h-64 items-center justify-center text-gray-400 text-sm">Загрузка...</div>}>
+              <InviteAcceptPage />
+            </Suspense>
+          </AppLayout>
+        }
+      />
+      <Route
+        path="/virtual-class/group/:token"
+        element={
+          <AppLayout>
+            <Suspense fallback={<div className="flex h-64 items-center justify-center text-gray-400 text-sm">Загрузка...</div>}>
+              <GroupInvitePage />
+            </Suspense>
+          </AppLayout>
+        }
+      />
       <Route path="/auth" element={<AppLayout><AuthPage /></AppLayout>} />
     </Routes>
   );

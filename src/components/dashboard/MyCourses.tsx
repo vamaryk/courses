@@ -7,10 +7,15 @@ import {
   CarouselNext,
   CarouselPrevious,
 } from "@/components/ui/carousel";
-const API_URL = import.meta.env.VITE_API_URL || '/api';
+import { getCoverImageUrl } from "@/shared/utils/courseTransform";
+
+const API_URL = import.meta.env.VITE_API_URL || '';
+const defaultCourseImage = 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=400&h=300&fit=crop';
+
 interface Course {
+  id?: number;
   title: string;
-  image: string;
+  image: string | null;
   progress: number;
   isCompleted?: boolean;
 }
@@ -74,7 +79,12 @@ const MyCourses = () => {
         <CarouselContent className="-ml-1 md:-ml-2">
           {courses.map((course, index) => (
             <CarouselItem key={index} className="pl-1 md:pl-2 basis-1/2 lg:basis-1/5">
-              <CourseCard {...course} />
+              <CourseCard
+                title={course.title}
+                image={getCoverImageUrl(course.image) || defaultCourseImage}
+                progress={course.progress}
+                isCompleted={course.isCompleted}
+              />
             </CarouselItem>
           ))}
         </CarouselContent>

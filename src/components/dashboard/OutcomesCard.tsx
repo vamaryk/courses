@@ -1,5 +1,22 @@
-import { Plus, Upload, X, FileImage } from "lucide-react";
-import { useState, useRef, type DragEvent, type ChangeEvent } from "react";
+import { Plus, Upload, X, FileImage, ChevronDown, Check } from "lucide-react";
+import { useState, useRef, useEffect, type DragEvent, type ChangeEvent } from "react";
+
+/** Список доступных инструментов для выбора в карточке курса */
+const AVAILABLE_TOOLS = [
+  "Figma",
+  "Sketch",
+  "Adobe XD",
+  "Framer",
+  "HTML5",
+  "CSS3",
+  "JavaScript",
+  "TypeScript",
+  "React",
+  "Vue",
+  "Angular",
+  "Adobe Photoshop",
+  "Canva",
+];
 
 interface OutcomesCardProps {
   skills: string[];
@@ -24,9 +41,21 @@ const OutcomesCard = ({
 }: OutcomesCardProps) => {
   const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [toolInput, setToolInput] = useState("");
+  const [toolsOpen, setToolsOpen] = useState(false);
   const [skillInput, setSkillInput] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const toolsDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!toolsOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (toolsDropdownRef.current && !toolsDropdownRef.current.contains(e.target as Node)) {
+        setToolsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [toolsOpen]);
 
   const handleDragOver = (e: DragEvent<HTMLDivElement>) => {
     e.preventDefault();
@@ -133,32 +162,43 @@ const OutcomesCard = ({
         </div>
       )}
 
-      {/* Software/Tools Input */}
-      <div className="relative mb-4">
-        <input
-          type="text"
-          value={toolInput}
-          onChange={(e) => setToolInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              addValue(toolInput, tools, onToolsChange);
-              setToolInput("");
-            }
-          }}
-          placeholder="Используемые программы, инструменты"
-          className="input-field pr-10"
-        />
+      {/* Software/Tools — выбор из списка */}
+      <div className="mb-4 relative" ref={toolsDropdownRef}>
         <button
           type="button"
-          onClick={() => {
-            addValue(toolInput, tools, onToolsChange);
-            setToolInput("");
-          }}
-          className="absolute right-3 top-1/2 -translate-y-1/2 text-primary hover:scale-110 transition-transform"
+          onClick={() => setToolsOpen((v) => !v)}
+          className="flex w-full items-center justify-between rounded-lg border border-input bg-background px-3 py-2 text-left text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 min-h-[2.5rem] hover:bg-muted/50 transition-colors"
         >
-          <Plus className="w-5 h-5" />
+          <span className={tools.length === 0 ? "text-muted-foreground" : ""}>
+            {tools.length === 0 ? "Используемые программы, инструменты" : "Выберите инструменты..."}
+          </span>
+          <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
         </button>
+        {toolsOpen && (
+          <div className="absolute top-full left-0 right-0 z-50 mt-1 rounded-md border border-input bg-white text-foreground shadow-lg py-1 max-h-[280px] overflow-y-auto ">
+            {AVAILABLE_TOOLS.map((tool) => {
+              const isSelected = tools.some((t) => t.toLowerCase() === tool.toLowerCase());
+              return (
+                <button
+                  key={tool}
+                  type="button"
+                  onClick={() => {
+                    if (isSelected) {
+                      const exact = tools.find((t) => t.toLowerCase() === tool.toLowerCase());
+                      if (exact) removeValue(exact, tools, onToolsChange);
+                    } else {
+                      addValue(tool, tools, onToolsChange);
+                    }
+                  }}
+                  className={`w-full px-3 py-2 text-left text-sm hover:bg-muted focus:bg-muted focus:outline-none flex items-center justify-between ${isSelected ? "bg-primary/10 text-primary" : ""}`}
+                >
+                  {tool}
+                  {isSelected && <Check className="w-4 h-4" />}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
       {tools.length > 0 && (
         <div className="flex flex-wrap gap-2 mb-4">

@@ -1,6 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect, useState, useRef } from 'react';
 import { coursesApi, type Course, type Chapter, type Subchapter, type ContentBlock } from '@/shared/api/courses';
+import { getCoverImageUrl } from '@/shared/utils/courseTransform';
 import HeroHeader from "@/components/dashboard/HeroHeader";
 // import CourseProgress from "@/components/dashboard/CourseProgress";
 import CourseModules from "@/components/dashboard/CourseModules";
@@ -233,6 +234,7 @@ export default function CourseDetailPage() {
             courseTitle={course.title}
             courseDescription={course.description || ''}
             authorName={course.instructor_name || course.author?.name || 'Неизвестный автор'}
+            coverImage={getCoverImageUrl(course.cover_image)}
             stats={stats}
             tags={tags}
             progress={progressPercentage}

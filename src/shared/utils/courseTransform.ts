@@ -72,9 +72,17 @@ function generateBadge(title: string): string {
   return title.substring(0, 2).toUpperCase();
 }
 
-// Helper function to get image URL
-function getImageUrl(courseId: number): string {
-  // Use course ID to select an image from default images
+const API_URL = import.meta.env.VITE_API_URL || '';
+
+function getImageUrl(courseId: number, coverImage?: string | null): string {
+  if (coverImage) {
+    if (coverImage.startsWith('/course-media/')) {
+      return `${API_URL}${coverImage}`;
+    }
+    if (coverImage.startsWith('http') || coverImage.startsWith('data:')) {
+      return coverImage;
+    }
+  }
   const imageIndex = courseId % defaultImages.length;
   return defaultImages[imageIndex];
 }
@@ -91,6 +99,21 @@ function getInstructorAvatar(course: ApiCourse): string | undefined {
 }
 
 /**
+ * Resolve a cover_image value to a full URL usable by <img> or CSS background.
+ * Returns undefined when there is nothing to show so the caller can fall back.
+ */
+export function getCoverImageUrl(coverImage?: string | null): string | undefined {
+  if (!coverImage) return undefined;
+  if (coverImage.startsWith('/course-media/')) {
+    return `${API_URL}${coverImage}`;
+  }
+  if (coverImage.startsWith('http') || coverImage.startsWith('data:')) {
+    return coverImage;
+  }
+  return undefined;
+}
+
+/**
  * Transform API Course to CourseCard Course format
  */
 export function transformCourseToCardCourse(apiCourse: ApiCourse): CourseCardCourse {
@@ -99,7 +122,7 @@ export function transformCourseToCardCourse(apiCourse: ApiCourse): CourseCardCou
   return {
     id: apiCourse.id.toString(),
     title: apiCourse.title,
-    imageUrl: getImageUrl(apiCourse.id),
+    imageUrl: getImageUrl(apiCourse.id, apiCourse.cover_image),
     badge: generateBadge(apiCourse.title),
     hoursPractice: practice,
     hoursTheory: theory,

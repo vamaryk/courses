@@ -6,6 +6,7 @@ interface HeroHeaderProps {
   courseTitle?: string;
   courseDescription?: string;
   authorName?: string;
+  coverImage?: string | null;
   stats?: {
     tests?: string;
     programs?: string;
@@ -20,6 +21,7 @@ const HeroHeader = ({
   courseTitle = "Основы HTML и CSS",
   courseDescription = "Курс для начинающих верстальщиков сайтов на HTML и CSS. Разбираем реальные макеты, изучаем семантику языка, отрабатываем навыки в тренажере. В курсе более 190 заданий. Из них 150 – решение практических задач.",
   authorName = "Иван Иванов",
+  coverImage,
   stats = {
     tests: "1/15",
     programs: "0/5",
@@ -43,7 +45,7 @@ const HeroHeader = ({
       {/* Background image */}
       <div 
         className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-        style={{ backgroundImage: `url(${heroImage})` }}
+        style={{ backgroundImage: `url(${coverImage || heroImage})` }}
       />
       
       {/* Gradient overlay */}

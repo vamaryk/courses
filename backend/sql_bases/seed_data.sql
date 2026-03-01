@@ -23,9 +23,9 @@ INSERT INTO course_category_pivot (course_id, category_id) VALUES
 -- Используем ON CONFLICT для предотвращения дублирования при повторном запуске
 -- name имеет UNIQUE constraint, поэтому используем его для проверки конфликтов
 INSERT INTO achievements (name, description, icon_url) VALUES
-('Первый шаг', 'Завершите свой первый урок', '/icons/achievements/first-step.svg'),
-('Неделя обучения', 'Занимайтесь 7 дней подряд', '/icons/achievements/week-streak.svg'),
-('Мастер курса', 'Завершите полный курс', '/icons/achievements/course-master.svg'),
-('Отличник', 'Получите 100% правильных ответов в 10 заданиях подряд', '/icons/achievements/straight-a.svg'),
-('Знаток', 'Изучите 50 терминов в глоссарии', '/icons/achievements/knowledge-seeker.svg')
+('Первый шаг', 'Завершите свой первый урок', '/achievement-media/first-step.svg'),
+('Неделя обучения', 'Занимайтесь 7 дней подряд', '/achievement-media/week-streak.svg'),
+('Мастер курса', 'Завершите полный курс', '/achievement-media/course-master.svg'),
+('Отличник', 'Получите 100% правильных ответов в 10 заданиях подряд', '/achievement-media/straight-a.svg'),
+('Знаток', 'Изучите 50 терминов в глоссарии', '/achievement-media/knowledge-seeker.svg')
 ON CONFLICT (name) DO NOTHING;
