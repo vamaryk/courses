@@ -20,6 +20,12 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  type CodeTaskConfig,
+  createDefaultCodeTaskConfig,
+  parseCodeTaskConfig,
+  serializeCodeTaskConfig,
+} from '@/shared/codeTasks';
 
 type QuizSelectionType = 'single' | 'multiple';
 
@@ -330,6 +336,26 @@ function SubchapterEditPage() {
     });
   };
 
+  const getCodeTaskConfigForBlock = (block: ContentBlock): CodeTaskConfig => {
+    const parsed = parseCodeTaskConfig(block.answer);
+    return parsed || createDefaultCodeTaskConfig();
+  };
+
+  const updateCodeTaskConfig = (
+    blockId: number,
+    subchapterId: number,
+    updater: (prev: CodeTaskConfig) => CodeTaskConfig,
+  ) => {
+    const currentBlock = contentBlocksMap.get(subchapterId)?.find((b) => b.id === blockId);
+    if (!currentBlock) return;
+    const currentConfig = getCodeTaskConfigForBlock(currentBlock);
+    const nextConfig = updater(currentConfig);
+
+    handleContentBlockFieldChange(blockId, subchapterId, {
+      answer: serializeCodeTaskConfig(nextConfig),
+    });
+  };
+
   const handleSaveContentBlock = async (blockId: number, subchapterId: number) => {
     try {
       const currentBlock = contentBlocksMap.get(subchapterId)?.find((b) => b.id === blockId);
@@ -351,6 +377,26 @@ function SubchapterEditPage() {
             toast.error('Отметьте хотя бы один правильный ответ для каждого вопроса');
             return;
           }
+        }
+      }
+      if (currentBlock.type === 'code_task') {
+        const config = parseCodeTaskConfig(currentBlock.answer);
+        if (!config) {
+          toast.error('Настройте параметры проверяемой задачи');
+          return;
+        }
+        if (!config.testCases.length) {
+          toast.error('Добавьте хотя бы один тест-кейс для проверяемой задачи');
+          return;
+        }
+        const invalidCase = config.testCases.find(
+          (tc) =>
+            !tc.input.trim() ||
+            !tc.expectedOutputs.some((out) => out.trim().length > 0),
+        );
+        if (invalidCase) {
+          toast.error('Каждый тест-кейс должен содержать input и хотя бы один ожидаемый вывод');
+          return;
         }
       }
       if (currentBlock.type === 'task') {
@@ -644,26 +690,39 @@ function SubchapterEditPage() {
                             {/* Desktop: type, order, delete in one row */}
                             <div className="hidden md:flex items-end gap-3 flex-wrap">
                               <div className="w-40">
-                                <Label className="text-sm mb-1 block">Тип</Label>
+                            <Label className="text-sm mb-1 block">Тип</Label>
                                 <Select
                                   value={block.type}
-                                  onValueChange={(value: 'theory' | 'task' | 'test') =>
-                                    handleContentBlockFieldChange(block.id, selectedSubchapter.id, {
-                                      type: value,
-                                      answer:
-                                        value === 'test'
-                                          ? serializeQuizPayload(getQuizPayloadForBlock(block))
+                              onValueChange={(
+                                value: 'theory' | 'task' | 'test' | 'code_task',
+                              ) =>
+                                handleContentBlockFieldChange(
+                                  block.id,
+                                  selectedSubchapter.id,
+                                  {
+                                    type: value,
+                                    answer:
+                                      value === 'test'
+                                        ? serializeQuizPayload(
+                                            getQuizPayloadForBlock(block),
+                                          )
+                                        : value === 'code_task'
+                                          ? serializeCodeTaskConfig(
+                                              getCodeTaskConfigForBlock(block),
+                                            )
                                           : '',
-                                    })
-                                  }
+                                  },
+                                )
+                              }
                                 >
                                   <SelectTrigger className="bg-white cursor-pointer">
                                     <SelectValue />
                                   </SelectTrigger>
                                   <SelectContent className="bg-white">
-                                    <SelectItem value="theory" className="cursor-pointer">Теория</SelectItem>
-                                    <SelectItem value="task" className="cursor-pointer">Задание</SelectItem>
-                                    <SelectItem value="test" className="cursor-pointer">Тест</SelectItem>
+                                  <SelectItem value="theory" className="cursor-pointer">Теория</SelectItem>
+                                  <SelectItem value="task" className="cursor-pointer">Задание</SelectItem>
+                                  <SelectItem value="test" className="cursor-pointer">Тест</SelectItem>
+                                  <SelectItem value="code_task" className="cursor-pointer">Кодовая задача</SelectItem>
                                   </SelectContent>
                                 </Select>
                               </div>
@@ -707,14 +766,26 @@ function SubchapterEditPage() {
                                 <Label className="text-sm mb-1 block">Тип блока</Label>
                                 <Select
                                   value={block.type}
-                                  onValueChange={(value: 'theory' | 'task' | 'test') =>
-                                    handleContentBlockFieldChange(block.id, selectedSubchapter.id, {
-                                      type: value,
-                                      answer:
-                                        value === 'test'
-                                          ? serializeQuizPayload(getQuizPayloadForBlock(block))
-                                          : '',
-                                    })
+                                  onValueChange={(
+                                    value: 'theory' | 'task' | 'test' | 'code_task',
+                                  ) =>
+                                    handleContentBlockFieldChange(
+                                      block.id,
+                                      selectedSubchapter.id,
+                                      {
+                                        type: value,
+                                        answer:
+                                          value === 'test'
+                                            ? serializeQuizPayload(
+                                                getQuizPayloadForBlock(block),
+                                              )
+                                            : value === 'code_task'
+                                              ? serializeCodeTaskConfig(
+                                                  getCodeTaskConfigForBlock(block),
+                                                )
+                                              : '',
+                                      },
+                                    )
                                   }
                                 >
                                   <SelectTrigger className="bg-white cursor-pointer">
@@ -724,6 +795,7 @@ function SubchapterEditPage() {
                                     <SelectItem value="theory" className="cursor-pointer">Теория</SelectItem>
                                     <SelectItem value="task" className="cursor-pointer">Задание</SelectItem>
                                     <SelectItem value="test" className="cursor-pointer">Тест</SelectItem>
+                                    <SelectItem value="code_task" className="cursor-pointer">Кодовая задача</SelectItem>
                                   </SelectContent>
                                 </Select>
                               </div>
@@ -794,6 +866,207 @@ function SubchapterEditPage() {
                                   placeholder="Введите правильный ответ"
                                   className="bg-white"
                                 />
+                              </div>
+                            )}
+
+                            {block.type === 'code_task' && (
+                              <div className="mt-2 rounded-xl border border-[#e7e7f2] bg-white p-4 space-y-4">
+                                {(() => {
+                                  const config = getCodeTaskConfigForBlock(block);
+                                  return (
+                                    <>
+                                      <div className="flex flex-col md:flex-row gap-3">
+                                        <div className="md:w-64">
+                                          <Label className="text-sm mb-1 block">
+                                            Язык решения
+                                          </Label>
+                                          <Select
+                                            value={config.language}
+                                            onValueChange={(value: 'javascript' | 'python') =>
+                                              updateCodeTaskConfig(
+                                                block.id,
+                                                selectedSubchapter.id,
+                                                (prev) => ({
+                                                  ...prev,
+                                                  language: value,
+                                                }),
+                                              )
+                                            }
+                                          >
+                                            <SelectTrigger className="bg-white cursor-pointer">
+                                              <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent className="bg-white">
+                                              <SelectItem value="javascript" className="cursor-pointer">
+                                                JavaScript
+                                              </SelectItem>
+                                              <SelectItem value="python" className="cursor-pointer">
+                                                Python
+                                              </SelectItem>
+                                            </SelectContent>
+                                          </Select>
+                                        </div>
+                                        <div className="flex-1 text-sm text-muted-foreground md:pt-6">
+                                          Условие задачи задаётся в поле
+                                          &nbsp;
+                                          <span className="font-medium">«Содержание»</span>
+                                          &nbsp;выше. Ниже настройте тестовые кейсы.
+                                        </div>
+                                      </div>
+
+                                      <div className="space-y-3">
+                                        <div className="flex items-center justify-between">
+                                          <Label className="text-sm">Тест‑кейсы</Label>
+                                          <span className="text-xs text-muted-foreground">
+                                            Ученику будут видны только не скрытые тесты
+                                          </span>
+                                        </div>
+
+                                        {config.testCases.map((tc, index) => (
+                                          <div
+                                            key={tc.id}
+                                            className="border rounded-lg p-3 space-y-2 bg-muted/20"
+                                          >
+                                            <div className="flex items-center justify-between">
+                                              <span className="text-sm font-medium">
+                                                Тест #{index + 1}
+                                              </span>
+                                              <div className="flex items-center gap-2 text-xs">
+                                                <label className="inline-flex items-center gap-1 cursor-pointer select-none">
+                                                  <input
+                                                    type="checkbox"
+                                                    checked={tc.hidden}
+                                                    onChange={(e) =>
+                                                      updateCodeTaskConfig(
+                                                        block.id,
+                                                        selectedSubchapter.id,
+                                                        (prev) => ({
+                                                          ...prev,
+                                                          testCases: prev.testCases.map((c) =>
+                                                            c.id === tc.id
+                                                              ? { ...c, hidden: e.target.checked }
+                                                              : c,
+                                                          ),
+                                                        }),
+                                                      )
+                                                    }
+                                                  />
+                                                  <span>Скрытый</span>
+                                                </label>
+                                              </div>
+                                            </div>
+
+                                            <div className="grid gap-2 md:grid-cols-2">
+                                              <div>
+                                                <Label className="text-xs mb-1 block">
+                                                  Input (строка, попадёт в solve(input))
+                                                </Label>
+                                                <Input
+                                                  value={tc.input}
+                                                  onChange={(e) =>
+                                                    updateCodeTaskConfig(
+                                                      block.id,
+                                                      selectedSubchapter.id,
+                                                      (prev) => ({
+                                                        ...prev,
+                                                        testCases: prev.testCases.map((c) =>
+                                                          c.id === tc.id
+                                                            ? { ...c, input: e.target.value }
+                                                            : c,
+                                                        ),
+                                                      }),
+                                                    )
+                                                  }
+                                                  className="bg-white"
+                                                />
+                                              </div>
+                                              <div>
+                                                <Label className="text-xs mb-1 block">
+                                                  Ожидаемые выводы (через «;»)
+                                                </Label>
+                                                <Input
+                                                  value={tc.expectedOutputs.join('; ')}
+                                                  onChange={(e) => {
+                                                    const parts = e.target.value
+                                                      .split(';')
+                                                      .map((v) => v.trim())
+                                                      .filter((v) => v.length > 0);
+                                                    updateCodeTaskConfig(
+                                                      block.id,
+                                                      selectedSubchapter.id,
+                                                      (prev) => ({
+                                                        ...prev,
+                                                        testCases: prev.testCases.map((c) =>
+                                                          c.id === tc.id
+                                                            ? { ...c, expectedOutputs: parts.length ? parts : [''] }
+                                                            : c,
+                                                        ),
+                                                      }),
+                                                    );
+                                                  }}
+                                                  className="bg-white"
+                                                />
+                                              </div>
+                                            </div>
+
+                                            <div className="flex justify-end">
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                onClick={() =>
+                                                  updateCodeTaskConfig(
+                                                    block.id,
+                                                    selectedSubchapter.id,
+                                                    (prev) => ({
+                                                      ...prev,
+                                                      testCases:
+                                                        prev.testCases.length > 1
+                                                          ? prev.testCases.filter((c) => c.id !== tc.id)
+                                                          : prev.testCases,
+                                                    }),
+                                                  )
+                                                }
+                                                disabled={config.testCases.length <= 1}
+                                                className="cursor-pointer"
+                                              >
+                                                <Trash2 className="w-4 h-4 mr-1" />
+                                                Удалить тест
+                                              </Button>
+                                            </div>
+                                          </div>
+                                        ))}
+
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          onClick={() =>
+                                            updateCodeTaskConfig(
+                                              block.id,
+                                              selectedSubchapter.id,
+                                              (prev) => ({
+                                                ...prev,
+                                                testCases: [
+                                                  ...prev.testCases,
+                                                  {
+                                                    id: crypto.randomUUID(),
+                                                    input: '',
+                                                    expectedOutputs: [''],
+                                                    hidden: false,
+                                                  },
+                                                ],
+                                              }),
+                                            )
+                                          }
+                                          className="w-full cursor-pointer"
+                                        >
+                                          <Plus className="w-4 h-4 mr-2" />
+                                          Добавить тест‑кейс
+                                        </Button>
+                                      </div>
+                                    </>
+                                  );
+                                })()}
                               </div>
                             )}
 

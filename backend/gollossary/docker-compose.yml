@@ -1,0 +1,52 @@
+version: "3.9"
+
+services:
+  mongo:
+    image: mongo:7
+    container_name: gollossary_mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: gollossary
+
+  lecture-processor:
+    build:
+      context: .
+      dockerfile: Dockerfile.lecture_processor
+    container_name: gollossary_lecture_processor
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      DB_NAME: gollossary
+      LLM_MODEL_PATH: /models/model.gguf   # Пробросьте директорию с моделью
+      LLM_N_CTX: 4096
+      LLM_N_GPU_LAYERS: 0
+      MAX_CHUNK_CHARS: 3000
+      MAX_CONCEPTS: 50
+      LANGUAGE: ru
+    volumes:
+      - ./models:/models:ro  # Папка с GGUF моделями
+    depends_on:
+      - mongo
+
+  concept-crud:
+    build:
+      context: .
+      dockerfile: Dockerfile.concept_crud
+    container_name: gollossary_concept_crud
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    environment:
+      MONGO_URI: mongodb://mongo:27017
+      DB_NAME: gollossary
+    depends_on:
+      - mongo
+
+volumes:
+  mongo_data:

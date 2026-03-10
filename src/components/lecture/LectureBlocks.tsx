@@ -1,6 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import type { ContentBlock } from '@/shared/api/courses';
 import { Button } from '@/components/ui/button';
+import {
+  parseCodeTaskConfig,
+  type CodeTaskConfig,
+} from '@/shared/codeTasks';
+import {
+  runCodeTaskTests,
+  type CodeTaskTestResult,
+} from '@/shared/codeTasksRunner';
 
 interface StoredAnswer {
   userAnswer: string;
@@ -109,6 +117,11 @@ const isMeaningfulBlock = (item: ContentBlock): boolean => {
       q.options?.some((option) => option.text.trim().length > 0)
     ));
   }
+  if (item.type === 'code_task') {
+    const config = parseCodeTaskConfig(item.answer);
+    const hasTests = config?.testCases?.length;
+    return htmlText.length > 0 || Boolean(hasTests);
+  }
   if (item.type === 'task') {
     return htmlText.length > 0 || (item.answer || '').trim().length > 0;
   }
@@ -127,6 +140,10 @@ export default function LectureBlocks({
   const [testSelectedOptions, setTestSelectedOptions] = useState<string[]>([]);
   const [testCheckResult, setTestCheckResult] = useState<'correct' | 'wrong' | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [codeTaskCode, setCodeTaskCode] = useState('');
+  const [codeTaskResults, setCodeTaskResults] = useState<CodeTaskTestResult[] | null>(null);
+  const [codeTaskIsRunning, setCodeTaskIsRunning] = useState(false);
+  const [codeTaskError, setCodeTaskError] = useState<string | null>(null);
 
   const meaningfulBlocks = useMemo(() => blocks.filter(isMeaningfulBlock), [blocks]);
   const viewBlocks = meaningfulBlocks.length > 0 ? meaningfulBlocks : blocks;
@@ -149,6 +166,8 @@ export default function LectureBlocks({
   const safeIndex = Math.min(activeIndex, viewBlocks.length - 1);
   const block = viewBlocks[safeIndex];
   const quiz = block.type === 'test' ? parseQuizPayload(block.answer) : null;
+  const codeTaskConfig: CodeTaskConfig | null =
+    block.type === 'code_task' ? parseCodeTaskConfig(block.answer) : null;
   const currentQuestion = quiz?.questions?.[currentQuestionIndex] || null;
   const isLastBlock = safeIndex === viewBlocks.length - 1;
   const blockHtmlText = stripHtml(block.content);
@@ -159,6 +178,7 @@ export default function LectureBlocks({
     setTestSelectedOptions([]);
     setTestCheckResult(null);
     setCurrentQuestionIndex(0);
+    setCodeTaskIsRunning(false);
 
     const savedAnswer = storedAnswers[block.id];
     if (!savedAnswer) return;
@@ -183,7 +203,23 @@ export default function LectureBlocks({
         setTestCheckResult(savedAnswer.isCorrect ? 'correct' : 'wrong');
       }
     }
-  }, [block.id, block.type, storedAnswers]);
+    if (block.type === 'code_task') {
+      const starter = codeTaskConfig?.starterCode ?? '';
+      try {
+        const parsed = JSON.parse(savedAnswer.userAnswer || '{}') as {
+          format?: string;
+          code?: string;
+        };
+        if (parsed.format === 'code_task_answer_v1' && typeof parsed.code === 'string') {
+          setCodeTaskCode(parsed.code);
+          return;
+        }
+      } catch {
+        // ignore parse error, fallback to starter code below
+      }
+      setCodeTaskCode(starter);
+    }
+  }, [block.id, block.type, storedAnswers, codeTaskConfig?.starterCode]);
 
   const canCheckTask = taskInput.trim().length > 0;
   const canCheckTest = currentQuestion ? testSelectedOptions.length > 0 : false;
@@ -193,6 +229,42 @@ export default function LectureBlocks({
     [currentQuestion]
   );
   const selectedSortedIds = useMemo(() => [...testSelectedOptions].sort(), [testSelectedOptions]);
+
+  const handleRunCodeTask = async () => {
+    if (!codeTaskConfig || !codeTaskConfig.testCases.length) return;
+
+    const codeToRun =
+      codeTaskCode && codeTaskCode.trim().length > 0
+        ? codeTaskCode
+        : codeTaskConfig.starterCode || '';
+
+    if (!codeToRun.trim()) {
+      setCodeTaskError('Добавьте код перед запуском перед запуском тестов');
+      return;
+    }
+
+    setCodeTaskIsRunning(true);
+    setCodeTaskError(null);
+    setCodeTaskResults(null);
+    try {
+      const results = await runCodeTaskTests(
+        codeTaskConfig.language,
+        codeToRun,
+        codeTaskConfig.testCases,
+      );
+      setCodeTaskResults(results);
+      const allPassed = results.every((r) => r.passed);
+      const payload = JSON.stringify({
+        format: 'code_task_answer_v1',
+        code: codeTaskCode,
+      });
+      await onPersistAnswer?.(block.id, payload, allPassed);
+    } catch (error) {
+      setCodeTaskError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setCodeTaskIsRunning(false);
+    }
+  };
 
   const handleTaskCheck = async () => {
     const expected = normalizeAnswer(block.answer || '');
@@ -303,6 +375,120 @@ export default function LectureBlocks({
                 {taskCheckResult === 'correct' ? 'Верно! Ответ правильный.' : 'Неверно. Попробуйте еще раз.'}
               </div>
             )}
+          </div>
+        )}
+
+        {block.type === 'code_task' && codeTaskConfig && (
+          <div className="mt-2 rounded-xl border border-[#e7e7f2] bg-white p-4">
+            <div className="flex flex-col lg:flex-row gap-4">
+              {/* Левая колонка: условие и код */}
+              <div className="lg:w-2/3 space-y-3">
+                <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+                  <div>
+                    <div className="text-sm font-semibold text-[#35364a]">
+                      Проверяемая задача
+                    </div>
+                    <div className="text-xs text-[#707286]">
+                      Реализуйте функцию <span className="font-mono">solve(input)</span> на языке{' '}
+                      <span className="font-semibold">
+                        {codeTaskConfig.language === 'javascript' ? 'JavaScript' : 'Python'}
+                      </span>
+                      . На каждый тест в неё будет подан input из таблицы.
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <textarea
+                    value={codeTaskCode}
+                    onChange={(event) => {
+                      setCodeTaskCode(event.target.value);
+                    }}
+                    rows={14}
+                    className="w-full font-mono text-sm rounded-lg border border-[#1f2937] px-3 py-2 text-gray-100 outline-none focus:border-[#8f6bf4] bg-[#111827]"
+                    placeholder={
+                      codeTaskConfig.language === 'javascript'
+                        ? 'function solve(input) {\n  // напишите решение\n  return input;\n}'
+                        : 'def solve(data: str) -> str:\n    # напишите решение\n    return data'
+                    }
+                  />
+                </div>
+              </div>
+
+              {/* Правая колонка: запуск и консоль вывода */}
+              <div className="lg:w-1/3 flex flex-col gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    onClick={handleRunCodeTask}
+                    disabled={codeTaskIsRunning || !codeTaskConfig.testCases.length}
+                    className={
+                      codeTaskIsRunning || !codeTaskConfig.testCases.length
+                        ? `${buttonPrimaryClasses} ${buttonDisabledClasses}`
+                        : buttonPrimaryClasses
+                    }
+                  >
+                    {codeTaskIsRunning ? 'Выполняется…' : 'Запустить тесты'}
+                  </Button>
+                  <div className="text-[11px] text-[#707286]">
+                    Тестов: {codeTaskConfig.testCases.filter((tc) => !tc.hidden).length} видимых,{' '}
+                    {codeTaskConfig.testCases.filter((tc) => tc.hidden).length} скрытых
+                  </div>
+                </div>
+
+                <div className="flex-1 rounded-md bg-slate-950 text-[11px] text-slate-100 border border-slate-800 p-3 overflow-auto">
+                  <div className="mb-1 text-xs font-semibold text-slate-200">
+                    Консоль программы
+                  </div>
+
+                  {codeTaskError && (
+                    <div className="mb-2 rounded-md bg-red-900/40 border border-red-500 px-2 py-1 text-[11px] text-red-100">
+                      Ошибка выполнения: {codeTaskError}
+                    </div>
+                  )}
+
+                  {!codeTaskResults && !codeTaskError && (
+                    <div className="text-slate-400">
+                      Нажмите «Запустить тесты», чтобы увидеть вывод программы.
+                    </div>
+                  )}
+
+                  {codeTaskResults && (
+                    <ul className="space-y-1">
+                      {codeTaskResults.map((result, index) => (
+                        <li key={result.testId} className="border-b border-slate-800 last:border-0 pb-1">
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium">
+                              {result.hidden
+                                ? `Скрытый тест #${index + 1}`
+                                : `Тест #${index + 1}`}
+                            </span>
+                            <span>
+                              {result.passed ? (
+                                <span className="text-emerald-400">OK</span>
+                              ) : (
+                                <span className="text-red-300">Ошибка</span>
+                              )}
+                            </span>
+                          </div>
+
+                          {!result.hidden && (
+                            <div className="mt-0.5 text-[10px] text-slate-300">
+                              <div>Ожидалось: {result.expectedOutputs.join(' | ')}</div>
+                              <div>Фактический вывод: {result.actualOutput || '(пусто)'}</div>
+                              {result.error && (
+                                <div className="text-red-300 mt-0.5">
+                                  Ошибка: {result.error}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         )}
 

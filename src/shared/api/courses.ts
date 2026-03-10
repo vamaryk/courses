@@ -56,7 +56,7 @@ export interface Subchapter {
 export interface ContentBlock {
   id: number;
   subchapter_id: number;
-  type: 'theory' | 'task' | 'test';
+  type: 'theory' | 'task' | 'test' | 'code_task';
   content: string;
   answer?: string | null;
   order: number;
@@ -116,14 +116,14 @@ export interface UpdateSubchapterData {
 }
 
 export interface CreateContentBlockData {
-  type: 'theory' | 'task' | 'test';
+  type: 'theory' | 'task' | 'test' | 'code_task';
   content: string;
   answer?: string | null;
   order: number;
 }
 
 export interface UpdateContentBlockData {
-  type: 'theory' | 'task' | 'test';
+  type: 'theory' | 'task' | 'test' | 'code_task';
   content: string;
   answer?: string | null;
   order: number;

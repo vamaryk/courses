@@ -206,9 +206,9 @@ BEGIN
 
         ALTER TABLE content_blocks
             ADD CONSTRAINT content_blocks_type_check
-            CHECK (type IN ('theory', 'task', 'test'));
+            CHECK (type IN ('theory', 'task', 'test', 'code_task'));
 
-        RAISE NOTICE '✅ Updated content_blocks.type check with test';
+        RAISE NOTICE '✅ Updated content_blocks.type check with test and code_task';
     END IF;
 END $$;
 
