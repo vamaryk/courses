@@ -546,6 +546,11 @@ function SubchapterEditPage() {
                               title: e.target.value,
                             })
                           }
+                          onBlur={() => {
+                            if (dirtySubchapters.has(selectedSubchapter.id)) {
+                              void handleSaveSubchapter(selectedSubchapter.id);
+                            }
+                          }}
                           placeholder="Название подглавы"
                           className="bg-white"
                         />
@@ -560,6 +565,11 @@ function SubchapterEditPage() {
                               order: Number(e.target.value) || 1,
                             })
                           }
+                          onBlur={() => {
+                            if (dirtySubchapters.has(selectedSubchapter.id)) {
+                              void handleSaveSubchapter(selectedSubchapter.id);
+                            }
+                          }}
                           className="bg-white text-center"
                         />
                       </div>
@@ -611,6 +621,11 @@ function SubchapterEditPage() {
                               title: e.target.value,
                             })
                           }
+                          onBlur={() => {
+                            if (dirtySubchapters.has(selectedSubchapter.id)) {
+                              void handleSaveSubchapter(selectedSubchapter.id);
+                            }
+                          }}
                           placeholder="Название подглавы"
                           className="bg-white"
                         />
@@ -626,6 +641,11 @@ function SubchapterEditPage() {
                                 order: Number(e.target.value) || 1,
                               })
                             }
+                            onBlur={() => {
+                              if (dirtySubchapters.has(selectedSubchapter.id)) {
+                                void handleSaveSubchapter(selectedSubchapter.id);
+                              }
+                            }}
                             className="bg-white text-center"
                           />
                         </div>

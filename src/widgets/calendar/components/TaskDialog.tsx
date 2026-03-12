@@ -99,6 +99,13 @@ export function TaskDialog({ open, onOpenChange, onSave, initialTask }: TaskDial
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
+    const timeRegex = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+    if (!timeRegex.test(startTime) || !timeRegex.test(endTime)) {
+      setTimeError('Введите время в формате 24 часов (ЧЧ:ММ), например 09:30 или 18:45.');
+      return;
+    }
+
     const start = new Date(`${startDate}T${startTime}`);
     const end = new Date(`${endDate || startDate}T${endTime}`);
 
@@ -170,7 +177,7 @@ export function TaskDialog({ open, onOpenChange, onSave, initialTask }: TaskDial
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 font-montserrat mb-1">
-                  Дата начала
+                  Дата
                 </label>
                 <input
                   type="date"
@@ -187,9 +194,11 @@ export function TaskDialog({ open, onOpenChange, onSave, initialTask }: TaskDial
                     Время начала
                   </label>
                   <input
-                    type="time"
+                    type="text"
                     value={startTime}
                     onChange={(e) => setStartTime(e.target.value)}
+                    placeholder="ЧЧ:ММ"
+                    inputMode="numeric"
                     className="w-full px-3 py-2 border rounded-lg"
                     required
                   />
@@ -199,9 +208,11 @@ export function TaskDialog({ open, onOpenChange, onSave, initialTask }: TaskDial
                     Время окончания
                   </label>
                   <input
-                    type="time"
+                    type="text"
                     value={endTime}
                     onChange={(e) => setEndTime(e.target.value)}
+                    placeholder="ЧЧ:ММ"
+                    inputMode="numeric"
                     className="w-full px-3 py-2 border rounded-lg"
                     required
                   />

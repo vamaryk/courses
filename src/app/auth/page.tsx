@@ -252,9 +252,13 @@ export default function AuthPage() {
                   Пароль *
                 </label>
                 {mode === 'login' && (
-                  <a href="#" className="text-sm text-purple-600 hover:text-purple-500">
+                  <button
+                    type="button"
+                    onClick={() => navigate('/auth/reset-password')}
+                    className="text-sm text-purple-600 hover:text-purple-500"
+                  >
                     Забыли пароль?
-                  </a>
+                  </button>
                 )}
               </div>
               <div className="relative">

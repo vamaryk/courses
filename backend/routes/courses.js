@@ -11,6 +11,113 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const coursesMediaRoot = path.join(__dirname, '..', 'data', 'courses');
 
+// ---------------------------------------------------------------------------
+// Gollossary / lecture-processor integration
+// ---------------------------------------------------------------------------
+
+const LECTURE_PROCESSOR_URL =
+  process.env.GOLLOSSARY_LECTURE_PROCESSOR_URL ||
+  'http://127.0.0.1:8001/api/v1/lectures/process';
+
+async function getFetch() {
+  if (typeof fetch !== 'undefined') {
+    return fetch;
+  }
+  const { default: nodeFetch } = await import('node-fetch');
+  return nodeFetch;
+}
+
+async function sendSubchapterToGollossary(subchapterId) {
+  try {
+    // Получаем метаданные лекции (подраздела) и связанного курса
+    const subchapterResult = await pool.query(
+      `SELECT 
+         s.id AS subchapter_id,
+         s.title AS subchapter_title,
+         c.id AS chapter_id,
+         c.title AS chapter_title,
+         c.course_id
+       FROM subchapters s
+       JOIN chapters c ON s.chapter_id = c.id
+       WHERE s.id = $1`,
+      [subchapterId],
+    );
+
+    const meta = subchapterResult.rows[0];
+    if (!meta) {
+      console.warn(`[GOLLOSSARY] Subchapter ${subchapterId} not found, skipping lecture processing`);
+      return;
+    }
+
+    // Собираем содержимое лекции из content_blocks
+    const blocksResult = await pool.query(
+      `SELECT type, content
+       FROM content_blocks
+       WHERE subchapter_id = $1
+       ORDER BY "order" ASC`,
+      [subchapterId],
+    );
+
+    if (blocksResult.rows.length === 0) {
+      console.warn(`[GOLLOSSARY] No content blocks for subchapter ${subchapterId}, nothing to process`);
+      return;
+    }
+
+    const title =
+      meta.subchapter_title ||
+      meta.chapter_title ||
+      `Лекция ${String(subchapterId)}`;
+
+    const parts = [title];
+    for (const block of blocksResult.rows) {
+      if (block && block.content) {
+        parts.push(String(block.content));
+      }
+    }
+
+    const content = parts.join('\n\n').trim();
+    if (!content || content.length < 10) {
+      console.warn(
+        `[GOLLOSSARY] Aggregated content for subchapter ${subchapterId} is too short, skipping`,
+      );
+      return;
+    }
+
+    const payload = {
+      content,
+      lecture_number: title,
+      source_id: String(subchapterId),
+      language: 'ru',
+    };
+
+    const f = await getFetch();
+    const response = await f(LECTURE_PROCESSOR_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => '');
+      console.error(
+        `[GOLLOSSARY] Lecture processing failed for subchapter ${subchapterId}: ${response.status} ${response.statusText} ${text.slice(0, 300)}`,
+      );
+      return;
+    }
+
+    const data = await response.json().catch(() => null);
+    console.log(
+      `[GOLLOSSARY] Mindmap created for subchapter ${subchapterId}:`,
+      data?.mindmap_id || '<no id>',
+    );
+  } catch (err) {
+    console.error(
+      `[GOLLOSSARY] Error while sending subchapter ${subchapterId} to lecture-processor:`,
+      err.message,
+    );
+  }
+}
+
 async function ensureCourseDir(courseId) {
   const dir = path.join(coursesMediaRoot, String(courseId));
   await fs.mkdir(dir, { recursive: true });
@@ -30,7 +137,12 @@ const upload = multer({
     },
     filename: (req, file, cb) => {
       const ext = path.extname(file.originalname);
-      const prefix = req.query.type === 'cover' ? 'cover' : Date.now().toString();
+      // Для обложки всегда генерируем новое имя с таймстемпом,
+      // чтобы путь к файлу менялся и браузер не брал старый кэш.
+      const prefix =
+        req.query.type === 'cover'
+          ? `cover-${Date.now().toString()}`
+          : Date.now().toString();
       cb(null, `${prefix}${ext}`);
     },
   }),
@@ -125,7 +237,9 @@ router.post('/', authenticateSession, async (req, res) => {
     courseSkills,
     courseTools,
     certificateText,
-    jobTitle
+    jobTitle,
+    hoursPractice,
+    hoursTheory,
   } = req.body;
   const authorId = req.user.userId;
 
@@ -135,6 +249,10 @@ router.post('/', authenticateSession, async (req, res) => {
 
   try {
     const price = req.body.price != null ? Number(req.body.price) : 0;
+    const hoursPracticeNum =
+      hoursPractice != null ? Math.max(0, Number(hoursPractice)) : 0;
+    const hoursTheoryNum =
+      hoursTheory != null ? Math.max(0, Number(hoursTheory)) : 0;
     const result = await pool.query(
       `INSERT INTO courses (
         title, 
@@ -150,8 +268,10 @@ router.post('/', authenticateSession, async (req, res) => {
         course_skills,
         course_tools,
         certificate_text,
-        job_title
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING *`,
+        job_title,
+        hours_practice,
+        hours_theory
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16) RETURNING *`,
       [
         title, 
         description || null, 
@@ -166,7 +286,9 @@ router.post('/', authenticateSession, async (req, res) => {
         courseSkills || [],
         courseTools || [],
         certificateText || null,
-        jobTitle || null
+        jobTitle || null,
+        hoursPracticeNum,
+        hoursTheoryNum,
       ]
     );
 
@@ -249,7 +371,9 @@ router.get('/', optionalAuthenticateSession, async (req, res) => {
           COALESCE(c.job_title, NULL) as job_title,
           NULL as level,
           NULL as language,
-          0 as price,
+          COALESCE(c.price, 0) as price,
+          COALESCE(c.hours_practice, 0) as "hoursPractice",
+          COALESCE(c.hours_theory, 0) as "hoursTheory",
           0 as "durationHours",
           0 as rating,
           COALESCE((SELECT COUNT(*) FROM user_enrollments WHERE course_id = c.id), 0) as "studentsCount",
@@ -312,7 +436,9 @@ router.get('/', optionalAuthenticateSession, async (req, res) => {
           COALESCE(c.job_title, NULL) as job_title,
           NULL as level,
           NULL as language,
-          0 as price,
+          COALESCE(c.price, 0) as price,
+          COALESCE(c.hours_practice, 0) as "hoursPractice",
+          COALESCE(c.hours_theory, 0) as "hoursTheory",
           0 as "durationHours",
           0 as rating,
           COALESCE((SELECT COUNT(*) FROM user_enrollments WHERE course_id = c.id), 0) as "studentsCount",
@@ -439,6 +565,8 @@ router.get('/:id(\\d+)', optionalAuthenticateSession, async (req, res) => {
       COALESCE(c.certificate_text, NULL) as certificate_text,
       COALESCE(c.job_title, NULL) as job_title,
       COALESCE(c.price, 0) as price,
+      COALESCE(c.hours_practice, 0) as "hoursPractice",
+      COALESCE(c.hours_theory, 0) as "hoursTheory",
       COALESCE((SELECT COUNT(*) FROM user_enrollments ue WHERE ue.course_id = c.id), 0) as "studentsCount",
       EXISTS (
         SELECT 1
@@ -545,10 +673,16 @@ router.put('/:id', ensureBaseUrl('/api/courses'), authenticateSession, async (re
     courseSkills,
     courseTools,
     certificateText,
-    jobTitle
+    jobTitle,
+    hoursPractice,
+    hoursTheory,
   } = req.body;
   const authorId = req.user.userId;
   const priceNum = price != null ? Math.max(0, Number(price)) : undefined;
+  const hoursPracticeNum =
+    hoursPractice != null ? Math.max(0, Number(hoursPractice)) : undefined;
+  const hoursTheoryNum =
+    hoursTheory != null ? Math.max(0, Number(hoursTheory)) : undefined;
 
   try {
     if (!(await isCourseAuthor(id, authorId))) {
@@ -570,8 +704,10 @@ router.put('/:id', ensureBaseUrl('/api/courses'), authenticateSession, async (re
         course_tools = $11,
         certificate_text = $12,
         job_title = $13,
+        hours_practice = COALESCE($14, hours_practice),
+        hours_theory = COALESCE($15, hours_theory),
         updated_at = NOW() 
-      WHERE id = $14 RETURNING *`,
+      WHERE id = $16 RETURNING *`,
       [
         title, 
         description, 
@@ -586,6 +722,8 @@ router.put('/:id', ensureBaseUrl('/api/courses'), authenticateSession, async (re
         courseTools || [],
         certificateText || null,
         jobTitle || null,
+        hoursPracticeNum,
+        hoursTheoryNum,
         id
       ]
     );
@@ -892,7 +1030,11 @@ router.post('/:chapterId/subchapters', authenticateSession, async (req, res) => 
       'INSERT INTO subchapters (chapter_id, title, "order") VALUES ($1, $2, $3) RETURNING *',
       [chapterId, title, order]
     );
-    res.status(201).json(result.rows[0]);
+    const created = result.rows[0];
+
+    // На этапе создания подраздела контента ещё нет, поэтому
+    // генерация mindmap запускается позже — при работе с content_blocks.
+    res.status(201).json(created);
   } catch (error) {
     console.error('Error creating subchapter:', error.message);
     res.status(500).json({ error: 'Failed to create subchapter' });
@@ -1005,7 +1147,13 @@ router.post('/:subchapterId/contentblocks', authenticateSession, async (req, res
       'INSERT INTO content_blocks (subchapter_id, type, content, answer, "order") VALUES ($1, $2, $3, $4, $5) RETURNING *',
       [subchapterId, type, content, answer, order]
     );
-    res.status(201).json(result.rows[0]);
+    const createdBlock = result.rows[0];
+
+    // Асинхронно отправляем обновлённый текст лекции (подраздела) в gollossary
+    // для генерации/обновления MindMap в MongoDB.
+    void sendSubchapterToGollossary(subchapterId);
+
+    res.status(201).json(createdBlock);
   } catch (error) {
     console.error('Error creating content block:', error.message);
     res.status(500).json({ error: 'Failed to create content block' });
@@ -1078,6 +1226,14 @@ router.put('/:id', ensureBaseUrl('/api/contentblocks'), authenticateSession, asy
     );
 
     console.log(`✅ [API] Content block ${id} updated successfully`);
+
+    // После обновления блока повторно отправляем всю лекцию в gollossary
+    // на переработку mindmap (идемпотентная операция).
+    const subchapterId = contentBlockData.subchapter_id;
+    if (subchapterId) {
+      void sendSubchapterToGollossary(subchapterId);
+    }
+
     res.status(200).json(result.rows[0]);
   } catch (error) {
     console.error(`💥 [API] Error updating content block ${id}:`, error.message);

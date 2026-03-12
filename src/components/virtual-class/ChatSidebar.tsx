@@ -2,6 +2,8 @@ import { MessageCircle, Plus, UserPlus, Users, Users2 } from 'lucide-react';
 import type { FriendProfile, RecentChat, PendingRequest } from '@/shared/api/friends';
 import type { GroupChat } from '@/shared/api/groups';
 
+const API_URL = import.meta.env.VITE_API_URL || '';
+
 interface Props {
   friends: FriendProfile[];
   recentChats: RecentChat[];
@@ -16,6 +18,14 @@ interface Props {
   roomMode: boolean;
   onRoomModeClick: () => void;
 }
+
+const resolveAvatarUrl = (url?: string | null) => {
+  if (!url) return null;
+  if (url.startsWith('/profile-media/')) {
+    return `${API_URL}${url}`;
+  }
+  return url;
+};
 
 export default function ChatSidebar({
   friends,
@@ -95,9 +105,13 @@ export default function ChatSidebar({
                     : 'text-gray-600 hover:bg-gray-50'
                   }`}
               >
-                <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-purple/10 text-xs font-semibold text-purple">
-                  {chat.avatar_url ? (
-                    <img src={chat.avatar_url} alt="" className="h-full w-full rounded-full object-cover" />
+                <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-purple/10 text-xs font-semibold text-purple overflow-hidden">
+                  {resolveAvatarUrl(chat.avatar_url) ? (
+                    <img
+                      src={resolveAvatarUrl(chat.avatar_url) as string}
+                      alt=""
+                      className="h-full w-full rounded-full object-cover"
+                    />
                   ) : (
                     `${(chat.first_name?.[0] || '').toUpperCase()}${(chat.last_name?.[0] || '').toUpperCase()}`
                   )}
@@ -165,9 +179,13 @@ export default function ChatSidebar({
                     : 'text-gray-600 hover:bg-gray-50'
                   }`}
               >
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-purple/10 text-xs font-semibold text-purple">
-                  {friend.avatar_url ? (
-                    <img src={friend.avatar_url} alt="" className="h-full w-full rounded-full object-cover" />
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-purple/10 text-xs font-semibold text-purple overflow-hidden">
+                  {resolveAvatarUrl(friend.avatar_url) ? (
+                    <img
+                      src={resolveAvatarUrl(friend.avatar_url) as string}
+                      alt=""
+                      className="h-full w-full rounded-full object-cover"
+                    />
                   ) : (
                     `${(friend.first_name?.[0] || '').toUpperCase()}${(friend.last_name?.[0] || '').toUpperCase()}`
                   )}

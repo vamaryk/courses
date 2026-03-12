@@ -48,6 +48,12 @@ export interface RecentChat {
   unread_count: number | null;
 }
 
+export interface FriendStatus {
+  status: 'none' | 'self' | 'pending' | 'accepted';
+  direction: 'outgoing' | 'incoming' | null;
+  friendshipId: number | null;
+}
+
 const opts = { withCredentials: true };
 
 export const friendsApi = {
@@ -103,6 +109,11 @@ export const friendsApi = {
 
   async getRecentChats(): Promise<RecentChat[]> {
     const res = await axios.get(`${API_URL}/api/friends/recent-chats`, opts);
+    return res.data;
+  },
+
+  async getFriendStatus(userId: string): Promise<FriendStatus> {
+    const res = await axios.get(`${API_URL}/api/friends/status/${userId}`, opts);
     return res.data;
   },
 };

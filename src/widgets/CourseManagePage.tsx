@@ -3,6 +3,7 @@ import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import CoverUpload from "@/components/dashboard/CoverUpload";
 import CourseHeaderCard from "@/components/dashboard/CourseHeaderCard";
 import CoursePriceCard from "@/components/dashboard/CoursePriceCard";
+import CourseDurationCard from "@/components/dashboard/CourseDurationCard";
 import CategorizationCard from "@/components/dashboard/CategorizationCard";
 import ChaptersCard from "@/components/dashboard/ChaptersCard";
 import OutcomesCard from "@/components/dashboard/OutcomesCard";
@@ -11,6 +12,8 @@ import { coursesApi, type Course, type CreateCourseData, type UpdateCourseData, 
 import { getCoverImageUrl } from '@/shared/utils/courseTransform';
 import { useAuth } from '@/app/providers/AuthProvider';
 import { toast } from 'sonner';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription } from '@/components/ui/alert-dialog';
+import { Button } from '@/components/ui/button';
 
 interface CourseFormData {
   title: string;
@@ -18,6 +21,8 @@ interface CourseFormData {
   isPublic: boolean;
   coverImage: string | null;
   price: number;
+   hoursPractice: number;
+   hoursTheory: number;
   tags: string[];
   specialty: string | null;
   targetAudience: string | null;
@@ -48,6 +53,8 @@ function CourseManagePage() {
     isPublic: false,
     coverImage: null,
     price: 0,
+    hoursPractice: 0,
+    hoursTheory: 0,
     tags: [],
     specialty: null,
     targetAudience: null,
@@ -60,6 +67,7 @@ function CourseManagePage() {
 
   const [chapters, setChapters] = useState<Chapter[]>([]);
   const coverImageFileRef = useRef<File | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
 
   useEffect(() => {
     if (isCreatePage) {
@@ -92,6 +100,12 @@ function CourseManagePage() {
         isPublic: course.is_public || false,
         coverImage: course.cover_image || null,
         price: typeof course.price === 'number' ? course.price : 0,
+        hoursPractice: typeof (course as any).hoursPractice === 'number' && (course as any).hoursPractice >= 0
+          ? (course as any).hoursPractice
+          : 0,
+        hoursTheory: typeof (course as any).hoursTheory === 'number' && (course as any).hoursTheory >= 0
+          ? (course as any).hoursTheory
+          : 0,
         tags: course.tags || [],
         specialty: course.specialty || null,
         targetAudience: course.target_audience || null,
@@ -144,6 +158,8 @@ function CourseManagePage() {
         isPublic: saveAsDraft ? false : formData.isPublic,
         coverImage: coverFile ? formData.coverImage : formData.coverImage,
         price: formData.price,
+        hoursPractice: formData.hoursPractice,
+        hoursTheory: formData.hoursTheory,
         tags: formData.tags,
         specialty: formData.specialty,
         targetAudience: formData.targetAudience,
@@ -226,6 +242,20 @@ function CourseManagePage() {
     handleSave(true);
   };
 
+  const handleDeleteCourse = async () => {
+    if (!courseId || isCreatePage) return;
+    try {
+      await coursesApi.deleteCourse(courseId);
+      toast.success('Курс удалён');
+      navigate('/courses');
+    } catch (err) {
+      console.error('Error deleting course:', err);
+      toast.error('Не удалось удалить курс');
+    } finally {
+      setDeleteDialogOpen(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -276,12 +306,36 @@ function CourseManagePage() {
                 price={formData.price}
                 onPriceChange={(price) => setFormData({ ...formData, price })}
               />
+              <CourseDurationCard
+                hoursPractice={formData.hoursPractice}
+                hoursTheory={formData.hoursTheory}
+                onHoursPracticeChange={(hoursPractice) =>
+                  setFormData((prev) => ({ ...prev, hoursPractice }))
+                }
+                onHoursTheoryChange={(hoursTheory) =>
+                  setFormData((prev) => ({ ...prev, hoursTheory }))
+                }
+              />
               <ChaptersCard
                 chapters={chapters}
                 courseId={course?.id || courseId}
                 onChaptersChange={setChapters}
                 isCreatePage={isCreatePage}
               />
+              {!isCreatePage && (
+                <div className="border rounded-xl p-4 bg-white">
+                  <h3 className="text-sm font-semibold text-foreground mb-3">
+                    Опасная зона
+                  </h3>
+                  <Button
+                    variant="outline"
+                    className="inline-flex px-3 py-1 text-sm border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive self-start"
+                    onClick={() => setDeleteDialogOpen(true)}
+                  >
+                    Удалить курс
+                  </Button>
+                </div>
+              )}
             </div>
 
             {/* Right Column */}
@@ -319,6 +373,27 @@ function CourseManagePage() {
           />
         </main>
       </div>
+
+      {/* Диалог подтверждения удаления */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Вы уверены, что хотите удалить курс?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Это действие нельзя будет отменить. Все материалы курса (главы, подглавы и блоки) будут удалены.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Нет</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={handleDeleteCourse}
+            >
+              Да
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

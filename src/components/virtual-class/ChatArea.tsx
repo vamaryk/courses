@@ -30,6 +30,7 @@ interface DirectChatProps {
   onSendMedia: (file: File, caption?: string) => Promise<void>;
   onEditMessage: (messageId: string, text: string) => void;
   onDeleteMessage: (messageId: string) => void;
+  onHeaderClick?: () => void;
 }
 
 interface GroupChatProps {
@@ -324,8 +325,12 @@ export default function ChatArea(props: Props) {
   if (props.mode === 'direct') {
     return (
       <div className="flex h-full flex-col overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
-        <div className="flex items-center gap-3 border-b border-gray-100 px-5 py-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-purple/10 text-xs font-semibold text-purple">
+        <button
+          type="button"
+          onClick={props.onHeaderClick}
+          className="flex items-center gap-3 border-b border-gray-100 px-5 py-3 text-left hover:bg-gray-50 transition-colors"
+        >
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-purple/10 text-xs font-semibold text-purple overflow-hidden">
             {props.friendAvatar ? (
               <img src={props.friendAvatar} alt="" className="h-full w-full rounded-full object-cover" />
             ) : (
@@ -334,9 +339,9 @@ export default function ChatArea(props: Props) {
           </div>
           <div>
             <p className="text-sm font-semibold text-gray-800">{props.friendName}</p>
-            <p className="text-xs text-gray-400">Личные сообщения</p>
+            <p className="text-xs text-gray-400">Личные сообщения • профиль</p>
           </div>
-        </div>
+        </button>
 
         <div className="flex-1 space-y-3 overflow-y-auto px-5 py-4">
           {props.loading && <p className="mt-16 text-center text-sm text-gray-400">Загрузка сообщений…</p>}

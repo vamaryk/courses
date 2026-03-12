@@ -11,6 +11,7 @@ import ResumeSection from "@/components/dashboard/ResumeSection";
 import { Button } from "@/components/ui/button";
 import { Edit } from "lucide-react";
 import { useAuth } from "@/app/providers/AuthProvider";
+import { progressApi } from '@/shared/api/progress';
 
 interface CourseWithChapters extends Course {
   chapters?: Array<Chapter & {
@@ -40,6 +41,8 @@ export default function CourseDetailPage() {
     stats: { today: string; week: string; total: string };
     chartData: Array<{ day: string; value: number }>;
   } | null>(null);
+  // Реальный процент прогресса по курсу
+  const [progressPercentage, setProgressPercentage] = useState<number>(0);
   
   // Track time spent on page
   const pageLoadTime = useRef<number>(Date.now());
@@ -90,6 +93,21 @@ export default function CourseDetailPage() {
 
     fetchCourse();
   }, [id]);
+
+  // Загружаем прогресс по курсу из backend
+  useEffect(() => {
+    const loadProgress = async () => {
+      if (!id || !isAuthenticated) return;
+      try {
+        const result = await progressApi.getCourseProgress(parseInt(id, 10));
+        const pct = result?.completion?.progress_percentage ?? 0;
+        setProgressPercentage(pct);
+      } catch (err) {
+        console.error('Error fetching course progress:', err);
+      }
+    };
+    loadProgress();
+  }, [id, isAuthenticated]);
 
   // Fetch activity data and track time spent
   useEffect(() => {
@@ -167,11 +185,6 @@ export default function CourseDetailPage() {
     }, 0);
   }, 0) || 0;
 
-  // Calculate progress percentage
-  const progressPercentage = course.totalLessons && course.totalLessons > 0 
-    ? Math.round((1 / course.totalLessons) * 100) 
-    : 1;
-
   // Convert chapters to sections format for CourseModules
   const sections = course.chapters?.map((chapter, chapterIndex) => ({
     id: String(chapter.id),
@@ -209,6 +222,7 @@ export default function CourseDetailPage() {
 
   // Prepare tags
   const tags = course.language ? [course.language, course.is_public ? 'Публичный' : 'Приватный'] : [];
+  const numericPrice = Number((course as any).price ?? 0);
 
   return (
     <div className="min-h-screen bg-background">
@@ -235,6 +249,7 @@ export default function CourseDetailPage() {
             courseDescription={course.description || ''}
             authorName={course.instructor_name || course.author?.name || 'Неизвестный автор'}
             coverImage={getCoverImageUrl(course.cover_image)}
+            price={Number.isFinite(numericPrice) ? numericPrice : 0}
             stats={stats}
             tags={tags}
             progress={progressPercentage}

@@ -19,13 +19,20 @@ interface Course {
   progress: number;
   isCompleted?: boolean;
 }
-const MyCourses = () => {
+interface MyCoursesProps {
+  profileId?: string;
+}
+
+const MyCourses = ({ profileId }: MyCoursesProps) => {
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     const fetchCourses = async () => {
       try {
-        const response = await fetch(`${API_URL}/api/users/profile/courses`, {
+        const url = profileId
+          ? `${API_URL}/api/users/${profileId}/courses`
+          : `${API_URL}/api/users/profile/courses`;
+        const response = await fetch(url, {
           credentials: 'include',
         });
         if (response.ok) {
@@ -39,7 +46,7 @@ const MyCourses = () => {
       }
     };
     fetchCourses();
-  }, []);
+  }, [profileId]);
   if (loading) {
     return (
       <section className="mb-8">

@@ -25,7 +25,11 @@ interface CreatedCourse {
   createdAt: string;
 }
 
-const CrCourses = () => {
+interface CrCoursesProps {
+  profileId?: string;
+}
+
+const CrCourses = ({ profileId }: CrCoursesProps) => {
   const [courses, setCourses] = useState<CreatedCourse[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -33,7 +37,10 @@ const CrCourses = () => {
   useEffect(() => {
     const fetchCreatedCourses = async () => {
       try {
-        const response = await fetch(`${API_URL}/api/courses/my`, {
+        const url = profileId
+          ? `${API_URL}/api/users/${profileId}/courses/authored`
+          : `${API_URL}/api/courses/my`;
+        const response = await fetch(url, {
           credentials: 'include',
         });
 

@@ -29,6 +29,11 @@ export interface User {
   name: string;
 }
 
+export interface ResetPasswordData {
+  email: string;
+  newPassword: string;
+}
+
 export const authApi = {
   async signUp(data: AuthData): Promise<User> {
     const response = await axios.post(`${API_URL}/api/auth/signup`, data, {
@@ -70,5 +75,10 @@ export const authApi = {
       ...userData,
       name: `${userData.first_name || ''} ${userData.last_name || ''}`.trim() || userData.email
     };
+  },
+
+  async resetPassword(data: ResetPasswordData): Promise<{ message: string }> {
+    const response = await axios.post(`${API_URL}/api/auth/reset-password`, data);
+    return response.data;
   },
 };

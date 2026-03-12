@@ -6,6 +6,7 @@ interface HeroHeaderProps {
   courseTitle?: string;
   courseDescription?: string;
   authorName?: string;
+  authorAvatar?: string | null;
   coverImage?: string | null;
   stats?: {
     totalLectures?: number;
@@ -19,12 +20,14 @@ interface HeroHeaderProps {
   isBuyLoading?: boolean;
   onToggleFavorite?: () => void;
   onBuy?: () => void;
+  onAuthorClick?: () => void;
 }
 
 const HeroHeaderUser = ({ 
   courseTitle = "Основы HTML и CSS",
   courseDescription = "Курс для начинающих верстальщиков сайтов на HTML и CSS. Разбираем реальные макеты, изучаем семантику языка, отрабатываем навыки в тренажере. В курсе более 190 заданий. Из них 150 – решение практических задач.",
   authorName = "Иван Иванов",
+  authorAvatar,
   coverImage,
   stats = {
     totalLectures: 40,
@@ -38,9 +41,10 @@ const HeroHeaderUser = ({
   isBuyLoading = false,
   onToggleFavorite,
   onBuy,
+  onAuthorClick,
 }: HeroHeaderProps) => {
   const navigate = useNavigate();
-  const isFreeCourse = price <= 0;
+  const isFreeCourse = !price || price <= 0;
 
   return (
     <div className="relative rounded-xl overflow-hidden mb-4">
@@ -75,10 +79,22 @@ const HeroHeaderUser = ({
             </p>
             
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
-                <User className="w-4 h-4 text-white" />
-              </div>
-              <span className="text-white text-sm font-medium">{authorName}</span>
+              <button
+                type="button"
+                onClick={onAuthorClick}
+                className="flex items-center gap-3 group cursor-pointer"
+              >
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center overflow-hidden ring-2 ring-white/30 group-hover:ring-white/60 transition">
+                  {authorAvatar ? (
+                    <img src={authorAvatar} alt={authorName} className="w-full h-full object-cover" />
+                  ) : (
+                    <User className="w-4 h-4 text-white" />
+                  )}
+                </div>
+                <span className="text-white text-sm font-medium group-hover:underline">
+                  {authorName}
+                </span>
+              </button>
             </div>
           </div>
           
@@ -119,11 +135,9 @@ const HeroHeaderUser = ({
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-4">
           {/* Price and Buy button */}
           <div className="flex items-center gap-4">
-            {!isFreeCourse && (
-              <div className="text-xl font-bold text-white">
-                {price.toLocaleString('ru-RU')} ₽
-              </div>
-            )}
+            <div className="text-xl font-bold text-white">
+              {isFreeCourse ? "Бесплатно" : `${price.toLocaleString('ru-RU')} ₽`}
+            </div>
             <button 
               onClick={onBuy}
               disabled={isBuyLoading}

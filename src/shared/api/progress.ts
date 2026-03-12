@@ -74,7 +74,7 @@ export const progressApi = {
     completion: CourseCompletion | null;
   }> {
     const response = await axios.get(
-      `${API_URL}/api/courses/${courseId}/progress`,
+      `${API_URL}/api/progress/courses/${courseId}/progress`,
       { withCredentials: true }
     );
     return response.data;

@@ -118,15 +118,36 @@ export function getCoverImageUrl(coverImage?: string | null): string | undefined
  */
 export function transformCourseToCardCourse(apiCourse: ApiCourse): CourseCardCourse {
   const { practice, theory } = calculateHours(apiCourse.chapters);
+  const apiHoursPractice = (apiCourse as any).hoursPractice;
+  const apiHoursTheory = (apiCourse as any).hoursTheory;
+  const hoursPractice =
+    typeof apiHoursPractice === "number" && apiHoursPractice >= 0
+      ? apiHoursPractice
+      : practice;
+  const hoursTheory =
+    typeof apiHoursTheory === "number" && apiHoursTheory >= 0
+      ? apiHoursTheory
+      : theory;
+  const rawPrice: any = (apiCourse as any).price;
+  const numericPrice =
+    typeof rawPrice === "number"
+      ? rawPrice
+      : Number(rawPrice);
+  const safePrice =
+    Number.isFinite(numericPrice) && numericPrice >= 0
+      ? numericPrice
+      : 0;
   
   return {
     id: apiCourse.id.toString(),
     title: apiCourse.title,
     imageUrl: getImageUrl(apiCourse.id, apiCourse.cover_image),
     badge: generateBadge(apiCourse.title),
-    hoursPractice: practice,
-    hoursTheory: theory,
-    price: 0, // Default price - you can add price field to database if needed
+    hoursPractice,
+    hoursTheory,
+    // Стоимость курса в рублях берём из API (PostgreSQL),
+    // поддерживаем как числовой, так и строковый тип.
+    price: safePrice,
     instructorName: getInstructorName(apiCourse),
     instructorAvatar: getInstructorAvatar(apiCourse),
     isFavorite: false, // Default - will be set by CoursesPage based on API or localStorage

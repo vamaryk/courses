@@ -101,7 +101,7 @@ export function CourseCard({ course, onFavoriteToggle }: CourseCardProps) {
           {/* Price and Favorite */}
           <div className="flex items-center gap-2">
             <span className="px-3 py-1.5 rounded-lg bg-secondary text-sm font-semibold text-foreground">
-              {price.toLocaleString('ru-RU')} ₽
+              {price > 0 ? `${price.toLocaleString('ru-RU')} ₽` : "Бесплатно"}
             </span>
             <button
               onClick={handleFavoriteClick}

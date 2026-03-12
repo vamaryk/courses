@@ -275,6 +275,9 @@ router.get('/me', authenticateSession, async (req, res) => {
         date_of_birth: req.user.profile.date_of_birth,
         avatar_url: req.user.profile.avatar_url,
         role: req.user.profile.role,
+        bio: req.user.profile.bio,
+        address: req.user.profile.address,
+        occupation: req.user.profile.occupation,
       };
       console.log('✅ [AUTH ME] User profile requested successfully.', { userId: req.user.profile.id });
       res.status(200).json(userProfile);
@@ -646,7 +649,7 @@ router.patch('/profile', authenticateSession, async (req, res) => {
   }
 });
 
-// Change password
+// Change password (authenticated user)
 router.post('/change-password', authenticateSession, async (req, res) => {
   const userId = req.user.id;
   const { currentPassword, newPassword } = req.body;
@@ -682,13 +685,49 @@ router.post('/change-password', authenticateSession, async (req, res) => {
 
     // Update password
     await pool.query(
-      'UPDATE users SET password = $1, updated_at = NOW() WHERE id = $2',
+      'UPDATE users SET password = $1 WHERE id = $2',
       [newPasswordHash, userId]
     );
 
     res.json({ message: 'Password updated successfully' });
   } catch (error) {
     console.error('Error changing password:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Reset password by email (unauthenticated "forgot password" flow)
+router.post('/reset-password', async (req, res) => {
+  const { email, newPassword } = req.body;
+
+  if (!email || !newPassword) {
+    return res.status(400).json({ error: 'Email and new password are required' });
+  }
+
+  if (newPassword.length < 8) {
+    return res.status(400).json({ error: 'New password must be at least 8 characters long' });
+  }
+
+  try {
+    const userResult = await pool.query('SELECT id FROM users WHERE email = $1', [email]);
+
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ error: 'User with this email was not found' });
+    }
+
+    const userId = userResult.rows[0].id;
+
+    const saltRounds = 10;
+    const newPasswordHash = await bcrypt.hash(newPassword, saltRounds);
+
+    await pool.query(
+      'UPDATE users SET password = $1 WHERE id = $2',
+      [newPasswordHash, userId]
+    );
+
+    res.json({ message: 'Password reset successfully' });
+  } catch (error) {
+    console.error('Error resetting password:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

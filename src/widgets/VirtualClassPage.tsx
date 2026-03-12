@@ -8,6 +8,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Check,
   Copy,
@@ -15,7 +16,7 @@ import {
   Wifi,
   WifiOff,
 } from 'lucide-react';
-import { useSocket } from '@/hooks/useSocket';
+import { useSharedSocket } from '@/app/providers/SocketProvider';
 import { useChat } from '@/hooks/useChat';
 import { useWebRTC } from '@/hooks/useWebRTC';
 import { useFriends } from '@/hooks/useFriends';
@@ -38,7 +39,9 @@ function RemoteAudio({ stream }: { stream: MediaStream }) {
 type ViewMode = 'room' | 'dm' | 'group';
 
 export default function VirtualClassPage() {
-  const { socket, userId, isConnected } = useSocket();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const { socket, userId, isConnected } = useSharedSocket();
   const {
     roomId,
     messages: roomMessages,
@@ -102,9 +105,20 @@ export default function VirtualClassPage() {
   const activeFriendName = activeFriend
     ? `${('first_name' in activeFriend ? activeFriend.first_name : '')} ${('last_name' in activeFriend ? activeFriend.last_name : '')}`.trim()
     : '';
-  const activeFriendAvatar = activeFriend
+
+  const API_URL = import.meta.env.VITE_API_URL || '';
+  const resolveAvatarUrl = (url: string | null | undefined) => {
+    if (!url) return null;
+    if (url.startsWith('/profile-media/')) {
+      return `${API_URL}${url}`;
+    }
+    return url;
+  };
+
+  const activeFriendAvatarRaw = activeFriend
     ? ('avatar_url' in activeFriend ? activeFriend.avatar_url : null)
     : null;
+  const activeFriendAvatar = resolveAvatarUrl(activeFriendAvatarRaw);
 
   // Currently selected group info
   const activeGroup = groups.find((g) => g.id === activeGroupId);
@@ -124,6 +138,23 @@ export default function VirtualClassPage() {
     loadGroupHistory(groupId);
     clearGroupUnread(groupId);
   }, [setActiveFriendId, setActiveGroupId, loadGroupHistory, clearGroupUnread]);
+
+  // If opened with ?friendId=... from profile page, automatically switch to DM with that user
+  useEffect(() => {
+    const friendIdFromQuery = searchParams.get('friendId');
+    if (!friendIdFromQuery) return;
+
+    const existsInFriends = friends.some((f) => f.id === friendIdFromQuery);
+    const existsInRecent = recentChats.some((c) => c.friend_id === friendIdFromQuery);
+
+    if (existsInFriends || existsInRecent) {
+      handleSelectFriend(friendIdFromQuery);
+
+      const newParams = new URLSearchParams(searchParams.toString());
+      newParams.delete('friendId');
+      setSearchParams(newParams, { replace: true });
+    }
+  }, [searchParams, friends, recentChats, handleSelectFriend, setSearchParams]);
 
   const handleRoomMode = useCallback(() => {
     setViewMode('room');
@@ -235,9 +266,23 @@ export default function VirtualClassPage() {
           )}
 
           {viewMode === 'dm' && (
-            <ChatArea mode="direct" friendName={activeFriendName} friendAvatar={activeFriendAvatar}
-              messages={dmMessages} currentUserId={dbUserId} loading={dmLoading} onSend={sendDm} onSendMedia={sendDmMedia}
-              onEditMessage={editDmMessage} onDeleteMessage={deleteDmMessage} />
+            <ChatArea
+              mode="direct"
+              friendName={activeFriendName}
+              friendAvatar={activeFriendAvatar}
+              messages={dmMessages}
+              currentUserId={dbUserId}
+              loading={dmLoading}
+              onSend={sendDm}
+              onSendMedia={sendDmMedia}
+              onEditMessage={editDmMessage}
+              onDeleteMessage={deleteDmMessage}
+              onHeaderClick={() => {
+                if (activeFriendId) {
+                  navigate(`/profile/${activeFriendId}`);
+                }
+              }}
+            />
           )}
 
           {viewMode === 'group' && activeGroup && (

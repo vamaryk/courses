@@ -8,6 +8,7 @@ import ProfilePage from "@/widgets/ProfilePage";
 import SettingsPage from "@/widgets/SettingsPage";
 import GlossaryPage from "@/widgets/GlossaryPage";
 import AuthPage from "@/app/auth/page";
+import ResetPasswordPage from "@/app/auth/reset-password";
 import CourseManagePage from "@/widgets/CourseManagePage";
 import CourseDetailPage from "@/pages/CourseDetailPage";
 import LecturePage from "@/pages/LecturePage";
@@ -71,6 +72,7 @@ export const Router = () => {
       <Route path="/courses/:id" element={<AppLayout><CourseDetailPage /></AppLayout>} />
       <Route path="/courses/:courseId/learn/:chapterId/:subchapterId" element={<AppLayout><LecturePage /></AppLayout>} />
       <Route path="/profile" element={<AppLayout><ProfilePage /></AppLayout>} />
+      <Route path="/profile/:id" element={<AppLayout><ProfilePage /></AppLayout>} />
       <Route path="/settings" element={<AppLayout><SettingsPage /></AppLayout>} />
       <Route path="/glossary" element={<AppLayout><GlossaryPage /></AppLayout>} />
       <Route
@@ -104,6 +106,7 @@ export const Router = () => {
         }
       />
       <Route path="/auth" element={<AppLayout><AuthPage /></AppLayout>} />
+      <Route path="/auth/reset-password" element={<AppLayout><ResetPasswordPage /></AppLayout>} />
     </Routes>
   );
 };

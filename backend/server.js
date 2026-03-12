@@ -45,6 +45,7 @@ const __dirname = dirname(__filename);
 const chatsMediaRoot = path.join(__dirname, 'data', 'chats');
 const coursesMediaRoot = path.join(__dirname, 'data', 'courses');
 const achievementsMediaRoot = path.join(__dirname, 'data', 'achievements');
+const profilesMediaRoot = path.join(__dirname, 'data', 'profiles');
 
 // Import routes
 import authRoutes from './routes/auth.js';
@@ -52,6 +53,7 @@ import userRoutes from './routes/users.js';
 import courseRoutes from './routes/courses.js';
 import calendarRoutes from './routes/calendar.js';
 import statisticsRoutes from './routes/statistics.js';
+import progressRoutes from './routes/progress.js';
 import friendsRoutes from './routes/friends.js';
 import groupsRoutes from './routes/groups.js';
 import { authenticateSession, authorizeRole } from './middleware/auth.js';
@@ -147,9 +149,11 @@ app.use(cookieParser());
 await fs.mkdir(chatsMediaRoot, { recursive: true });
 await fs.mkdir(coursesMediaRoot, { recursive: true });
 await fs.mkdir(achievementsMediaRoot, { recursive: true });
+await fs.mkdir(profilesMediaRoot, { recursive: true });
 app.use('/chat-media', express.static(chatsMediaRoot));
 app.use('/course-media', express.static(coursesMediaRoot));
 app.use('/achievement-media', express.static(achievementsMediaRoot));
+app.use('/profile-media', express.static(profilesMediaRoot));
 
 console.log('🔗 [SERVER] Middleware настроены');
 
@@ -160,6 +164,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/courses', courseRoutes);
 app.use('/api/calendar', calendarRoutes);
 app.use('/api/statistics', statisticsRoutes);
+app.use('/api/progress', progressRoutes);
 app.use('/api/friends', friendsRoutes);
 app.use('/api/groups', groupsRoutes);
 // Подключаем роуты для глав и подглав без префикса /courses

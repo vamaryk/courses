@@ -30,6 +30,8 @@ export function useDirectMessages(
   const [dbUserId, setDbUserId] = useState<string | null>(null);
 
   const activeFriendRef = useRef(activeFriendId);
+  const lastLoadedFriendIdRef = useRef<string | null>(null);
+  const API_URL = import.meta.env.VITE_API_URL || '';
 
   // Keep a stable ref to the callback so the socket listener doesn't go stale
   const onMessageRef = useRef(options?.onMessage);
@@ -93,7 +95,33 @@ export function useDirectMessages(
     };
   }, [socket]);
 
+  // Fallback: fetch current DB user id via HTTP in case socket auth event was missed
+  useEffect(() => {
+    if (dbUserId) return;
+
+    const fetchMe = async () => {
+      try {
+        const res = await fetch(`${API_URL}/api/auth/me`, { credentials: 'include' });
+        if (!res.ok) return;
+        const me = await res.json();
+        if (me?.id) {
+          setDbUserId(me.id);
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    void fetchMe();
+  }, [API_URL, dbUserId]);
+
   const loadHistory = useCallback(async (friendId: string) => {
+    // Avoid spamming the API if we are already loaded (or trying to load) this friend
+    if (lastLoadedFriendIdRef.current === friendId && !loading) {
+      return;
+    }
+    lastLoadedFriendIdRef.current = friendId;
+
     setLoading(true);
     try {
       const history = await friendsApi.getMessages(friendId);
@@ -104,7 +132,7 @@ export function useDirectMessages(
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [loading]);
 
   const sendMessage = useCallback(
     (text: string) => {

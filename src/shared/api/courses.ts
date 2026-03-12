@@ -24,6 +24,8 @@ export interface Course {
   instructor_avatar?: string | null;
   price?: number;
   studentsCount?: number;
+  hoursPractice?: number;
+  hoursTheory?: number;
   is_enrolled?: boolean;
   has_access?: boolean;
 }
@@ -68,6 +70,8 @@ export interface CreateCourseData {
   isPublic: boolean;
   coverImage?: string | null;
   price?: number;
+  hoursPractice?: number;
+  hoursTheory?: number;
   tags?: string[];
   specialty?: string | null;
   targetAudience?: string | null;
@@ -84,6 +88,8 @@ export interface UpdateCourseData {
   isPublic: boolean;
   coverImage?: string | null;
   price?: number;
+  hoursPractice?: number;
+  hoursTheory?: number;
   tags?: string[];
   specialty?: string | null;
   targetAudience?: string | null;

@@ -1,4 +1,4 @@
-import { format, isSameDay, addDays, startOfWeek } from 'date-fns';
+import { format, isSameDay, addDays, startOfWeek, isPast } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { Task } from '../types';
@@ -101,19 +101,27 @@ export function SideCalendar({ currentDate, onDateChange, tasks }: SideCalendarP
       <div className="mt-6 flex-1 min-h-0 overflow-y-auto">
         <h3 className="text-lg font-medium font-montserrat mb-2">Задачи на сегодня</h3>
         <div className="space-y-3">
-          {getTodaysTasks().map((task) => (
-            <div key={task.id} className="bg-purple-50 p-3 border-[1px] border-solid rounded-[12px] border-[#E5E5E5]">
-              <div className="text-[#252525] font-medium mb-1 line-clamp-1">
-                {task.title}
+          {getTodaysTasks().map((task) => {
+            const isTaskPast = isPast(task.endDate);
+            return (
+              <div
+                key={task.id}
+                className={`bg-purple-50 p-3 border-[1px] border-solid rounded-[12px] border-[#E5E5E5] ${
+                  isTaskPast ? 'opacity-50' : ''
+                }`}
+              >
+                <div className="text-[#252525] font-medium mb-1 line-clamp-1">
+                  {task.title}
+                </div>
+                <div className="text-[#525252] text-sm line-clamp-2">
+                  {task.description}
+                </div>
+                <div className="text-xs text-gray-500 mt-2">
+                  {format(task.startDate, 'HH:mm')} - {format(task.endDate, 'HH:mm')}
+                </div>
               </div>
-              <div className="text-[#525252] text-sm line-clamp-2">
-                {task.description}
-              </div>
-              <div className="text-xs text-gray-500 mt-2">
-                {format(task.startDate, 'HH:mm')} - {format(task.endDate, 'HH:mm')}
-              </div>
-            </div>
-          ))}
+            );
+          })}
           {getTodaysTasks().length === 0 && (
             <p className="text-gray-500 text-sm font-montserrat">Нет задач на сегодня</p>
           )}

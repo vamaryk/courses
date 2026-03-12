@@ -46,7 +46,8 @@ export default function CoursesPage() {
   
   // Filter state
   const [difficulty, setDifficulty] = useState("all"); // Changed default to "all"
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, 59999]);
+  // Диапазон по умолчанию: до 100 млн ₽, чтобы не скрывать дорогие курсы
+  const [priceRange, setPriceRange] = useState<[number, number]>([0, 100_000_000]);
   const [durationRange, setDurationRange] = useState<[number, number]>([0, 240]);
   const [documentTypes, setDocumentTypes] = useState<string[]>([]);
   const [skills, setSkills] = useState<string[]>([]);

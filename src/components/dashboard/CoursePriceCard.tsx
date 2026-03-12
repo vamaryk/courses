@@ -11,7 +11,8 @@ const CoursePriceCard = ({ price, onPriceChange }: CoursePriceCardProps) => {
       return;
     }
     const num = parseInt(raw, 10);
-    if (!Number.isNaN(num) && num >= 0 && num <= 999_999) {
+    // Разрешаем цену до 100 000 000 ₽
+    if (!Number.isNaN(num) && num >= 0 && num <= 100_000_000) {
       onPriceChange(num);
     }
   };
@@ -25,7 +26,7 @@ const CoursePriceCard = ({ price, onPriceChange }: CoursePriceCardProps) => {
         <input
           type="text"
           inputMode="numeric"
-          placeholder="0 — 999 999"
+          placeholder="0 — 100 000 000"
           className="input-field w-36 text-center"
           value={displayValue}
           onChange={handleChange}

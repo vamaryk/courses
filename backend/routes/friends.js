@@ -148,6 +148,12 @@ router.post('/request', authenticateSession, async (req, res) => {
           avatar_url: sender.avatar_url,
           created_at: new Date().toISOString(),
         });
+        io.to(targetSocketId).emit('notification', {
+          type: 'friend_request',
+          title: 'Новая заявка в друзья',
+          body: `${sender.first_name || ''} ${sender.last_name || ''}`.trim() || 'Новый пользователь',
+          created_at: new Date().toISOString(),
+        });
       }
     } catch (notifyErr) {
       console.error('[FRIENDS] Socket notify error:', notifyErr.message);
@@ -203,12 +209,24 @@ router.post('/accept/:friendshipId', authenticateSession, async (req, res) => {
         const initiatorSocketId = authUsers.get(initiatorId);
         if (initiatorSocketId) {
           io.to(initiatorSocketId).emit('friend:accepted', { friend: acceptor });
+          io.to(initiatorSocketId).emit('notification', {
+            type: 'friend_accepted',
+            title: 'Заявка в друзья принята',
+            body: `${acceptor.first_name || ''} ${acceptor.last_name || ''}`.trim() || 'Пользователь принял вашу заявку',
+            created_at: new Date().toISOString(),
+          });
         }
 
         // Notify the acceptor — their own friends list needs refreshing too
         const acceptorSocketId = authUsers.get(userId);
         if (acceptorSocketId) {
           io.to(acceptorSocketId).emit('friend:accepted', { friend: initiator });
+          io.to(acceptorSocketId).emit('notification', {
+            type: 'friend_accepted',
+            title: 'Новый друг',
+            body: `${initiator.first_name || ''} ${initiator.last_name || ''}`.trim() || 'Новый друг добавлен',
+            created_at: new Date().toISOString(),
+          });
         }
       }
     } catch (notifyErr) {
@@ -336,6 +354,65 @@ router.post('/invite/:token', authenticateSession, async (req, res) => {
     res.status(500).json({ error: 'Failed to accept invite' });
   } finally {
     client.release();
+  }
+});
+
+// ─── Get friendship status with a specific user ───────────────────────────────
+router.get('/status/:userId', authenticateSession, async (req, res) => {
+  const currentUserId = req.user.profile.id;
+  const { userId } = req.params;
+
+  if (!userId) {
+    return res.status(400).json({ error: 'userId is required' });
+  }
+
+  if (userId === currentUserId) {
+    return res.json({
+      status: 'self',
+      direction: null,
+      friendshipId: null,
+    });
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT id, user_id, friend_id, status
+       FROM friendships
+       WHERE (user_id = $1 AND friend_id = $2)
+          OR (user_id = $2 AND friend_id = $1)
+       LIMIT 1`,
+      [currentUserId, userId],
+    );
+
+    if (result.rows.length === 0) {
+      return res.json({
+        status: 'none',
+        direction: null,
+        friendshipId: null,
+      });
+    }
+
+    const friendship = result.rows[0];
+
+    if (friendship.status === 'accepted') {
+      return res.json({
+        status: 'accepted',
+        direction: null,
+        friendshipId: friendship.id,
+      });
+    }
+
+    const direction =
+      friendship.user_id === currentUserId ? 'outgoing' : 'incoming';
+
+    return res.json({
+      status: 'pending',
+      direction,
+      friendshipId: friendship.id,
+    });
+  } catch (error) {
+    console.error('[FRIENDS] Status error:', error.message);
+    res.status(500).json({ error: 'Failed to fetch friendship status' });
   }
 });
 

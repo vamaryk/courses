@@ -1,141 +1,359 @@
-import { useState } from 'react';
-import { Search, BookOpen, ChevronDown, ChevronUp } from 'lucide-react';
+import { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { Plus } from "lucide-react";
+import ConceptCard from "@/components/glossary/ConceptCard";
+import ConceptEdgesCanvas from "@/components/glossary/ConceptEdges";
+import NodeDialog from "@/components/glossary/NodeDialog";
+import RightSidebar from "@/components/glossary/RightSidebar";
+import StageBar from "@/components/glossary/StageBar";
+import type { ConceptNode } from "@/types/glossary";
+import type { ConceptEdge } from "@/types/glossary";
+import {
+  fetchMindmaps,
+  fetchMindmapById,
+  createConcept,
+  type MindMapSummary,
+  type MindMapFull,
+} from "@/shared/api/gollossary";
 
-export default function GlossaryPage() {
-  const [searchTerm, setSearchTerm] = useState('');
-  const [expandedTerms, setExpandedTerms] = useState<Set<number>>(new Set());
+const GlossaryPage = () => {
+  const [nodes, setNodes] = useState<ConceptNode[]>([]);
+  const [edges, setEdges] = useState<ConceptEdge[]>([]);
+  const [mindmaps, setMindmaps] = useState<MindMapSummary[]>([]);
+  const [activeStage, setActiveStage] = useState(1);
+  const [currentCourse, setCurrentCourse] = useState<string>("all");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingNode, setEditingNode] = useState<ConceptNode | null>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const dragOffset = useRef({ dx: 0, dy: 0 });
+  const canvasRef = useRef<HTMLDivElement | null>(null);
 
-  const glossaryTerms = [
-    {
-      id: 1,
-      term: 'API',
-      definition: 'Application Programming Interface - интерфейс прикладного программирования. Набор правил и протоколов, позволяющих разным программам взаимодействовать друг с другом.',
-      category: 'Технические термины'
-    },
-    {
-      id: 2,
-      term: 'React',
-      definition: 'JavaScript-библиотека для создания пользовательских интерфейсов, разработанная Facebook. Позволяет строить веб-приложения с использованием компонентного подхода.',
-      category: 'Фреймворки'
-    },
-    {
-      id: 3,
-      term: 'Алгоритм',
-      definition: 'Последовательность действий или правил для решения задачи. В программировании алгоритмы используются для обработки данных и выполнения вычислений.',
-      category: 'Основные понятия'
-    },
-    {
-      id: 4,
-      term: 'База данных',
-      definition: 'Организованная коллекция данных, хранящаяся в электронном виде. Позволяет эффективно хранить, извлекать и управлять большими объемами информации.',
-      category: 'Хранение данных'
-    },
-    {
-      id: 5,
-      term: 'CSS',
-      definition: 'Cascading Style Sheets - каскадные таблицы стилей. Язык описания внешнего вида документа, написанного с использованием языка разметки HTML.',
-      category: 'Веб-технологии'
-    },
-    {
-      id: 6,
-      term: 'Git',
-      definition: 'Распределенная система управления версиями файлов. Позволяет отслеживать изменения в коде, работать в команде и управлять различными версиями проекта.',
-      category: 'Инструменты разработки'
-    }
-  ];
-
-  const filteredTerms = glossaryTerms.filter(term =>
-    term.term.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    term.definition.toLowerCase().includes(searchTerm.toLowerCase())
+  const activeMindmapId = useMemo(
+    () => mindmaps[activeStage - 1]?._id ?? null,
+    [mindmaps, activeStage],
   );
 
-  const toggleExpanded = (id: number) => {
-    const newExpanded = new Set(expandedTerms);
-    if (newExpanded.has(id)) {
-      newExpanded.delete(id);
+  // Загружаем список mindmap при монтировании
+  useEffect(() => {
+    let cancelled = false;
+    const loadMindmaps = async () => {
+      setLoading(true);
+      setError(null);
+      try {
+        const data = await fetchMindmaps();
+        if (cancelled) return;
+        setMindmaps(data);
+        if (data.length > 0) {
+          setActiveStage(1);
+        }
+      } catch (e: any) {
+        if (cancelled) return;
+        console.error("Failed to load mindmaps", e);
+        setError("Не удалось загрузить карту знаний");
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    };
+    loadMindmaps();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // При смене активной MindMap загружаем её понятия и строим узлы/рёбра
+  useEffect(() => {
+    let cancelled = false;
+    const loadMindmap = async (mindmapId: string) => {
+      try {
+        const mm: MindMapFull = await fetchMindmapById(mindmapId);
+        if (cancelled) return;
+
+        const concepts = mm.concepts || [];
+
+        // Преобразуем понятия в ConceptNode с автолейаутом
+        const nodesFromConcepts: ConceptNode[] = concepts.map((c, index) => {
+          const colCount = 4;
+          const row = Math.floor(index / colCount);
+          const col = index % colCount;
+          const baseX = 160;
+          const baseY = 120;
+          const dx = 260;
+          const dy = 200;
+
+          return {
+            id: c._id || `${mindmapId}-${index}`,
+            title: c.term,
+            description: c.definition,
+            stage: 1,
+            course: "all",
+            themes: [],
+            x: baseX + col * dx,
+            y: baseY + row * dy,
+            conceptIndex: index,
+            mindmapId,
+          };
+        });
+
+        // Строим рёбра по связям parent/children
+        const termToId = new Map<string, string>();
+        nodesFromConcepts.forEach((n) =>
+          termToId.set(n.title.trim().toLowerCase(), n.id),
+        );
+
+        const edgesFromConcepts: ConceptEdge[] = [];
+        const edgeSet = new Set<string>();
+
+        concepts.forEach((c) => {
+          const parentName = c.relations?.parent?.trim().toLowerCase();
+          const children = c.relations?.children || [];
+          const parentId = parentName ? termToId.get(parentName) : undefined;
+
+          children.forEach((childName) => {
+            const childId = termToId.get(childName.trim().toLowerCase());
+            if (parentId && childId) {
+              const edgeKey = `${parentId}->${childId}`;
+              if (!edgeSet.has(edgeKey)) {
+                edgeSet.add(edgeKey);
+                edgesFromConcepts.push({
+                  id: edgeKey,
+                  from: parentId,
+                  to: childId,
+                });
+              }
+            }
+          });
+        });
+
+        setNodes(nodesFromConcepts);
+        setEdges(edgesFromConcepts);
+      } catch (e) {
+        console.error("Failed to load mindmap details", e);
+        setNodes([]);
+        setEdges([]);
+      }
+    };
+
+    if (activeMindmapId) {
+      loadMindmap(activeMindmapId);
     } else {
-      newExpanded.add(id);
+      setNodes([]);
+      setEdges([]);
     }
-    setExpandedTerms(newExpanded);
-  };
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeMindmapId]);
+
+  // Пока mindmap не привязаны жёстко к конкретным курсам,
+  // отображаем все узлы независимо от выбранного курса.
+  const filteredNodes = useMemo(() => nodes, [nodes]);
+
+  const filteredEdges = useMemo(() => {
+    const ids = new Set(filteredNodes.map((n) => n.id));
+    return edges.filter((e) => ids.has(e.from) && ids.has(e.to));
+  }, [edges, filteredNodes]);
+
+  const stages = useMemo(
+    () => (mindmaps.length ? mindmaps.map((_, idx) => idx + 1) : [1]),
+    [mindmaps],
+  );
+
+  const lectureNames = useMemo(() => {
+    const mapping: Record<number, string> = {};
+    mindmaps.forEach((mm, index) => {
+      const num = index + 1;
+      mapping[num] = mm.topic || mm.lecture_number || `Лекция ${num}`;
+    });
+    return mapping;
+  }, [mindmaps]);
+
+  const handleSave = useCallback(
+    async (data: Omit<ConceptNode, "id" | "x" | "y"> & { id?: string }) => {
+      // Локальное обновление существующего узла (редактирование только в UI)
+      if (data.id) {
+        setNodes((prev) =>
+          prev.map((n) => (n.id === data.id ? ({ ...n, ...data } as ConceptNode) : n)),
+        );
+        return;
+      }
+
+      // Создание нового понятия в MongoDB через gollossary
+      if (!activeMindmapId) return;
+      try {
+        await createConcept(activeMindmapId, {
+          term: data.title,
+          definition: data.description,
+        });
+        // После успешного создания перезагружаем MindMap, чтобы получить свежий список понятий
+        const mm = await fetchMindmapById(activeMindmapId);
+        const concepts = mm.concepts || [];
+
+        const colCount = 4;
+        const nodesFromConcepts: ConceptNode[] = concepts.map((c, index) => {
+          const row = Math.floor(index / colCount);
+          const col = index % colCount;
+          const baseX = 160;
+          const baseY = 120;
+          const dx = 260;
+          const dy = 200;
+
+          return {
+            id: c._id || `${activeMindmapId}-${index}`,
+            title: c.term,
+            description: c.definition,
+            stage: 1,
+            course: "all",
+            themes: [],
+            x: baseX + col * dx,
+            y: baseY + row * dy,
+            conceptIndex: index,
+            mindmapId: activeMindmapId,
+          };
+        });
+        setNodes(nodesFromConcepts);
+      } catch (e) {
+        console.error("Failed to create concept in MongoDB", e);
+      }
+    },
+    [activeMindmapId],
+  );
+
+  // Синхронизация смены стадии по событию из правого сайдбара
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const custom = event as CustomEvent<{ stage: number }>;
+      if (typeof custom.detail?.stage === "number") {
+        setActiveStage(custom.detail.stage);
+      }
+    };
+    window.addEventListener("glossary:set-stage", handler as EventListener);
+    return () => {
+      window.removeEventListener("glossary:set-stage", handler as EventListener);
+    };
+  }, []);
+
+  const handleDelete = useCallback((id: string) => {
+    setNodes((prev) => prev.filter((n) => n.id !== id));
+    setEdges((prev) => prev.filter((e) => e.from !== id && e.to !== id));
+  }, []);
+
+  const handleEdit = useCallback((node: ConceptNode) => {
+    setEditingNode(node);
+    setDialogOpen(true);
+  }, []);
+
+  const handleAddNode = useCallback(() => {
+    setEditingNode(null);
+    setDialogOpen(true);
+  }, []);
+
+  const handleDragStart = useCallback(
+    (id: string, e: React.MouseEvent) => {
+      e.preventDefault();
+      const node = nodes.find((n) => n.id === id);
+      if (!node || !canvasRef.current) return;
+      const rect = canvasRef.current.getBoundingClientRect();
+      dragOffset.current = {
+        dx: e.clientX - rect.left - node.x,
+        dy: e.clientY - rect.top - node.y,
+      };
+      setDraggingId(id);
+
+      const onMove = (ev: MouseEvent) => {
+        if (!canvasRef.current) return;
+        const r = canvasRef.current.getBoundingClientRect();
+        setNodes((prev) =>
+          prev.map((n) =>
+            n.id === id
+              ? {
+                  ...n,
+                  x: ev.clientX - r.left - dragOffset.current.dx,
+                  y: ev.clientY - r.top - dragOffset.current.dy,
+                }
+              : n
+          )
+        );
+      };
+
+      const onUp = () => {
+        setDraggingId(null);
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+      };
+
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [nodes]
+  );
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex bg-background overflow-hidden min-h-[600px]">
+      <div className="flex-1 flex flex-col min-w-0">
+        <StageBar
+          stages={stages}
+          activeStage={activeStage}
+          onStageChange={setActiveStage}
+          lectureNames={lectureNames}
+        />
 
-      <div className="flex">
-        <main className="flex-1 min-w-0 px-[20px] mb-[20px]">
-          <div className="flex gap-5 flex-col lg:flex-row">
-            <div className="flex-1 min-w-0">
-              <div className="rounded-xl shadow p-6" style={{ background: 'radial-gradient(circle, #F7C8FF, #D8E6FF)' }}>
-                <div className="flex items-center justify-between flex-wrap gap-4 mb-6">
-                  <div className="flex items-center">
-                    <button className="flex items-center text-gray-600 text-[12px] font-montserrat hover:text-gray-900 mr-4">
-                      ← Глоссарий
-                    </button>
-                  </div>
-                </div>
+        <div ref={canvasRef} className="flex-1 relative overflow-auto p-4">
+          <div className="relative min-w-[1000px] min-h-[700px]">
+            <ConceptEdgesCanvas edges={filteredEdges} nodes={filteredNodes} />
+            <AnimatePresence>
+              {filteredNodes.map((node) => {
+                const isActiveStage = node.stage <= activeStage;
+                const isHighlighted = false;
+                const isDimmed = false;
 
-                <div className="flex items-center gap-4 mb-8">
-                  <h1 className="text-[24px] font-xolonium">Глоссарий</h1>
-                  <BookOpen className="w-5 h-5 text-gray-500" />
-                </div>
-
-                <div className="bg-white/70 rounded-lg p-6 mb-6">
-                  <div className="relative">
-                    <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                    <input
-                      type="text"
-                      placeholder="Поиск по терминам..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                    />
-                  </div>
-                </div>
-
-                <div className="space-y-4">
-                  {filteredTerms.map((term) => {
-                    const isExpanded = expandedTerms.has(term.id);
-                    return (
-                      <div key={term.id} className="bg-white/70 rounded-lg overflow-hidden">
-                        <div
-                          className="p-4 cursor-pointer hover:bg-white/50 transition-colors"
-                          onClick={() => toggleExpanded(term.id)}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <h3 className="text-lg font-semibold">{term.term}</h3>
-                              <span className="px-2 py-1 bg-[#B291FF]/20 text-[#B291FF] rounded-full text-xs">
-                                {term.category}
-                              </span>
-                            </div>
-                            {isExpanded ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-                          </div>
-                        </div>
-
-                        {isExpanded && (
-                          <div className="px-4 pb-4 border-t border-gray-200">
-                            <p className="text-gray-700 mt-3 leading-relaxed">
-                              {term.definition}
-                            </p>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-
-                {filteredTerms.length === 0 && (
-                  <div className="text-center py-12">
-                    <BookOpen className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                    <p className="text-gray-500">По вашему запросу ничего не найдено</p>
-                  </div>
-                )}
-              </div>
-            </div>
+                return (
+                  <ConceptCard
+                    key={node.id}
+                    node={node}
+                    isActiveStage={isActiveStage}
+                    isHighlighted={isHighlighted}
+                    isDimmed={isDimmed}
+                    onEdit={handleEdit}
+                    onDelete={handleDelete}
+                    onDragStart={handleDragStart}
+                  />
+                );
+              })}
+            </AnimatePresence>
           </div>
-        </main>
+
+          <motion.button
+            onClick={handleAddNode}
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.95 }}
+            className="absolute bottom-6 right-6 w-12 h-12 rounded-full bg-sidebar text-sidebar-foreground shadow-lg flex items-center justify-center hover:opacity-90 transition-colors z-10"
+            title="Добавить понятие"
+          >
+            <Plus className="h-5 w-5" />
+          </motion.button>
+        </div>
       </div>
+
+      <RightSidebar
+        currentCourse={currentCourse}
+        onCourseChange={setCurrentCourse}
+        mindmaps={mindmaps}
+        activeStage={activeStage}
+      />
+
+      <NodeDialog
+        open={dialogOpen}
+        onClose={() => setDialogOpen(false)}
+        onSave={handleSave}
+        editNode={editingNode}
+        currentCourse={currentCourse}
+      />
     </div>
   );
-}
+};
+
+export default GlossaryPage;
+

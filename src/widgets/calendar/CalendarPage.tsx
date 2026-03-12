@@ -1,10 +1,12 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Calendar as CalendarIcon, Plus } from 'lucide-react';
 import { addWeeks, subWeeks, addMonths, subMonths, addDays, subDays } from 'date-fns';
 import { Calendar } from './components/Calendar';
 import { SideCalendar } from './components/SideCalendar';
 import { TaskDialog } from './components/TaskDialog';
 import { Task } from './types';
+import { calendarApi } from '@/shared/api/calendar';
+import { toast } from '@/hooks/use-toast';
 
 const monthsInNominative = [
   'Январь', 'Февраль', 'Март', 'Апрель', 'Май', 'Июнь',
@@ -18,21 +20,95 @@ function CalendarPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [editingTask, setEditingTask] = useState<Task | undefined>();
   const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+  const [now, setNow] = useState<Date | null>(null);
 
-  const handleCreateTask = (taskData: Omit<Task, 'id'>) => {
-    if (editingTask) {
-      setTasks(tasks.map(task =>
-        task.id === editingTask.id
-          ? { ...taskData, id: task.id }
-          : task
-      ));
-      setEditingTask(undefined);
-    } else {
-      const newTask: Task = {
-        ...taskData,
-        id: Math.random().toString(36).substr(2, 9),
+  // Update current time every minute for local reminder checks
+  useEffect(() => {
+    setNow(new Date());
+    const id = setInterval(() => {
+      setNow(new Date());
+    }, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
+  useEffect(() => {
+    async function loadEvents() {
+      try {
+        const events = await calendarApi.getEvents();
+        const mappedTasks: Task[] = events.map((event) => ({
+          id: String(event.id),
+          title: event.title,
+          description: event.description || '',
+          startDate: new Date(event.start_time),
+          endDate: new Date(event.end_time),
+        }));
+        setTasks(mappedTasks);
+      } catch (error) {
+        console.error('[CALENDAR] Failed to load events:', error);
+      }
+    }
+
+    loadEvents();
+  }, []);
+
+  // Local reminders: show toast when 10 minutes remain before a task
+  useEffect(() => {
+    if (!now || tasks.length === 0) return;
+
+    const tenMinutesMs = 10 * 60 * 1000;
+
+    tasks.forEach((task) => {
+      const diff = task.startDate.getTime() - now.getTime();
+      // show reminder when in [0; 60s] window around 10 minutes before start
+      if (diff <= tenMinutesMs && diff > tenMinutesMs - 60_000) {
+        toast({
+          title: 'Скоро задача из календаря',
+          description: `${task.title} начнётся через 10 минут`,
+        });
+      }
+    });
+  }, [now, tasks]);
+
+  const handleCreateTask = async (taskData: Omit<Task, 'id'>) => {
+    try {
+      const payload = {
+        title: taskData.title,
+        description: taskData.description || '',
+        start_time: taskData.startDate.toISOString(),
+        end_time: taskData.endDate.toISOString(),
+        event_type: 'task',
+        location: null as string | null,
       };
-      setTasks([...tasks, newTask]);
+
+      if (editingTask) {
+        const updatedEvent = await calendarApi.updateEvent(Number(editingTask.id), payload);
+        const updatedTask: Task = {
+          id: String(updatedEvent.id),
+          title: updatedEvent.title,
+          description: updatedEvent.description || '',
+          startDate: new Date(updatedEvent.start_time),
+          endDate: new Date(updatedEvent.end_time),
+        };
+
+        setTasks((prevTasks) =>
+          prevTasks.map((task) =>
+            task.id === editingTask.id ? updatedTask : task
+          )
+        );
+        setEditingTask(undefined);
+      } else {
+        const createdEvent = await calendarApi.createEvent(payload);
+        const newTask: Task = {
+          id: String(createdEvent.id),
+          title: createdEvent.title,
+          description: createdEvent.description || '',
+          startDate: new Date(createdEvent.start_time),
+          endDate: new Date(createdEvent.end_time),
+        };
+        setTasks((prevTasks) => [...prevTasks, newTask]);
+      }
+    } catch (error) {
+      console.error('[CALENDAR] Failed to save event:', error);
     }
   };
 

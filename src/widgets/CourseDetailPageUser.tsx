@@ -231,6 +231,7 @@ export default function CourseDetailPageUser({ onEnrolled }: CourseDetailPageUse
             courseTitle={course.title}
             courseDescription={course.description || ''}
             authorName={course.instructor_name || course.author?.name || 'Неизвестный автор'}
+            authorAvatar={course.instructor_avatar || null}
             coverImage={getCoverImageUrl(course.cover_image)}
             stats={{
               totalLectures: theoryCount,
@@ -244,6 +245,11 @@ export default function CourseDetailPageUser({ onEnrolled }: CourseDetailPageUse
             isBuyLoading={buyLoading}
             onToggleFavorite={handleToggleFavorite}
             onBuy={handleBuyCourse}
+            onAuthorClick={() => {
+              if (course.author_id) {
+                navigate(`/profile/${course.author_id}`);
+              }
+            }}
           />
           <div className="bg-white rounded-xl shadow p-5">
           

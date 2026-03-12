@@ -20,6 +20,14 @@ interface LectureBlocksProps {
   storedAnswers?: Record<number, StoredAnswer>;
   onPersistAnswer?: (contentBlockId: number, userAnswer: string, isCorrect: boolean) => Promise<void>;
   onBlockTypeChange?: (blockType: 'theory' | 'task' | 'test') => void;
+  /** Вызывается, когда пользователь нажимает "Далее" на последнем блоке —
+   *  используется, чтобы перейти к следующей подглаве.
+   */
+  onLastBlockNext?: () => void;
+  /** Вызывается, когда пользователь жмёт "Предыдущий блок" на самом первом блоке —
+   *  используется, чтобы перейти к предыдущей подглаве.
+   */
+  onFirstBlockPrev?: () => void;
 }
 
 type QuizSelectionType = 'single' | 'multiple';
@@ -132,7 +140,9 @@ export default function LectureBlocks({
   blocks, 
   storedAnswers = {}, 
   onPersistAnswer,
-  onBlockTypeChange 
+  onBlockTypeChange,
+  onLastBlockNext,
+  onFirstBlockPrev,
 }: LectureBlocksProps) {
   const [activeIndex, setActiveIndex] = useState(0);
   const [taskInput, setTaskInput] = useState('');
@@ -617,18 +627,34 @@ export default function LectureBlocks({
       <div className="flex items-center justify-between pt-3">
         <Button 
           variant="outline" 
-          onClick={() => setActiveIndex((prev) => Math.max(0, prev - 1))} 
-          disabled={safeIndex === 0}
-          className={safeIndex === 0 ? `${buttonOutlineClasses} ${buttonDisabledClasses}` : buttonOutlineClasses}
+          onClick={() => {
+            if (safeIndex > 0) {
+              setActiveIndex((prev) => Math.max(0, prev - 1));
+            } else if (onFirstBlockPrev) {
+              onFirstBlockPrev();
+            }
+          }} 
+          disabled={safeIndex === 0 && !onFirstBlockPrev}
+          className={safeIndex === 0 && !onFirstBlockPrev ? `${buttonOutlineClasses} ${buttonDisabledClasses}` : buttonOutlineClasses}
         >
           Предыдущий блок
         </Button>
         <Button 
-          onClick={() => setActiveIndex((prev) => Math.min(viewBlocks.length - 1, prev + 1))} 
-          disabled={isLastBlock}
-          className={isLastBlock ? `${buttonPrimaryClasses} ${buttonDisabledClasses}` : buttonPrimaryClasses}
+          onClick={() => {
+            if (!isLastBlock) {
+              setActiveIndex((prev) => Math.min(viewBlocks.length - 1, prev + 1));
+            } else if (onLastBlockNext) {
+              onLastBlockNext();
+            }
+          }} 
+          disabled={isLastBlock && !onLastBlockNext}
+          className={isLastBlock && !onLastBlockNext ? `${buttonPrimaryClasses} ${buttonDisabledClasses}` : buttonPrimaryClasses}
         >
-          {isLastBlock ? 'Это последний блок' : 'Далее'}
+          {isLastBlock
+            ? onLastBlockNext
+              ? 'Следующая подглава'
+              : 'Это последний блок'
+            : 'Далее'}
         </Button>
       </div>
     </div>

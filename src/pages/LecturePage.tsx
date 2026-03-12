@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { coursesApi, type Chapter, type Course, type UserContentBlockAnswer } from '@/shared/api/courses';
+import { useCourseProgress } from '@/hooks/useCourseProgress';
 import { Button } from '@/components/ui/button';
 import LectureLayout from '@/components/lecture/LectureLayout';
 import LectureOutline from '@/components/lecture/LectureOutline';
@@ -84,6 +85,93 @@ export default function LecturePage() {
   const currentDuration = Math.max(8, currentBlocks.length * 12);
   const durationLabel = `${currentDuration}:40`;
 
+  const firstContentBlock = currentBlocks[0] || null;
+
+  const { markAsCompleted } = useCourseProgress({
+    courseId: Number(courseId),
+    chapterId: currentChapter?.id,
+    subchapterId: currentSubchapter?.id,
+    contentBlockId: firstContentBlock?.id,
+    onProgressUpdate: (newProgress) => {
+      // Пока просто логируем; при желании можно пробросить в UI
+      console.log('[PROGRESS] Course progress updated:', newProgress, '%');
+    },
+    onCourseComplete: () => {
+      console.log('[PROGRESS] Course completed!');
+    },
+  });
+
+  const goToPrevSubchapter = () => {
+    if (!currentChapter || !currentSubchapter) return;
+
+    const chapterIdx = sortedChapters.findIndex((ch) => ch.id === currentChapter.id);
+    const subIdx =
+      currentChapter.subchapters?.findIndex((sub) => sub.id === currentSubchapter.id) ?? -1;
+
+    if (chapterIdx === -1 || subIdx === -1) return;
+
+    // Предыдущая подглава в текущей главе
+    if (subIdx > 0) {
+      const prevSub = currentChapter.subchapters?.[subIdx - 1];
+      if (prevSub) {
+        navigate(`/courses/${courseId}/learn/${currentChapter.id}/${prevSub.id}`);
+      }
+      return;
+    }
+
+    // Последняя подглава предыдущей главы
+    if (chapterIdx > 0) {
+      const prevChapter = sortedChapters[chapterIdx - 1];
+      const lastSub = prevChapter.subchapters?.[prevChapter.subchapters.length - 1];
+      if (prevChapter && lastSub) {
+        navigate(`/courses/${courseId}/learn/${prevChapter.id}/${lastSub.id}`);
+      }
+      return;
+    }
+
+    // Если это самая первая глава/подглава — возвращаем на страницу курса
+    if (courseId) {
+      navigate(`/courses/${courseId}`);
+    }
+  };
+
+  const goToNextSubchapter = () => {
+    if (!currentChapter || !currentSubchapter) return;
+
+    const chapterIdx = sortedChapters.findIndex((ch) => ch.id === currentChapter.id);
+    const subIdx =
+      currentChapter.subchapters?.findIndex((sub) => sub.id === currentSubchapter.id) ?? -1;
+
+    if (chapterIdx === -1 || subIdx === -1) return;
+
+    // Сначала помечаем текущую подглаву как завершённую
+    void markAsCompleted();
+
+    // Следующая подглава в той же главе
+    if (subIdx < (currentChapter.subchapters?.length || 0) - 1) {
+      const nextSub = currentChapter.subchapters?.[subIdx + 1];
+      if (nextSub) {
+        navigate(`/courses/${courseId}/learn/${currentChapter.id}/${nextSub.id}`);
+      }
+      return;
+    }
+
+    // Первая подглава следующей главы
+    if (chapterIdx < sortedChapters.length - 1) {
+      const nextChapter = sortedChapters[chapterIdx + 1];
+      const firstSub = nextChapter.subchapters?.[0];
+      if (nextChapter && firstSub) {
+        navigate(`/courses/${courseId}/learn/${nextChapter.id}/${firstSub.id}`);
+      }
+      return;
+    }
+
+    // Если больше нет глав/подглав — возвращаем на страницу курса
+    if (courseId) {
+      navigate(`/courses/${courseId}`);
+    }
+  };
+
   useEffect(() => {
     const loadAnswers = async () => {
       if (!currentSubchapter?.id) return;
@@ -162,6 +250,8 @@ export default function LecturePage() {
             }));
           }}
           onBlockTypeChange={setCurrentBlockType}
+          onFirstBlockPrev={goToPrevSubchapter}
+          onLastBlockNext={goToNextSubchapter}
         />
       </LectureLayout>
       <LectureOutline

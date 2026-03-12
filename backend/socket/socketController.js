@@ -100,6 +100,13 @@ function normalizeMongoMessage(doc) {
   };
 }
 
+function emitNotificationToUser(userId, payload) {
+  if (!_io) return;
+  const targetSocketId = authUsers.get(userId);
+  if (!targetSocketId) return;
+  _io.to(targetSocketId).emit('notification', payload);
+}
+
 /**
  * Try to authenticate a socket connection via session cookie.
  * Returns the DB user profile or null.
@@ -308,10 +315,23 @@ export function setupSocketController(io) {
 
         // Send to both sender and receiver if they are connected
         socket.emit('dm:message', msg);
+        // Notify sender as well (for notification center history)
+        socket.emit('notification', {
+          type: 'direct_message',
+          title: 'Сообщение отправлено',
+          body: (messageText || 'Вы отправили личное сообщение').slice(0, 80),
+          created_at: new Date().toISOString(),
+        });
 
         const receiverSocketId = authUsers.get(receiverId);
         if (receiverSocketId) {
           io.to(receiverSocketId).emit('dm:message', msg);
+          io.to(receiverSocketId).emit('notification', {
+            type: 'direct_message',
+            title: 'Новое сообщение',
+            body: (messageText || 'Новое личное сообщение').slice(0, 80),
+            created_at: new Date().toISOString(),
+          });
         }
 
         console.log(`📩 [DM] ${senderId} → ${receiverId}: ${(messageText || '[media]').slice(0, 60)}`);

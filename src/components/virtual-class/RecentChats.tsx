@@ -1,11 +1,21 @@
 import { Clock } from 'lucide-react';
 import type { RecentChat } from '@/shared/api/friends';
 
+const API_URL = import.meta.env.VITE_API_URL || '';
+
 interface Props {
   chats: RecentChat[];
   activeFriendId: string | null;
   onSelect: (friendId: string) => void;
 }
+
+const resolveAvatarUrl = (url?: string | null) => {
+  if (!url) return null;
+  if (url.startsWith('/profile-media/')) {
+    return `${API_URL}${url}`;
+  }
+  return url;
+};
 
 export default function RecentChats({ chats, activeFriendId, onSelect }: Props) {
   if (chats.length === 0) return null;
@@ -28,9 +38,13 @@ export default function RecentChats({ chats, activeFriendId, onSelect }: Props) 
                 : 'hover:bg-gray-50'
             }`}
           >
-            <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-purple/10 text-xs font-semibold text-purple">
-              {chat.avatar_url ? (
-                <img src={chat.avatar_url} alt="" className="h-full w-full rounded-full object-cover" />
+            <div className="relative flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-purple/10 text-xs font-semibold text-purple overflow-hidden">
+              {resolveAvatarUrl(chat.avatar_url) ? (
+                <img
+                  src={resolveAvatarUrl(chat.avatar_url) as string}
+                  alt=""
+                  className="h-full w-full rounded-full object-cover"
+                />
               ) : (
                 `${(chat.first_name?.[0] || '').toUpperCase()}${(chat.last_name?.[0] || '').toUpperCase()}`
               )}

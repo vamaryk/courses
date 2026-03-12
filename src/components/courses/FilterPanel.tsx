@@ -129,7 +129,8 @@ export function FilterPanel({
           value={priceRange}
           onValueChange={(value) => onPriceRangeChange(value as [number, number])}
           min={0}
-          max={60000}
+          // Позволяем фильтровать курсы по цене до 100 000 000 ₽
+          max={100000000}
           step={1000}
           className="[&_[role=slider]]:bg-primary [&_[role=slider]]:border-primary"
         />

@@ -5,6 +5,9 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Link } from 'react-router-dom';
 import { Range, getTrackBackground } from 'react-range';
+import heroFallbackCover from '@/assets/course-python-1.jpg';
+
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 interface CourseWithAuthor extends Omit<Course, 'author_id'> {
   author_id: string | number;
@@ -25,7 +28,8 @@ interface CourseWithAuthor extends Omit<Course, 'author_id'> {
 
 // Константы для диапазонов
 const PRICE_MIN = 0;
-const PRICE_MAX = 10000;
+// Увеличиваем верхнюю границу цены, чтобы показывать и дорогие курсы
+const PRICE_MAX = 100000;
 const DURATION_MIN = 0;
 const DURATION_MAX = 100;
 
@@ -653,6 +657,13 @@ export default function HomePage() {
     );
     };
 
+  // Ограничение длины описания, чтобы карточки были ровнее
+  const getShortDescription = (text?: string | null, maxLength: number = 90) => {
+    if (!text) return 'Описание отсутствует';
+    if (text.length <= maxLength) return text;
+    return `${text.slice(0, maxLength).trimEnd()}…`;
+  };
+
   return (
     <div className="bg-background">
       {/* Hero Section */}
@@ -714,52 +725,74 @@ export default function HomePage() {
 
           {/* Course Grid */}
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-4 lg:gap-4">
-            {filteredCourses.length > 0 ? filteredCourses.slice(0, 5).map((course) => (
-              <div 
-                key={course.id} 
-                className="bg-background rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300"
-              >
-                <div className="aspect-video bg-gradient-to-r from-purple-100 to-blue-100 relative p-4">
-                  <div className="absolute top-2 left-2">
-                    <span className="px-2 py-1 bg-background/80 backdrop-blur-sm text-purple-600 text-xs font-medium rounded-full">
-                      {course.is_public ? 'Публичный' : 'Приватный'}
-                    </span>
-                  </div>
-                </div>
-                
-                <div className="p-3 sm:p-4 lg:p-3">
-                  <h3 className="font-semibold text-gray-900 mb-2 line-clamp-1">
-                    {course.title}
-                  </h3>
-                  <p className="text-sm text-gray-600 mb-4 line-clamp-1">
-                    {course.description || 'Описание отсутствует'}
-                  </p>
-                  
-                  <div className="flex items-center justify-between mt-4">
-                    <div className="flex items-center">
-                      <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center mr-2">
-                        <Users className="w-4 h-4 text-gray-500" />
+            {filteredCourses.length > 0 ? filteredCourses.slice(0, 5).map((course) => {
+              const coverUrl = course.cover_image
+                ? `${API_URL}${course.cover_image}`
+                : heroFallbackCover;
+              const rawPrice = Number(course.price || 0);
+              const priceLabel = rawPrice > 0
+                ? `${rawPrice.toLocaleString('ru-RU')} ₽`
+                : 'Бесплатно';
+
+              return (
+                <div 
+                  key={course.id} 
+                  className="bg-background rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300 flex flex-col"
+                >
+                  <div className="aspect-video relative overflow-hidden">
+                    <img
+                      src={coverUrl}
+                      alt={course.title}
+                      className="w-full h-full object-cover transition-transform duration-500 hover:scale-105"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/10 to-transparent" />
+                    <div className="absolute top-2 left-2">
+                      <span className="px-2 py-1 bg-background/80 backdrop-blur-sm text-purple-600 text-xs font-medium rounded-full">
+                        {course.is_public ? 'Публичный' : 'Приватный'}
+                      </span>
+                    </div>
+                    <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
+                      <div className="flex items-center gap-1 bg-background/80 backdrop-blur-sm px-2 py-1 rounded-full">
+                        <Star className="w-4 h-4 text-yellow-400 fill-current" />
+                        <span className="text-xs font-medium text-gray-900">
+                          {course.rating ? course.rating.toFixed(1) : '4.8'}
+                        </span>
                       </div>
-                      <span className="text-xs text-gray-500">
-                        {course.author?.name || 'Автор не указан'}
-                      </span>
-                    </div>
-                    <div className="flex items-center">
-                      <Star className="w-4 h-4 text-yellow-400 fill-current" />
-                      <span className="text-sm font-medium ml-1">
-                         {course.rating ? course.rating.toFixed(1) : '4.8'} 
-                      </span>
+                      <div className="flex items-center gap-1 bg-purple text-white px-2 py-1 rounded-full text-xs font-semibold">
+                        <CreditCard className="w-3 h-3" />
+                        <span>{priceLabel}</span>
+                      </div>
                     </div>
                   </div>
                   
-                  <Button asChild className="w-full mt-4 bg-purple text-white font-medium hover:bg-purple-600">
-                    <Link to={`/courses/${course.id}`}>
-                      Подробнее
-                    </Link>
-                  </Button>
+                  <div className="p-3 sm:p-4 lg:p-3 flex flex-col flex-1">
+                    <h3 className="font-semibold text-gray-900 mb-2 line-clamp-1">
+                      {course.title}
+                    </h3>
+                    <p className="text-sm text-gray-600 mb-4 line-clamp-2 min-h-[40px]">
+                      {getShortDescription(course.description)}
+                    </p>
+                    
+                    <div className="flex items-center justify-between mt-auto pt-1">
+                      <div className="flex items-center">
+                        <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center mr-2">
+                          <Users className="w-4 h-4 text-gray-500" />
+                        </div>
+                        <span className="text-xs text-gray-500 line-clamp-1">
+                          {course.author?.name || 'Автор не указан'}
+                        </span>
+                      </div>
+                    </div>
+                    
+                    <Button asChild className="w-full mt-4 bg-purple text-white font-medium hover:bg-purple-600">
+                      <Link to={`/courses/${course.id}`}>
+                        Подробнее
+                      </Link>
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            )) : (
+              );
+            }) : (
               <div className="col-span-full text-center py-8">
                 <BookOpen className="w-12 h-12 text-gray-300 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-500">Популярные курсы не найдены</h3>
@@ -870,9 +903,15 @@ export default function HomePage() {
               {/* Course Cards Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-4">
                 {paginatedCourses.length > 0 ? paginatedCourses.map((course) => (
-                  <div key={course.id} className="relative bg-background rounded-xl sm:rounded-2xl shadow-md overflow-hidden group hover:shadow-lg transition-shadow duration-300">
+                  <div key={course.id} className="relative bg-background rounded-xl sm:rounded-2xl shadow-md overflow-hidden group hover:shadow-lg transition-shadow duration-300 flex flex-col">
                     {/* Course Image - Full block */}
-                    <div className="aspect-video bg-gradient-to-r from-purple-100 to-blue-100 relative">
+                    <div className="aspect-video relative overflow-hidden">
+                        <img
+                          src={course.cover_image ? `${API_URL}${course.cover_image}` : heroFallbackCover}
+                          alt={course.title}
+                          className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/10 to-transparent" />
                         {/* Кнопка "В избранное" */}
                         <button
                         onClick={(e) => {
@@ -905,16 +944,16 @@ export default function HomePage() {
                     {/* Course Content */}
                     <Link 
                         to={`/courses/${course.id}`} 
-                        className="block flex-1 p-3 sm:p-4 lg:p-3"
+                        className="block flex-1 p-3 sm:p-4 lg:p-3 flex flex-col"
                     >
                         <h3 className="lg:text-lg sm:text-xs font-semibold text-gray-900 mb-2 line-clamp-1">
                         {course.title}
                         </h3>
-                        <p className="text-sm text-gray-600 mb-1 line-clamp-1">
-                        {course.description || 'Описание отсутствует'}
+                        <p className="text-sm text-gray-600 mb-2 line-clamp-2 min-h-[40px]">
+                        {getShortDescription(course.description)}
                         </p>
                         
-                        <div className="border-t border-gray-100">
+                        <div className="border-t border-gray-100 mt-auto pt-1">
                         {/* Автор и Цена */}
                         <div className="pt-1 flex items-center justify-between flex-wrap gap-2 mb-1">
                             <div className="flex items-center gap-2 min-w-[120px] flex-1">
@@ -927,10 +966,12 @@ export default function HomePage() {
                             </div>
                             
                             <div className="flex items-center gap-1 border-2 rounded-full px-2 py-1">
-                            <CreditCard className="w-4 h-4 text-gray-500" />
-                            <span className="text-xs font-bold text-gray-900">
-                                {course.price ? `${course.price} ₽` : 'Бесплатно'}
-                            </span>
+                              <CreditCard className="w-4 h-4 text-gray-500" />
+                              <span className="text-xs font-bold text-gray-900">
+                                {course.price && course.price > 0
+                                  ? `${Number(course.price).toLocaleString('ru-RU')} ₽`
+                                  : 'Бесплатно'}
+                              </span>
                             </div>
                         </div>
                         </div>

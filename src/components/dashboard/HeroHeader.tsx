@@ -7,6 +7,7 @@ interface HeroHeaderProps {
   courseDescription?: string;
   authorName?: string;
   coverImage?: string | null;
+  price?: number;
   stats?: {
     tests?: string;
     programs?: string;
@@ -22,6 +23,7 @@ const HeroHeader = ({
   courseDescription = "Курс для начинающих верстальщиков сайтов на HTML и CSS. Разбираем реальные макеты, изучаем семантику языка, отрабатываем навыки в тренажере. В курсе более 190 заданий. Из них 150 – решение практических задач.",
   authorName = "Иван Иванов",
   coverImage,
+  price,
   stats = {
     tests: "1/15",
     programs: "0/5",
@@ -32,6 +34,7 @@ const HeroHeader = ({
   progress = 1
 }: HeroHeaderProps) => {
   const navigate = useNavigate();
+  const isFreeCourse = !price || price <= 0;
 
   const defaultStats = [
     { icon: FileCheck, value: stats.tests || "1/15", label: "тестов" },
@@ -95,7 +98,15 @@ const HeroHeader = ({
         
         {/* Stats row - responsive grid for mobile */}
         <div className="mt-2 mb-6">
-          <div className="grid grid-cols-2 md:flex md:items-center md:gap-8 gap-4 pt-4">
+          <div className="flex flex-wrap items-center gap-4 md:gap-8 pt-4">
+            {typeof price === "number" && (
+              <div className="flex items-center gap-2">
+                <span className="text-white/60 text-xs md:text-sm">Стоимость</span>
+                <span className="text-white font-semibold text-sm md:text-base">
+                  {isFreeCourse ? "Бесплатно" : `${price.toLocaleString("ru-RU")} ₽`}
+                </span>
+              </div>
+            )}
             {defaultStats.map((stat, index) => {
               const Icon = stat.icon;
               return (
