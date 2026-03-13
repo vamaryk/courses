@@ -11,6 +11,17 @@ interface TaskDialogProps {
   initialTask?: Task;
 }
 
+// Вспомогательная функция для форматирования времени с автоматической вставкой :
+const formatTimeInput = (value: string): string => {
+  // Удаляем все нецифровые символы
+  const digits = value.replace(/\D/g, '').slice(0, 4);
+  
+  if (digits.length <= 2) {
+    return digits;
+  }
+  return `${digits.slice(0, 2)}:${digits.slice(2)}`;
+};
+
 export function TaskDialog({ open, onOpenChange, onSave, initialTask }: TaskDialogProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -54,20 +65,26 @@ export function TaskDialog({ open, onOpenChange, onSave, initialTask }: TaskDial
 
   useEffect(() => {
     if (startDate && startTime && endTime) {
-      const start = new Date(`${startDate}T${startTime}`);
-      const end = new Date(`${endDate || startDate}T${endTime}`);
+      // Парсим время, добавляя недостающие нули для корректной даты
+      const [startHours, startMinutes] = startTime.split(':').map(Number);
+      const [endHours, endMinutes] = endTime.split(':').map(Number);
+      
+      const start = new Date(`${startDate}T${String(startHours).padStart(2, '0')}:${String(startMinutes).padStart(2, '0')}`);
+      const end = new Date(`${(showEndDate && endDate) ? endDate : startDate}T${String(endHours).padStart(2, '0')}:${String(endMinutes).padStart(2, '0')}`);
 
-      if (isBefore(start, end) && (isSameDay(start, end) || showEndDate)) {
-        const hours = differenceInHours(end, start);
-        const minutes = differenceInMinutes(end, start) % 60;
-        setDuration(`${hours} ч. ${minutes} мин.`);
-        setTimeError('');
-      } else {
-        setDuration('');
-        if (!showEndDate) {
-          setShowEndDate(true);
-          if (!endDate) {
-            setEndDate(startDate);
+      if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+        if (isBefore(start, end) && (isSameDay(start, end) || showEndDate)) {
+          const hours = differenceInHours(end, start);
+          const minutes = differenceInMinutes(end, start) % 60;
+          setDuration(`${hours} ч. ${minutes} мин.`);
+          setTimeError('');
+        } else {
+          setDuration('');
+          if (!showEndDate) {
+            setShowEndDate(true);
+            if (!endDate) {
+              setEndDate(startDate);
+            }
           }
         }
       }
@@ -96,6 +113,15 @@ export function TaskDialog({ open, onOpenChange, onSave, initialTask }: TaskDial
     }
   };
 
+  // Обработчик для ввода времени с авто-форматированием
+  const handleTimeChange = (
+    e: React.ChangeEvent<HTMLInputElement>, 
+    setter: React.Dispatch<React.SetStateAction<string>>
+  ) => {
+    const formatted = formatTimeInput(e.target.value);
+    setter(formatted);
+  };
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
@@ -106,14 +132,17 @@ export function TaskDialog({ open, onOpenChange, onSave, initialTask }: TaskDial
       return;
     }
 
-    const start = new Date(`${startDate}T${startTime}`);
-    const end = new Date(`${endDate || startDate}T${endTime}`);
+    const [startHours, startMinutes] = startTime.split(':').map(Number);
+    const [endHours, endMinutes] = endTime.split(':').map(Number);
+    
+    const start = new Date(`${startDate}T${String(startHours).padStart(2, '0')}:${String(startMinutes).padStart(2, '0')}`);
+    const end = new Date(`${(showEndDate && endDate) ? endDate : startDate}T${String(endHours).padStart(2, '0')}:${String(endMinutes).padStart(2, '0')}`);
 
     // Проверка времени начала и окончания
     if (isAfter(start, end)) {
       if (isSameDay(start, end)) {
         setTimeError('Время окончания должно быть позже времени начала.');
-      } else if (isBefore(new Date(endDate), new Date(startDate))) {
+      } else if (endDate && isBefore(new Date(endDate), new Date(startDate))) {
         setTimeError('Дата окончания не может быть раньше даты начала.');
       } else {
         setTimeError('Проверьте правильность времени начала и окончания.');
@@ -196,9 +225,10 @@ export function TaskDialog({ open, onOpenChange, onSave, initialTask }: TaskDial
                   <input
                     type="text"
                     value={startTime}
-                    onChange={(e) => setStartTime(e.target.value)}
+                    onChange={(e) => handleTimeChange(e, setStartTime)}
                     placeholder="ЧЧ:ММ"
                     inputMode="numeric"
+                    maxLength={5}
                     className="w-full px-3 py-2 border rounded-lg"
                     required
                   />
@@ -210,9 +240,10 @@ export function TaskDialog({ open, onOpenChange, onSave, initialTask }: TaskDial
                   <input
                     type="text"
                     value={endTime}
-                    onChange={(e) => setEndTime(e.target.value)}
+                    onChange={(e) => handleTimeChange(e, setEndTime)}
                     placeholder="ЧЧ:ММ"
                     inputMode="numeric"
+                    maxLength={5}
                     className="w-full px-3 py-2 border rounded-lg"
                     required
                   />

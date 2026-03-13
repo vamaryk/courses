@@ -38,7 +38,6 @@ const HeroHeader = ({
 
   const defaultStats = [
     { icon: FileCheck, value: stats.tests || "1/15", label: "тестов" },
-    { icon: BookOpen, value: stats.programs || "0/5", label: "программ" },
     { icon: BookOpen, value: stats.lectures || "1/40", label: "лекций" },
     { icon: TrendingUp, value: stats.progress || "1%", label: "прогресс" },
   ];
@@ -101,9 +100,9 @@ const HeroHeader = ({
           <div className="flex flex-wrap items-center gap-4 md:gap-8 pt-4">
             {typeof price === "number" && (
               <div className="flex items-center gap-2">
-                <span className="text-white/60 text-xs md:text-sm">Стоимость</span>
+                <span className="text-white/60 text-xs md:text-sm">Стоимость:</span>
                 <span className="text-white font-semibold text-sm md:text-base">
-                  {isFreeCourse ? "Бесплатно" : `${price.toLocaleString("ru-RU")} ₽`}
+                  {isFreeCourse ? "бесплатно" : `${price.toLocaleString("ru-RU")} ₽`}
                 </span>
               </div>
             )}
@@ -112,8 +111,8 @@ const HeroHeader = ({
               return (
                 <div key={index} className="flex items-center gap-2">
                   <Icon className="w-4 h-4 text-white/60" />
+                  <span className="text-white/60 text-xs md:text-sm">{stat.label}:</span>
                   <span className="text-white font-semibold text-sm">{stat.value}</span>
-                  <span className="text-white/60 text-xs md:text-sm">{stat.label}</span>
                 </div>
               );
             })}

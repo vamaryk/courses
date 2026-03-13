@@ -19,7 +19,7 @@ interface LectureBlocksProps {
   blocks: ContentBlock[];
   storedAnswers?: Record<number, StoredAnswer>;
   onPersistAnswer?: (contentBlockId: number, userAnswer: string, isCorrect: boolean) => Promise<void>;
-  onBlockTypeChange?: (blockType: 'theory' | 'task' | 'test') => void;
+  onBlockTypeChange?: (blockType: 'theory' | 'task' | 'test' | 'code_task') => void;
   /** Вызывается, когда пользователь нажимает "Далее" на последнем блоке —
    *  используется, чтобы перейти к следующей подглаве.
    */
@@ -108,7 +108,6 @@ const parseQuizPayload = (rawAnswer?: string | null): QuizAnswerPayload | null =
 };
 
 const MAX_TASK_ANSWER_LENGTH = 180;
-const MAX_LECTURE_LINE_LENGTH = 90;
 
 const normalizeAnswer = (value: string) => value.trim().toLowerCase().replace(/\s+/g, ' ');
 const stripHtml = (value?: string | null) => (value || '').replace(/<[^>]*>/g, '').trim();
@@ -170,7 +169,7 @@ export default function LectureBlocks({
   }, [activeIndex, viewBlocks, onBlockTypeChange]);
 
   if (!viewBlocks.length) {
-    return <p className="text-[17px] text-[#595a67]">В этой лекции пока нет контента.</p>;
+    return <p className="text-[17px] text-[#595a67] break-words">В этой лекции пока нет контента.</p>;
   }
 
   const safeIndex = Math.min(activeIndex, viewBlocks.length - 1);
@@ -249,7 +248,7 @@ export default function LectureBlocks({
         : codeTaskConfig.starterCode || '';
 
     if (!codeToRun.trim()) {
-      setCodeTaskError('Добавьте код перед запуском перед запуском тестов');
+      setCodeTaskError('Добавьте код перед запуском тестов');
       return;
     }
 
@@ -326,30 +325,36 @@ export default function LectureBlocks({
   const buttonDisabledClasses = "opacity-50 cursor-not-allowed";
 
   return (
-    <div className="space-y-8 text-[#31323f]">
-      <section key={block.id}>
+    <div className="space-y-8 text-[#31323f] w-full min-w-0">
+      <section key={block.id} className="w-full min-w-0">
         {block.type !== 'test' && block.content && (
-          <div className="max-w-full overflow-hidden px-4 md:px-10">
+          <div className="w-full max-w-full overflow-x-hidden px-4">
             <div
               className={`
-                prose break-words whitespace-pre-wrap
+                prose break-words whitespace-pre-wrap overflow-x-hidden
                 prose-headings:text-[#222431] prose-p:text-[17px] prose-p:leading-8 prose-li:text-[17px] prose-li:leading-8
+                prose-pre:max-w-full prose-pre:overflow-x-auto prose-pre:whitespace-pre
+                prose-code:break-all prose-a:break-all
               `}
-              style={{ maxWidth: `${MAX_LECTURE_LINE_LENGTH}ch` }}
+              style={{ 
+                wordBreak: 'break-word',
+                overflowWrap: 'break-word',
+                hyphens: 'auto',
+              }}
               dangerouslySetInnerHTML={{ __html: block.content }}
             />
           </div>
         )}
 
         {block.type !== 'test' && blockHtmlText.length === 0 && (
-          <div className="rounded-lg border border-dashed border-[#d9dbe7] bg-white px-4 py-3 text-sm text-[#707286]">
-            Этот блок пока пустой. Нажмите "Перейти к следующему блоку" или заполните контент в редакторе подглав.
+          <div className="rounded-lg border border-dashed border-[#d9dbe7] bg-white px-4 py-3 text-sm text-[#707286] break-words">
+            Этот блок пока пустой.
           </div>
         )}
 
         {block.type === 'task' && (
-          <div className="mt-2 rounded-xl border border-[#e7e7f2] bg-white p-4">
-            <div className="mb-2 text-sm font-semibold text-[#35364a]">Введите ответ</div>
+          <div className="mt-2 rounded-xl border border-[#e7e7f2] bg-white p-4 w-full min-w-0">
+            <div className="mb-2 text-sm font-semibold text-[#35364a] break-words">Введите ответ</div>
             <textarea
               value={taskInput}
               maxLength={MAX_TASK_ANSWER_LENGTH}
@@ -358,12 +363,17 @@ export default function LectureBlocks({
                 setTaskCheckResult(null);
               }}
               rows={4}
-              className="w-full resize-none rounded-lg border border-[#d6d8e3] px-3 py-2 text-[15px] text-[#2f3040] outline-none focus:border-[#8f6bf4] break-words"
+              className="w-full min-w-0 max-w-full resize-y rounded-lg border border-[#d6d8e3] px-3 py-2 text-[15px] text-[#2f3040] outline-none focus:border-[#8f6bf4] break-words overflow-wrap-break-word"
               placeholder="Напишите ваш ответ"
+              style={{ 
+                wordBreak: 'break-word',
+                overflowWrap: 'break-word',
+                whiteSpace: 'pre-wrap',
+              }}
             />
-            <div className="mt-1 flex items-center justify-between text-xs text-[#8a8b9a]">
-              <span>Макс. {MAX_TASK_ANSWER_LENGTH} символов</span>
-              {taskInput.length}/{MAX_TASK_ANSWER_LENGTH}
+            <div className="mt-1 flex items-center justify-between text-xs text-[#8a8b9a] flex-wrap gap-1">
+              <span className="break-words">Макс. {MAX_TASK_ANSWER_LENGTH} символов</span>
+              <span>{taskInput.length}/{MAX_TASK_ANSWER_LENGTH}</span>
             </div>
             <div className="my-2">
               <Button 
@@ -376,7 +386,7 @@ export default function LectureBlocks({
             </div>
             {taskCheckResult && (
               <div
-                className={`mt-3 rounded-md px-3 py-2 text-sm ${
+                className={`mt-3 rounded-md px-3 py-2 text-sm break-words ${
                   taskCheckResult === 'correct'
                     ? 'bg-green-100 text-green-800 border border-green-300'
                     : 'bg-red-100 text-red-800 border border-red-300'
@@ -389,17 +399,17 @@ export default function LectureBlocks({
         )}
 
         {block.type === 'code_task' && codeTaskConfig && (
-          <div className="mt-2 rounded-xl border border-[#e7e7f2] bg-white p-4">
-            <div className="flex flex-col lg:flex-row gap-4">
+          <div className="mt-2 rounded-xl border border-[#e7e7f2] bg-white p-4 w-full min-w-0">
+            <div className="flex flex-col lg:flex-row gap-4 min-w-0">
               {/* Левая колонка: условие и код */}
-              <div className="lg:w-2/3 space-y-3">
+              <div className="lg:w-2/3 space-y-3 min-w-0">
                 <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
-                  <div>
-                    <div className="text-sm font-semibold text-[#35364a]">
+                  <div className="min-w-0">
+                    <div className="text-sm font-semibold text-[#35364a] break-words">
                       Проверяемая задача
                     </div>
-                    <div className="text-xs text-[#707286]">
-                      Реализуйте функцию <span className="font-mono">solve(input)</span> на языке{' '}
+                    <div className="text-xs text-[#707286] break-words">
+                      Реализуйте функцию <span className="font-mono break-all">solve(input)</span> на языке{' '}
                       <span className="font-semibold">
                         {codeTaskConfig.language === 'javascript' ? 'JavaScript' : 'Python'}
                       </span>
@@ -408,25 +418,30 @@ export default function LectureBlocks({
                   </div>
                 </div>
 
-                <div>
+                <div className="min-w-0">
                   <textarea
                     value={codeTaskCode}
                     onChange={(event) => {
                       setCodeTaskCode(event.target.value);
                     }}
                     rows={14}
-                    className="w-full font-mono text-sm rounded-lg border border-[#1f2937] px-3 py-2 text-gray-100 outline-none focus:border-[#8f6bf4] bg-[#111827]"
+                    className="w-full min-w-0 max-w-full font-mono text-sm rounded-lg border border-[#1f2937] px-3 py-2 text-gray-100 outline-none focus:border-[#8f6bf4] bg-[#111827] break-all"
                     placeholder={
                       codeTaskConfig.language === 'javascript'
                         ? 'function solve(input) {\n  // напишите решение\n  return input;\n}'
                         : 'def solve(data: str) -> str:\n    # напишите решение\n    return data'
                     }
+                    style={{ 
+                      whiteSpace: 'pre',
+                      overflowX: 'auto',
+                      overflowY: 'auto',
+                    }}
                   />
                 </div>
               </div>
 
               {/* Правая колонка: запуск и консоль вывода */}
-              <div className="lg:w-1/3 flex flex-col gap-3">
+              <div className="lg:w-1/3 flex flex-col gap-3 min-w-0">
                 <div className="flex flex-wrap items-center gap-3">
                   <Button
                     onClick={handleRunCodeTask}
@@ -439,25 +454,25 @@ export default function LectureBlocks({
                   >
                     {codeTaskIsRunning ? 'Выполняется…' : 'Запустить тесты'}
                   </Button>
-                  <div className="text-[11px] text-[#707286]">
+                  <div className="text-[11px] text-[#707286] break-words">
                     Тестов: {codeTaskConfig.testCases.filter((tc) => !tc.hidden).length} видимых,{' '}
                     {codeTaskConfig.testCases.filter((tc) => tc.hidden).length} скрытых
                   </div>
                 </div>
 
-                <div className="flex-1 rounded-md bg-slate-950 text-[11px] text-slate-100 border border-slate-800 p-3 overflow-auto">
-                  <div className="mb-1 text-xs font-semibold text-slate-200">
+                <div className="flex-1 rounded-md bg-slate-950 text-[11px] text-slate-100 border border-slate-800 p-3 overflow-x-auto overflow-y-auto min-w-0">
+                  <div className="mb-1 text-xs font-semibold text-slate-200 break-words">
                     Консоль программы
                   </div>
 
                   {codeTaskError && (
-                    <div className="mb-2 rounded-md bg-red-900/40 border border-red-500 px-2 py-1 text-[11px] text-red-100">
+                    <div className="mb-2 rounded-md bg-red-900/40 border border-red-500 px-2 py-1 text-[11px] text-red-100 break-words">
                       Ошибка выполнения: {codeTaskError}
                     </div>
                   )}
 
                   {!codeTaskResults && !codeTaskError && (
-                    <div className="text-slate-400">
+                    <div className="text-slate-400 break-words">
                       Нажмите «Запустить тесты», чтобы увидеть вывод программы.
                     </div>
                   )}
@@ -465,14 +480,14 @@ export default function LectureBlocks({
                   {codeTaskResults && (
                     <ul className="space-y-1">
                       {codeTaskResults.map((result, index) => (
-                        <li key={result.testId} className="border-b border-slate-800 last:border-0 pb-1">
-                          <div className="flex items-center justify-between">
-                            <span className="font-medium">
+                        <li key={result.testId} className="border-b border-slate-800 last:border-0 pb-1 min-w-0">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <span className="font-medium break-words">
                               {result.hidden
                                 ? `Скрытый тест #${index + 1}`
                                 : `Тест #${index + 1}`}
                             </span>
-                            <span>
+                            <span className="shrink-0">
                               {result.passed ? (
                                 <span className="text-emerald-400">OK</span>
                               ) : (
@@ -482,11 +497,11 @@ export default function LectureBlocks({
                           </div>
 
                           {!result.hidden && (
-                            <div className="mt-0.5 text-[10px] text-slate-300">
-                              <div>Ожидалось: {result.expectedOutputs.join(' | ')}</div>
-                              <div>Фактический вывод: {result.actualOutput || '(пусто)'}</div>
+                            <div className="mt-0.5 text-[10px] text-slate-300 break-all">
+                              <div className="break-words">Ожидалось: {result.expectedOutputs.join(' | ')}</div>
+                              <div className="break-words">Фактический вывод: {result.actualOutput || '(пусто)'}</div>
                               {result.error && (
-                                <div className="text-red-300 mt-0.5">
+                                <div className="text-red-300 mt-0.5 break-words">
                                   Ошибка: {result.error}
                                 </div>
                               )}
@@ -503,11 +518,11 @@ export default function LectureBlocks({
         )}
 
         {block.type === 'test' && (
-          <div className="mt-2 rounded-xl border border-[#ececf4] bg-white p-4">
-            <div className="mb-3 text-base font-semibold flex items-center justify-between">
-              <span>Тест</span>
+          <div className="mt-2 rounded-xl border border-[#ececf4] bg-white p-4 w-full min-w-0">
+            <div className="mb-3 text-base font-semibold flex items-center justify-between gap-2 flex-wrap">
+              <span className="break-words">Тест</span>
               {quiz && quiz.questions.length > 1 && (
-                <span className="text-sm text-muted-foreground">
+                <span className="text-sm text-muted-foreground shrink-0">
                   Вопрос {currentQuestionIndex + 1} из {quiz.questions.length}
                 </span>
               )}
@@ -517,14 +532,14 @@ export default function LectureBlocks({
               <>
                 {/* Вопрос */}
                 {currentQuestion.question && (
-                  <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-                    <p className="text-sm font-medium text-darkdrey">{currentQuestion.question}</p>
+                  <div className="mb-4 p-3 bg-blue-50 rounded-lg border border-blue-200 break-words">
+                    <p className="text-sm font-medium text-darkdrey break-words">{currentQuestion.question}</p>
                   </div>
                 )}
                 
                 {/* Варианты ответов */}
                 {currentQuestion.options?.length ? (
-                  <div className="space-y-2">
+                  <div className="space-y-2 min-w-0">
                     {currentQuestion.options.map((option) => {
                       const isChecked = testSelectedOptions.includes(option.id);
                       const isSingle = currentQuestion.selectionType === 'single';
@@ -533,7 +548,7 @@ export default function LectureBlocks({
                         <div
                           key={option.id}
                           onClick={() => handleSelectTestOption(option.id)}
-                          className="flex cursor-pointer items-center gap-3 rounded-md px-1 py-2 text-[15px] text-[#4a4b59] hover:bg-[#f8f8fb] transition-colors"
+                          className="flex cursor-pointer items-center gap-3 rounded-md px-1 py-2 text-[15px] text-[#4a4b59] hover:bg-[#f8f8fb] transition-colors min-w-0"
                         >
                           <div className="relative shrink-0">
                             <div
@@ -554,12 +569,12 @@ export default function LectureBlocks({
                               `}
                             />
                           </div>
-                          <span className="flex-1">{option.text || 'Без текста варианта'}</span>
+                          <span className="flex-1 min-w-0 break-words">{option.text || 'Без текста варианта'}</span>
                         </div>
                       );
                     })}
                     
-                    <div className="py-2 flex items-center justify-between">
+                    <div className="py-2 flex items-center justify-between gap-2 flex-wrap">
                       <Button 
                         onClick={handleTestCheck} 
                         disabled={!canCheckTest}
@@ -570,7 +585,7 @@ export default function LectureBlocks({
                       
                       {/* Навигация по вопросам */}
                       {quiz && quiz.questions.length > 1 && (
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <Button
                             variant="outline"
                             onClick={() => {
@@ -601,7 +616,7 @@ export default function LectureBlocks({
                     
                     {testCheckResult && (
                       <div
-                        className={`mt-2 rounded-lg px-3 py-2 text-sm ${
+                        className={`mt-2 rounded-lg px-3 py-2 text-sm break-words ${
                           testCheckResult === 'correct'
                             ? 'bg-green-100 text-green-800 border border-green-300'
                             : 'bg-red-100 text-red-800 border border-red-300'
@@ -614,17 +629,17 @@ export default function LectureBlocks({
                     )}
                   </div>
                 ) : (
-                  <div className="text-sm text-[#666777]">Варианты ответов не заполнены.</div>
+                  <div className="text-sm text-[#666777] break-words">Варианты ответов не заполнены.</div>
                 )}
               </>
             ) : (
-              <div className="text-sm text-[#666777]">Данные теста не заполнены.</div>
+              <div className="text-sm text-[#666777] break-words">Данные теста не заполнены.</div>
             )}
           </div>
         )}
       </section>
 
-      <div className="flex items-center justify-between pt-3">
+      <div className="flex items-center justify-between pt-3 gap-2 flex-wrap w-full min-w-0">
         <Button 
           variant="outline" 
           onClick={() => {

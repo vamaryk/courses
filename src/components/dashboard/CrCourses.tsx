@@ -105,7 +105,7 @@ const CrCourses = ({ profileId }: CrCoursesProps) => {
           <div className="w-1/2 lg:w-1/5">
             <CreateCourseCard />
           </div>
-          <p className="text-sm text-gray-500 p-4">
+          <p className="text-sm text-muted-foreground text-center py-8">
             У вас пока нет созданных курсов
           </p>
         </div>
@@ -127,13 +127,13 @@ const CrCourses = ({ profileId }: CrCoursesProps) => {
       >
         <CarouselContent className="-ml-1 md:-ml-2">
           {/* Create course card - always first */}
-          <CarouselItem className="pl-1 md:pl-2 basis-1/2 lg:basis-1/5">
+          <CarouselItem className="pl-1 md:pl-2 basis-1/2 md:basis-1/3 lg:basis-1/5">
             <CreateCourseCard />
           </CarouselItem>
           
           {/* Created courses */}
           {courses.map((course) => (
-            <CarouselItem key={course.id} className="pl-1 md:pl-2 basis-1/2 lg:basis-1/5">
+            <CarouselItem key={course.id} className="pl-1 md:pl-2 basis-1/2 md:basis-1/3 lg:basis-1/5">
               <CrCourseCard
                 id={course.id}
                 title={course.title}

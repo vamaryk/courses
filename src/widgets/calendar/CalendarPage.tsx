@@ -19,10 +19,21 @@ function CalendarPage() {
   const [isTaskDialogOpen, setIsTaskDialogOpen] = useState(false);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [editingTask, setEditingTask] = useState<Task | undefined>();
-  const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+  
+  const [isCompactView, setIsCompactView] = useState(false);
+
+  useEffect(() => {
+    const checkView = () => {
+      setIsCompactView(window.innerWidth < 1200);
+    };
+    
+    checkView();
+    window.addEventListener('resize', checkView);
+    return () => window.removeEventListener('resize', checkView);
+  }, []);
+
   const [now, setNow] = useState<Date | null>(null);
 
-  // Update current time every minute for local reminder checks
   useEffect(() => {
     setNow(new Date());
     const id = setInterval(() => {
@@ -51,7 +62,6 @@ function CalendarPage() {
     loadEvents();
   }, []);
 
-  // Local reminders: show toast when 10 minutes remain before a task
   useEffect(() => {
     if (!now || tasks.length === 0) return;
 
@@ -59,7 +69,6 @@ function CalendarPage() {
 
     tasks.forEach((task) => {
       const diff = task.startDate.getTime() - now.getTime();
-      // show reminder when in [0; 60s] window around 10 minutes before start
       if (diff <= tenMinutesMs && diff > tenMinutesMs - 60_000) {
         toast({
           title: 'Скоро задача из календаря',
@@ -128,25 +137,21 @@ function CalendarPage() {
 
   const handlePrev = () => {
     if (view === 'week') {
-      if (isMobile) {
-        setCurrentDate(subDays(currentDate, 2));
-      } else {
-        setCurrentDate(subWeeks(currentDate, 1));
-      }
+      setCurrentDate((prev) => 
+        isCompactView ? subDays(prev, 2) : subWeeks(prev, 1)
+      );
     } else {
-      setCurrentDate(subMonths(currentDate, 1));
+      setCurrentDate((prev) => subMonths(prev, 1));
     }
   };
 
   const handleNext = () => {
     if (view === 'week') {
-      if (isMobile) {
-        setCurrentDate(addDays(currentDate, 2));
-      } else {
-        setCurrentDate(addWeeks(currentDate, 1));
-      }
+      setCurrentDate((prev) => 
+        isCompactView ? addDays(prev, 2) : addWeeks(prev, 1)
+      );
     } else {
-      setCurrentDate(addMonths(currentDate, 1));
+      setCurrentDate((prev) => addMonths(prev, 1));
     }
   };
 
@@ -240,12 +245,12 @@ function CalendarPage() {
                         currentDate={currentDate}
                         tasks={tasks}
                         onEditTask={handleEditTask}
+                        isCompactView={isCompactView}
                     />
                 </div>
               </div>
             </div>
             
-            {/* SideCalendar */}
             <div className="w-[300px] flex-shrink-0 hidden lg:block">
               <div 
                 className="rounded-xl shadow p-6 h-full bg-white"

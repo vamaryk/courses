@@ -36,7 +36,7 @@ const CoverUpload = ({ coverImage, onCoverImageChange }: CoverUploadProps) => {
   };
 
   return (
-    <div className="border-2 border-dashed border-purple rounded-xl p-4 bg-popover hover:bg-purple-50 h-64 relative animate-fade-in overflow-hidden group">
+    <div className="border-2 border-dashed border-purple rounded-xl p-2 bg-popover hover:bg-purple-50 h-64 relative animate-fade-in overflow-hidden group">
       {/* User Info - Top Left */}
       <div className="absolute top-4 left-4 flex items-center gap-3 z-10">
         <Avatar className="w-10 h-10 border-2 border-popover">
@@ -55,7 +55,7 @@ const CoverUpload = ({ coverImage, onCoverImageChange }: CoverUploadProps) => {
         <img
           src={coverImage}
           alt="Course cover"
-          className="w-full h-full object-cover"
+          className="w-full h-full object-cover rounded-xl"
         />
       )}
 

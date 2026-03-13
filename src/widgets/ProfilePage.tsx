@@ -99,7 +99,6 @@ export default function ProfilePage() {
   useEffect(() => {
     const fetchProfile = async () => {
       try {
-        // При смене профиля сбрасываем медиа, чтобы не мигал баннер другого пользователя
         setMedia(null);
         const apiUrl = import.meta.env.VITE_API_URL || '';
         let response: Response;
@@ -124,11 +123,9 @@ export default function ProfilePage() {
         const profileData: UserProfile = await response.json();
         setUser(profileData);
 
-        // Собственный профиль, если нет id в урле или совпадает с текущим
         if (!routeProfileId) {
           setIsOwnProfile(true);
         } else {
-          // Попробуем получить /auth/me и сравнить id, если возможно
           try {
             const meResponse = await fetch(`${apiUrl}/api/auth/me`, {
               credentials: 'include',
@@ -160,7 +157,6 @@ export default function ProfilePage() {
     fetchProfile();
   }, [navigate, routeProfileId]);
 
-  // Friendship status with viewed profile (for foreign profiles)
   useEffect(() => {
     const loadFriendStatus = async () => {
       if (!user || isOwnProfile || !user.id) {
@@ -189,9 +185,6 @@ export default function ProfilePage() {
 
       try {
         const apiUrl = import.meta.env.VITE_API_URL || '';
-
-        // Для собственного профиля используем эндпоинт /profile/media,
-        // для чужих профилей — отдельный эндпоинт по id
         const mediaUrl = !routeProfileId || isOwnProfile
           ? `${apiUrl}/api/users/profile/media`
           : `${apiUrl}/api/users/${user.id}/media`;
@@ -215,7 +208,6 @@ export default function ProfilePage() {
     fetchProfileMedia();
   }, [user, routeProfileId, isOwnProfile]);
 
-  // Сбрасываем ошибки аватара/баннера, когда меняется пользователь или медиа
   useEffect(() => {
     setAvatarError(false);
     setBannerError(false);
@@ -241,7 +233,6 @@ export default function ProfilePage() {
     fetchTasks();
   }, []);
 
-  // Load public view data for foreign profiles
   useEffect(() => {
     const loadPublicData = async () => {
       if (!user || isOwnProfile || !user.id) {
@@ -285,7 +276,7 @@ export default function ProfilePage() {
           setPublicAchievements([]);
         }
       } catch (error) {
-        console.error('Error fetching public profile data:', error);
+        console.error('Error fetching public profile ', error);
         setPublicStats(null);
         setPublicCourses([]);
         setAuthoredCourses([]);
@@ -362,7 +353,6 @@ export default function ProfilePage() {
       setSaving(true);
       const apiUrl = import.meta.env.VITE_API_URL || '';
 
-      // 1. Имя, фамилия, описание
       await fetch(`${apiUrl}/api/users/profile`, {
         method: 'PUT',
         credentials: 'include',
@@ -376,7 +366,6 @@ export default function ProfilePage() {
         }),
       });
 
-      // 2. Аватар и баннер (если выбраны)
       if (avatarFile || bannerFile) {
         const formData = new FormData();
         if (avatarFile) {
@@ -464,7 +453,7 @@ export default function ProfilePage() {
       const filename = iconUrl.replace('/icons/achievements/', '');
       return `${API_URL}/achievement-media/${filename}`;
     }
-    if (iconUrl.startsWith('http') || iconUrl.startsWith('data:')) {
+    if (iconUrl.startsWith('http') || iconUrl.startsWith('')) {
       return iconUrl;
     }
     return `${API_URL}/achievement-media/${iconUrl}`;
@@ -472,12 +461,12 @@ export default function ProfilePage() {
 
   return (
     <div className="bg-background">
-      <div className="flex">
-        <main className="flex-1 mx-5 mb-5">
+      <div className="flex flex-col lg:flex-row">
+        <main className="flex-1 mx-3 md:mx-5 mb-5">
           <div className="bg-white rounded-xl shadow overflow-hidden">
             {/* Профильный баннер и аватар + кнопка редактирования */}
-            <div className="mb-6">
-              <div className="relative h-40 md:h-52">
+            <div className="mb-4 md:mb-10">
+              <div className="relative h-full md:h-52">
                 {bannerUrl && (
                   <img
                     src={bannerUrl}
@@ -493,10 +482,14 @@ export default function ProfilePage() {
                       : 'absolute inset-0 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500'
                   }
                 />
-                <div className="relative flex items-end h-full px-6 pb-4 gap-4 justify-between">
-                  <div className="flex items-end gap-4">
-                    <div className="relative -mb-10">
-                      <div className="h-24 w-24 md:h-28 md:w-28 rounded-full border-4 border-white bg-gray-200 overflow-hidden shadow-lg">
+                
+                {/* Адаптивная шапка: на мобильном — колонка, на десктопе — строка */}
+                <div className="relative flex flex-col md:flex-row items-start md:items-end h-full px-4 md:px-6 pb-4 gap-3 md:gap-4 justify-between">
+                  
+                  {/* Левая часть: аватар + имя */}
+                  <div className="flex items-center gap-3 md:gap-4 w-full md:w-auto">
+                    <div className="relative pt-4 mb-2 md:-mb-10 shrink-0">
+                      <div className="h-20 w-20 md:h-28 md:w-28 rounded-full border-4 border-white bg-gray-200 overflow-hidden shadow-lg">
                         {avatarUrl ? (
                           <img
                             src={avatarUrl}
@@ -505,27 +498,29 @@ export default function ProfilePage() {
                             onError={() => setAvatarError(true)}
                           />
                         ) : (
-                          <div className="flex h-full w-full items-center justify-center text-2xl font-semibold text-gray-500">
+                          <div className="flex h-full w-full items-center justify-center text-xl md:text-2xl font-semibold text-gray-500">
                             {initials}
                           </div>
                         )}
                       </div>
                     </div>
-                    <div className="pb-2">
-                      <p className="text-sm text-white/80 mb-1">
+                    <div className="pb-1 md:pb-2 min-w-0 flex-1 md:flex-none">
+                      <p className="text-xs md:text-sm text-white/80 mb-0.5 md:mb-1 break-words">
                         {isOwnProfile ? 'С возвращением,' : 'Профиль пользователя'}
                       </p>
-                      <h1 className="text-2xl md:text-3xl font-semibold text-white font-Xolonium">
+                      <h1 className="text-lg md:text-2xl lg:text-3xl font-semibold text-white font-Xolonium break-words">
                         {userName}
                       </h1>
                     </div>
                   </div>
-                  <div className="pb-4 flex gap-2">
+                  
+                  {/* Правая часть: кнопки действий — на мобильном под текстом, на десктопе справа */}
+                  <div className="flex flex-wrap gap-2 md:pl-4 w-full md:w-auto md:justify-end pb-2 md:pb-4">
                     {isOwnProfile ? (
                       <button
                         type="button"
                         onClick={() => setShowEditModal(true)}
-                        className="px-4 py-2 rounded-lg bg-white/90 text-sm font-medium text-gray-800 hover:bg-white shadow-sm transition-colors"
+                        className="px-4 py-2 rounded-lg bg-white/90 text-sm font-medium text-gray-800 hover:bg-white shadow-sm transition-colors cursor-pointer w-full md:w-auto"
                       >
                         Редактировать профиль
                       </button>
@@ -533,57 +528,57 @@ export default function ProfilePage() {
                       user && (
                         <>
                           {friendStatusLoading && !friendStatus && (
-                            <span className="text-xs text-white/80">Загрузка...</span>
+                            <span className="text-xs text-white/80 w-full text-center md:text-left">Загрузка...</span>
                           )}
                           {friendStatus && friendStatus.status === 'none' && (
                             <button
                               type="button"
                               onClick={handleAddFriend}
-                              className="px-4 py-2 rounded-lg bg-white/90 text-sm font-medium text-gray-800 hover:bg-white shadow-sm transition-colors"
+                              className="px-4 py-2 rounded-lg bg-white/90 text-sm font-medium text-gray-800 hover:bg-white shadow-sm transition-colors cursor-pointer w-full md:w-auto"
                             >
                               Добавить в друзья
                             </button>
                           )}
                           {friendStatus && friendStatus.status === 'pending' && friendStatus.direction === 'outgoing' && (
-                            <span className="text-xs text-white/80">
+                            <span className="text-xs text-white/80 w-full text-center md:text-left">
                               Заявка отправлена
                             </span>
                           )}
                           {friendStatus && friendStatus.status === 'pending' && friendStatus.direction === 'incoming' && (
-                            <>
+                            <div className="flex flex-wrap gap-2 w-full md:w-auto">
                               <button
                                 type="button"
                                 onClick={handleAcceptFriendRequest}
-                                className="px-4 py-2 rounded-lg bg-emerald-500 text-sm font-medium text-white hover:bg-emerald-600 shadow-sm transition-colors"
+                                className="px-4 py-2 rounded-lg bg-emerald-500 text-sm font-medium text-white hover:bg-emerald-600 shadow-sm transition-colors cursor-pointer flex-1 md:flex-none"
                               >
                                 Принять заявку
                               </button>
                               <button
                                 type="button"
                                 onClick={handleRejectFriendRequest}
-                                className="px-4 py-2 rounded-lg bg-white/80 text-sm font-medium text-gray-800 hover:bg-white shadow-sm transition-colors"
+                                className="px-4 py-2 rounded-lg bg-white/80 text-sm font-medium text-gray-800 hover:bg-white shadow-sm transition-colors cursor-pointer flex-1 md:flex-none"
                               >
                                 Отклонить
                               </button>
-                            </>
+                            </div>
                           )}
                           {friendStatus && friendStatus.status === 'accepted' && (
-                            <>
+                            <div className="flex flex-wrap gap-2 w-full md:w-auto">
                               <button
                                 type="button"
                                 onClick={handleStartChat}
-                                className="px-4 py-2 rounded-lg bg-white/90 text-sm font-medium text-gray-800 hover:bg-white shadow-sm transition-colors"
+                                className="px-4 py-2 rounded-lg bg-white/90 text-sm font-medium text-gray-800 hover:bg-white shadow-sm transition-colors cursor-pointer flex-1 md:flex-none"
                               >
                                 Написать сообщение
                               </button>
                               <button
                                 type="button"
                                 onClick={handleRemoveFriend}
-                                className="px-4 py-2 rounded-lg bg-white/80 text-sm font-medium text-gray-800 hover:bg-white shadow-sm transition-colors"
+                                className="px-4 py-2 rounded-lg bg-white/80 text-sm font-medium text-gray-800 hover:bg-white shadow-sm transition-colors cursor-pointer flex-1 md:flex-none"
                               >
                                 Удалить из друзей
                               </button>
-                            </>
+                            </div>
                           )}
                         </>
                       )
@@ -595,19 +590,19 @@ export default function ProfilePage() {
 
             {/* Краткое описание профиля под шапкой */}
             {user?.bio && (
-              <div className="px-5 pb-4">
-                <p className="text-sm text-gray-700">
+              <div className="px-4 md:px-5 pb-4">
+                <p className="text-sm text-gray-700 break-words">
                   {user.bio}
                 </p>
               </div>
             )}
 
-            <div className="px-5 pb-5">
+            <div className="px-4 md:px-5 pb-5">
               {isOwnProfile ? (
                 <>
-              <StatsCards />
-              <MyCourses profileId={routeProfileId && !isOwnProfile ? routeProfileId : undefined} />
-              <CrCourse profileId={routeProfileId && !isOwnProfile ? routeProfileId : undefined} />
+                  <StatsCards />
+                  <MyCourses profileId={routeProfileId && !isOwnProfile ? routeProfileId : undefined} />
+                  <CrCourse profileId={routeProfileId && !isOwnProfile ? routeProfileId : undefined} />
                   <Achievements />
                   <div className="flex flex-col md:flex-row gap-4 mb-8">
                     <StatisticsChart />
@@ -617,37 +612,43 @@ export default function ProfilePage() {
                 </>
               ) : (
                 <>
-                  {/* Public stats for viewed profile */}
                   {publicStats && (
-                    <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-1.5 mb-8">
-                      <div className="stat-card flex flex-col gap-2">
-                        <span className="text-xs font-medium text-gray-500">Часов на платформе</span>
-                        <span className="text-3xl sm:text-4xl font-bold">
-                          {publicStats.hoursOnPlatform}
-                        </span>
-                      </div>
-                      <div className="stat-card flex flex-col gap-2">
-                        <span className="text-xs font-medium text-gray-500">Пройдено курсов</span>
-                        <span className="text-3xl sm:text-4xl font-bold">
-                          {publicStats.coursesCompleted}
-                        </span>
-                      </div>
-                      <div className="stat-card flex flex-col gap-2">
-                        <span className="text-xs font-medium text-gray-500">Достижения</span>
-                        <span className="text-3xl sm:text-4xl font-bold">
-                          {publicStats.achievementsCount}
-                        </span>
-                      </div>
-                      <div className="stat-card flex flex-col gap-2">
-                        <span className="text-xs font-medium text-gray-500">Подписок</span>
-                        <span className="text-3xl sm:text-4xl font-bold">
-                          {publicStats.subscriptionsCount}
-                        </span>
-                      </div>
+                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-1.5 mb-8">
+                    <div className="stat-card rounded-xl flex flex-col gap-2">
+                    <span className="text-xs text-white/60 font-medium min-h-[32px] line-clamp-2">
+                        Часов на платформе
+                    </span>
+                    <span className="text-xl sm:text-2xl font-bold">
+                        {publicStats.hoursOnPlatform}
+                    </span>
                     </div>
-                  )}
+                    <div className="stat-card rounded-xl flex flex-col gap-2">
+                    <span className="text-xs text-white/60 font-medium min-h-[32px] line-clamp-2">
+                        Пройдено курсов
+                    </span>
+                    <span className="text-xl sm:text-2xl font-bold">
+                        {publicStats.coursesCompleted}
+                    </span>
+                    </div>
+                    <div className="stat-card rounded-xl flex flex-col gap-2">
+                    <span className="text-xs text-white/60 font-medium min-h-[32px] line-clamp-2">
+                        Достижения
+                    </span>
+                    <span className="text-xl sm:text-2xl font-bold">
+                        {publicStats.achievementsCount}
+                    </span>
+                    </div>
+                    <div className="stat-card rounded-xl flex flex-col gap-2">
+                    <span className="text-xs text-white/60 font-medium min-h-[32px] line-clamp-2">
+                        Подписок
+                    </span>
+                    <span className="text-xl sm:text-2xl font-bold">
+                        {publicStats.subscriptionsCount}
+                    </span>
+                    </div>
+                </div>
+                )}
 
-                  {/* Courses in progress / completed */}
                   <section className="mb-8">
                     <div className="flex items-center justify-between mb-4">
                       <h2 className="text-xl font-semibold text-foreground">
@@ -667,7 +668,7 @@ export default function ProfilePage() {
                           >
                             <div className="h-24 w-full bg-gray-100" />
                             <div className="p-3">
-                              <p className="text-sm font-semibold text-gray-800 line-clamp-2 mb-2">
+                              <p className="text-sm font-semibold text-gray-800 line-clamp-2 mb-2 break-words">
                                 {course.title}
                               </p>
                               <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
@@ -689,7 +690,6 @@ export default function ProfilePage() {
                     )}
                   </section>
 
-                  {/* Authored courses */}
                   <section className="mb-8">
                     <div className="flex items-center justify-between mb-4">
                       <h2 className="text-xl font-semibold text-foreground">
@@ -710,10 +710,10 @@ export default function ProfilePage() {
                           >
                             <div className="h-24 w-full bg-gray-100" />
                             <div className="p-3">
-                              <p className="text-sm font-semibold text-gray-800 line-clamp-2 mb-1">
+                              <p className="text-sm font-semibold text-gray-800 line-clamp-2 mb-1 break-words">
                                 {course.title}
                               </p>
-                              <p className="text-xs text-gray-500 line-clamp-2 mb-2">
+                              <p className="text-xs text-gray-500 line-clamp-2 mb-2 break-words">
                                 {course.description}
                               </p>
                               <div className="flex items-center justify-between text-[11px] text-gray-400">
@@ -731,7 +731,6 @@ export default function ProfilePage() {
                     )}
                   </section>
 
-                  {/* Public achievements */}
                   <section className="mb-4">
                     <div className="flex items-center justify-between mb-4">
                       <h2 className="text-xl font-semibold text-foreground">
@@ -785,20 +784,20 @@ export default function ProfilePage() {
         </main>
 
         {/* Календарь */}
-        <aside className="w-[300px] mr-[20px] flex-shrink-0 hidden lg:block">
-          <div className="sticky top-[4em] rounded-xl shadow p-6 h-fit bg-white">
+        <aside className="hidden min-[1200px]:block w-[300px] mr-[20px] ml-0 flex-shrink-0">
+        <div className="sticky top-[4em] rounded-xl shadow p-6 h-fit bg-white">
             <SideCalendar
-              currentDate={currentDate}
-              onDateChange={setCurrentDate}
-              tasks={tasks}
+            currentDate={currentDate}
+            onDateChange={setCurrentDate}
+            tasks={tasks}
             />
-          </div>
+        </div>
         </aside>
       </div>
 
       {/* Модальное окно редактирования профиля */}
       {isOwnProfile && showEditModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
           <div className="bg-white w-full max-w-xl rounded-2xl shadow-xl overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-gray-900">
@@ -816,7 +815,7 @@ export default function ProfilePage() {
                     setEditBio(user.bio || '');
                   }
                 }}
-                className="text-gray-400 hover:text-gray-600 transition-colors"
+                className="text-gray-400 hover:text-gray-600 transition-colors cursor-pointer"
               >
                 ✕
               </button>
@@ -873,7 +872,7 @@ export default function ProfilePage() {
                       const file = e.target.files?.[0] || null;
                       setAvatarFile(file);
                     }}
-                    className="block w-full text-sm text-gray-900 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                    className="block w-full text-sm text-gray-900 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer"
                   />
                 </div>
                 <div>
@@ -887,13 +886,13 @@ export default function ProfilePage() {
                       const file = e.target.files?.[0] || null;
                       setBannerFile(file);
                     }}
-                    className="block w-full text-sm text-gray-900 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100"
+                    className="block w-full text-sm text-gray-900 file:mr-3 file:py-2 file:px-3 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 cursor-pointer"
                   />
                 </div>
               </div>
             </div>
 
-            <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-end gap-3 bg-gray-50">
+            <div className="px-6 py-4 border-t border-gray-100 flex flex-col-reverse md:flex-row items-stretch md:items-center justify-end gap-3 bg-gray-50">
               <button
                 type="button"
                 onClick={() => {
@@ -906,7 +905,7 @@ export default function ProfilePage() {
                     setEditBio(user.bio || '');
                   }
                 }}
-                className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-white transition-colors"
+                className="px-4 py-2 rounded-lg border border-gray-300 text-sm font-medium text-gray-700 hover:bg-white transition-colors cursor-pointer w-full md:w-auto"
                 disabled={saving}
               >
                 Отмена
@@ -914,7 +913,7 @@ export default function ProfilePage() {
               <button
                 type="button"
                 onClick={handleSaveProfile}
-                className="px-4 py-2 rounded-lg bg-indigo-600 text-sm font-medium text-white hover:bg-indigo-700 transition-colors disabled:opacity-60"
+                className="px-4 py-2 rounded-lg bg-purple text-sm font-medium text-white hover:bg-indigo-700 transition-colors disabled:opacity-60 cursor-pointer w-full md:w-auto"
                 disabled={saving}
               >
                 {saving ? 'Сохранение...' : 'Сохранить изменения'}

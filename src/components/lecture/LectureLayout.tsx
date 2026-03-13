@@ -7,19 +7,21 @@ interface LectureLayoutProps {
   meta: string;
   onToggleOutline: () => void;
   children: ReactNode;
-  blockType?: 'theory' | 'task' | 'test';
+  blockType?: 'theory' | 'task' | 'test' | 'code_task';
 }
 
-const GRADIENT_MAP: Record<'theory' | 'task' | 'test', string> = {
+const GRADIENT_MAP: Record<'theory' | 'task' | 'test' | 'code_task', string> = {
   theory: 'radial-gradient(circle, var(--color-pink), var(--color-blue))',
   task: 'radial-gradient(circle, #cdbbfd, var(--color-blue))',
   test: 'radial-gradient(circle, var(--color-blue), #fed4ff)',
+  code_task: 'radial-gradient(circle, #cdbbfd, #fed4ff)',
 };
 
-const BLOCK_TYPE_LABELS: Record<'theory' | 'task' | 'test', string> = {
+const BLOCK_TYPE_LABELS: Record<'theory' | 'task' | 'test' | 'code_task', string> = {
   theory: 'Лекция',
   task: 'Задание',
   test: 'Тест',
+  code_task: 'Код',
 };
 
 export default function LectureLayout({ 

@@ -65,7 +65,7 @@ const MyCourses = ({ profileId }: MyCoursesProps) => {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold text-foreground">Обучение</h2>
         </div>
-        <div className="text-sm text-muted-foreground text-center py-8">
+        <div className="text-sm text-muted-foreground py-4">
           У вас пока нет записанных курсов
         </div>
       </section>
@@ -85,7 +85,7 @@ const MyCourses = ({ profileId }: MyCoursesProps) => {
       >
         <CarouselContent className="-ml-1 md:-ml-2">
           {courses.map((course, index) => (
-            <CarouselItem key={index} className="pl-1 md:pl-2 basis-1/2 lg:basis-1/5">
+            <CarouselItem key={index} className="pl-1 md:pl-2 basis-1/2 md:basis-1/3 lg:basis-1/5">
               <CourseCard
                 title={course.title}
                 image={getCoverImageUrl(course.image) || defaultCourseImage}

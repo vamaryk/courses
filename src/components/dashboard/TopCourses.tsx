@@ -38,7 +38,7 @@ const TopCourses = () => {
 
   if (loading) {
     return (
-      <div className="rounded-3xl p-6 border-1 border-muted-foreground/30 flex-1 min-w-0">
+      <div className="rounded-xl p-6 border-1 border-muted-foreground/30 flex-1 min-w-0">
         <div className="flex items-center justify-center h-48">
           <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary"></div>
         </div>
@@ -48,7 +48,7 @@ const TopCourses = () => {
 
   if (topCourses.length === 0) {
     return (
-      <div className="rounded-3xl p-6 border-1 border-muted-foreground/30 flex-1 min-w-0">
+      <div className="rounded-xl p-6 border-1 border-muted-foreground/30 flex-1 min-w-0">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold text-foreground">Топ 5 курсов</h3>
         </div>
@@ -60,7 +60,7 @@ const TopCourses = () => {
   }
 
   return (
-    <div className="rounded-3xl p-6 border-1 border-muted-foreground/30 flex-1 min-w-0">
+    <div className="rounded-xl p-6 border-1 border-muted-foreground/30 flex-1 min-w-0">
       <div className="flex items-center justify-between mb-4">
         <h3 className="font-semibold text-foreground">Топ 5 курсов</h3>
       </div>

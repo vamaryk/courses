@@ -82,8 +82,8 @@ export default function Header() {
   };
 
   return (
-    <nav className="bg-header flex fixed top-0 left-0 w-full justify-between items-center h-[4em] px-10 z-100 mb-16">
-      <div className="pl-8 lg:pl-0">
+    <nav className="bg-header flex fixed top-0 left-0 w-full justify-between items-center h-[4em] px-4 z-[100]">
+      <div className="pl-[60px] min-[1200px]:pl-0">
         <Link to={Path.Home}>
           <GraduationCap size={24} className="text-purple" />
         </Link>

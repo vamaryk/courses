@@ -116,18 +116,13 @@ const HeroHeaderUser = ({
           <div className="flex items-center gap-6 md:gap-8 pt-4">
             <div className="flex items-center gap-2">
               <BookOpen className="w-4 h-4 text-white/60" />
+              <span className="text-white/60 text-xs md:text-sm">лекций:</span>
               <span className="text-white font-semibold text-sm">{stats.totalLectures || 0}</span>
-              <span className="text-white/60 text-xs md:text-sm">лекций</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <FileCheck className="w-4 h-4 text-white/60" />
-              <span className="text-white font-semibold text-sm">{stats.totalPrograms || 0}</span>
-              <span className="text-white/60 text-xs md:text-sm">программ</span>
             </div>
             <div className="flex items-center gap-2">
               <Clock className="w-4 h-4 text-white/60" />
+              <span className="text-white/60 text-xs md:text-sm">тестов:</span>
               <span className="text-white font-semibold text-sm">{stats.totalTests || 0}</span>
-              <span className="text-white/60 text-xs md:text-sm">тестов</span>
             </div>
           </div>
         </div>
@@ -135,13 +130,13 @@ const HeroHeaderUser = ({
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 pt-4">
           {/* Price and Buy button */}
           <div className="flex items-center gap-4">
-            <div className="text-xl font-bold text-white">
+            <div className="text-lg font-bold text-white">
               {isFreeCourse ? "Бесплатно" : `${price.toLocaleString('ru-RU')} ₽`}
             </div>
             <button 
               onClick={onBuy}
               disabled={isBuyLoading}
-              className="px-4 py-2 border-2 border-purple text-white rounded-full font-semibold hover:bg-purple transition-all duration-200 shadow-lg hover:shadow-xl"
+              className="px-4 py-3 border-2 border-purple text-white rounded-xl font-semibold hover:bg-purple transition-all duration-200 shadow-lg hover:shadow-xl cursor-pointer"
             >
               {isBuyLoading ? (isFreeCourse ? "Запись..." : "Покупка...") : (isFreeCourse ? "Записаться на курс" : "Купить")}
             </button>
@@ -151,7 +146,7 @@ const HeroHeaderUser = ({
           <button
             onClick={onToggleFavorite}
             disabled={isFavoriteLoading}
-            className="flex items-center gap-2 px-4 py-3 rounded-full border-2 border-white/20 hover:border-white/40 transition-all duration-200"
+            className="flex items-center gap-2 px-4 py-3 rounded-xl bg-purple-600/20 border-2 border-purple hover:bg-purple transition-all duration-200 cursor-pointer"
           >
             {isFavorite ? (
               <>

@@ -162,20 +162,20 @@ const OutcomesCard = ({
         </div>
       )}
 
-      {/* Software/Tools — выбор из списка */}
+      {/* Software/Tools — выбор из списка (теперь с input-field классом) */}
       <div className="mb-4 relative" ref={toolsDropdownRef}>
         <button
           type="button"
           onClick={() => setToolsOpen((v) => !v)}
-          className="flex w-full items-center justify-between rounded-lg border border-input bg-background px-3 py-2 text-left text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 min-h-[2.5rem] hover:bg-muted/50 transition-colors"
+          className="input-field flex items-center justify-between text-left cursor-pointer"
         >
           <span className={tools.length === 0 ? "text-muted-foreground" : ""}>
-            {tools.length === 0 ? "Используемые программы, инструменты" : "Выберите инструменты..."}
+            {tools.length === 0 ? "Используемые программы, инструменты" : tools.join(", ")}
           </span>
-          <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+          <ChevronDown className="h-5 w-5 shrink-0" />
         </button>
         {toolsOpen && (
-          <div className="absolute top-full left-0 right-0 z-50 mt-1 rounded-md border border-input bg-white text-foreground shadow-lg py-1 max-h-[280px] overflow-y-auto ">
+          <div className="absolute top-full left-0 right-0 z-50 mt-1 rounded-xl border border-input bg-white text-foreground shadow-lg py-1 max-h-[280px] overflow-y-auto">
             {AVAILABLE_TOOLS.map((tool) => {
               const isSelected = tools.some((t) => t.toLowerCase() === tool.toLowerCase());
               return (

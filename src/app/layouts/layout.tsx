@@ -16,7 +16,7 @@ export default function AppLayout({ children, showSidebar = true }: LayoutProps)
                 <Header />
                 <div className="flex flex-1">
                     {showSidebar && <MenuSidebar />}
-                    <main className="flex-1 mt-[4em] lg:ml-[100px] sm:ml-0">
+                    <main className="flex-1 mt-[4em] ml-0 min-[1200px]:ml-[100px]">
                         {children}
                     </main>
                 </div>
@@ -24,4 +24,4 @@ export default function AppLayout({ children, showSidebar = true }: LayoutProps)
             </div>
         </SocketProvider>
     )
-} 
+}

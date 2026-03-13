@@ -138,7 +138,7 @@ const Achievements = () => {
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold text-foreground">Мои достижения</h2>
         </div>
-        <div className="text-sm text-muted-foreground text-center py-4">
+        <div className="text-sm text-muted-foreground py-4">
           У вас пока нет достижений. Начните обучение, чтобы получить первые награды!
         </div>
       </section>

@@ -47,8 +47,8 @@ const MenuSidebar = () => {
 
     return (
         <>
-            {/* Mobile Menu */}
-            <div className="lg:hidden z-101">
+            {/* Mobile Menu - показывается при ширине до 1100px */}
+            <div className="hidden max-[1200px]:block z-101">
                 <button
                     onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
                     className="fixed top-4 left-4 z-50 ml-1 p-2 rounded-[10px] bg-purple text-white"
@@ -66,8 +66,8 @@ const MenuSidebar = () => {
                 </div>
             </div>
 
-            {/* Desktop Sidebar */}
-            <div className="hidden lg:block fixed left-0 top-[4em] bg-purple rounded-tr-[25px] h-[calc(100vh-4em)] overflow-hidden transition-all duration-300 w-[100px] hover:w-[200px] group z-[100]">
+            {/* Desktop Sidebar - показывается при ширине от 1100px */}
+            <div className="block max-[1200px]:hidden fixed left-0 top-[4em] bg-purple rounded-tr-[25px] h-[calc(100vh-4em)] overflow-hidden transition-all duration-300 w-[100px] hover:w-[200px] group z-[100]">
                 <div className="flex flex-col gap-2 p-[24px] pr-0 pt-[60px]">
                     {MenuItems.map(item => renderMenuItem(item))}
                 </div>

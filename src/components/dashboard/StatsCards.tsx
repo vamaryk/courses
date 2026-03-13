@@ -92,7 +92,7 @@ const StatsCards = () => {
     },
     { 
       icon: Users, 
-      label: "Подписки", 
+      label: "Друзья", 
       value: stats.subscriptionsCount.toString(),
       hasDropdown: true
     },
@@ -110,24 +110,29 @@ const StatsCards = () => {
       {statsConfig.map((stat, index) => (
         <div
           key={index}
-          className={`stat-card flex flex-col gap-2 animate-fade-in ${
+          className={`stat-card rounded-xl flex flex-col gap-2 animate-fade-in ${
             stat.hasDropdown ? 'relative' : ''
           }`}
           style={{ animationDelay: `${index * 100}ms` }}
         >
-          <div className="flex items-center gap-2 text-white/60">
-            <stat.icon className="w-4 h-4 flex-shrink-0" />
-            <span className="text-xs font-medium">{stat.label}</span>
+          {/* 🔧 Заголовок: иконка по первой строке текста */}
+          <div className="flex items-start gap-2 text-white/60">
+            <stat.icon className="w-4 h-4 flex-shrink-0 mt-[2px]" />
+            <span className="text-xs font-medium min-h-[32px] line-clamp-2 leading-tight">
+              {stat.label}
+            </span>
           </div>
-          <div className="flex items-center justify-between">
-            <span className="text-3xl sm:text-4xl font-bold">
+          
+          {/* 🔧 Число с кнопкой (если есть) */}
+          <div className="flex items-center justify-between mt-auto">
+            <span className="text-xl sm:text-2xl font-bold">
               {loading ? '...' : stat.value}
             </span>
             {stat.hasDropdown && (
               <button 
                 onClick={toggleSubscriptions}
-                className="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors"
-                aria-label="Показать подписки"
+                className="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors flex-shrink-0"
+                aria-label="Показать друзей"
               >
                 {showSubscriptions ? (
                   <X className="w-4 h-4" />
@@ -138,12 +143,12 @@ const StatsCards = () => {
             )}
           </div>
 
-          {/* Выпадающий список подписок */}
+          {/* Выпадающий список друзей */}
           {stat.hasDropdown && showSubscriptions && (
             <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-lg shadow-lg z-50 border border-gray-200 animate-fade-in">
               <div className="p-3 border-b border-gray-100">
                 <h4 className="text-sm font-semibold text-gray-700">
-                  Мои подписки ({subscriptions.length})
+                  Мои друзья ({subscriptions.length})
                 </h4>
               </div>
               <div 
@@ -156,7 +161,7 @@ const StatsCards = () => {
                   </div>
                 ) : subscriptions.length === 0 ? (
                   <div className="p-4 text-center text-gray-500">
-                    Нет подписок
+                    Нет друзей
                   </div>
                 ) : (
                   <div className="divide-y divide-gray-100">

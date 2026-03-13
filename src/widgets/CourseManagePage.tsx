@@ -329,7 +329,7 @@ function CourseManagePage() {
                   </h3>
                   <Button
                     variant="outline"
-                    className="inline-flex px-3 py-1 text-sm border-destructive text-destructive hover:bg-destructive/10 hover:text-destructive self-start"
+                    className="inline-flex px-4 py-2 text-sm bg-primary/10 rounded-xl border-2 border-primary cursor-pointer hover:bg-red-400"
                     onClick={() => setDeleteDialogOpen(true)}
                   >
                     Удалить курс
@@ -384,9 +384,9 @@ function CourseManagePage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Нет</AlertDialogCancel>
+            <AlertDialogCancel className="cursor-pointer">Нет</AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 cursor-pointer"
               onClick={handleDeleteCourse}
             >
               Да

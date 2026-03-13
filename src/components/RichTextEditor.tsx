@@ -63,7 +63,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         <button
           type="button"
           onClick={() => execCommand('bold')}
-          className="px-2 py-1 text-sm border rounded hover:bg-gray-200"
+          className="px-2 py-1 text-sm border rounded hover:bg-gray-200 cursor-pointer"
           title="Жирный"
         >
           <strong>B</strong>
@@ -71,7 +71,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         <button
           type="button"
           onClick={() => execCommand('italic')}
-          className="px-2 py-1 text-sm border rounded hover:bg-gray-200"
+          className="px-2 py-1 text-sm border rounded hover:bg-gray-200 cursor-pointer"
           title="Курсив"
         >
           <em>I</em>
@@ -79,7 +79,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         <button
           type="button"
           onClick={() => execCommand('underline')}
-          className="px-2 py-1 text-sm border rounded hover:bg-gray-200"
+          className="px-2 py-1 text-sm border rounded hover:bg-gray-200 cursor-pointer"
           title="Подчеркнутый"
         >
           <u>U</u>
@@ -88,7 +88,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         <button
           type="button"
           onClick={() => execCommand('insertUnorderedList')}
-          className="px-2 py-1 text-sm border rounded hover:bg-gray-200"
+          className="px-2 py-1 text-sm border rounded hover:bg-gray-200 cursor-pointer"
           title="Маркированный список"
         >
           • список
@@ -96,7 +96,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         <button
           type="button"
           onClick={() => execCommand('insertOrderedList')}
-          className="px-2 py-1 text-sm border rounded hover:bg-gray-200"
+          className="px-2 py-1 text-sm border rounded hover:bg-gray-200 cursor-pointer"
           title="Нумерованный список"
         >
           1. список
@@ -105,7 +105,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         <button
           type="button"
           onClick={() => execCommand('justifyLeft')}
-          className="px-2 py-1 text-sm border rounded hover:bg-gray-200"
+          className="px-2 py-1 text-sm border rounded hover:bg-gray-200 cursor-pointer"
           title="По левому краю"
         >
           ←
@@ -113,7 +113,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         <button
           type="button"
           onClick={() => execCommand('justifyCenter')}
-          className="px-2 py-1 text-sm border rounded hover:bg-gray-200"
+          className="px-2 py-1 text-sm border rounded hover:bg-gray-200 cursor-pointer"
           title="По центру"
         >
           ↔
@@ -121,7 +121,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         <button
           type="button"
           onClick={() => execCommand('justifyRight')}
-          className="px-2 py-1 text-sm border rounded hover:bg-gray-200"
+          className="px-2 py-1 text-sm border rounded hover:bg-gray-200 cursor-pointer"
           title="По правому краю"
         >
           →
@@ -148,6 +148,12 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           `}
           style={{
             display: 'block',
+            maxWidth: '100%',
+            overflowWrap: 'break-word',
+            wordWrap: 'break-word',
+            wordBreak: 'break-word',
+            whiteSpace: 'pre-wrap',
+            overflowX: 'hidden',
           }}
         />
       </div>
