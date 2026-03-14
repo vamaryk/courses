@@ -1,5 +1,5 @@
-import { Users, Star, BookOpen, Search, ChevronDown, Palette, Megaphone, Briefcase, Database, MessageSquare, Heart, CreditCard, X } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { Users, Star, BookOpen, Search, ChevronDown, Palette, Megaphone, Briefcase, Database, MessageSquare, Heart, CreditCard, X, Sparkles } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
 import { coursesApi, type Course } from '@/shared/api/courses';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -27,18 +27,18 @@ interface CourseWithAuthor extends Omit<Course, 'author_id'> {
   studentsCount?: number;
 }
 
-// Константы для диапазонов (минимальные значения)
+// Константы для диапазонов
 const DURATION_MIN = 0;
 const DURATION_MAX_DEFAULT = 100;
 
 // Структура для направлений и подкатегорий
 const CATEGORIES = [
-  { id: 'development', label: 'Разработка', icon: BookOpen, keywords: ['разработка', 'программирование', 'код', 'javascript', 'python', 'react', 'go', 'php'], subcategories: ['JavaScript', 'Python', 'React', 'Go', 'PHP'] },
-  { id: 'design', label: 'Дизайн', icon: Palette, keywords: ['дизайн', 'ui', 'ux', 'figma'] },
-  { id: 'marketing', label: 'Маркетинг', icon: Megaphone, keywords: ['маркетинг', 'seo', 'smm', 'реклама'] },
-  { id: 'business', label: 'Бизнес', icon: Briefcase, keywords: ['бизнес', 'менеджмент', 'стартап'] },
-  { id: 'data_science', label: 'Data Science', icon: Database, keywords: ['данные', 'аналитика', 'data science', 'ai', 'ml'] },
-  { id: 'soft_skills', label: 'Soft Skills', icon: MessageSquare, keywords: ['soft skills', 'общение', 'лидерство'] },
+  { id: 'development', label: 'Разработка', icon: BookOpen, keywords: ['разработка', 'программирование', 'код', 'javascript', 'python', 'react', 'go', 'php'], subcategories: ['JavaScript', 'Python', 'React', 'Go', 'PHP'], gradient: 'from-violet-500 to-purple-600', hoverGradient: 'from-purple-600 to-violet-700' },
+  { id: 'design', label: 'Дизайн', icon: Palette, keywords: ['дизайн', 'ui', 'ux', 'figma'], subcategories: [], gradient: 'from-pink-500 to-rose-600', hoverGradient: 'from-rose-600 to-pink-700' },
+  { id: 'marketing', label: 'Маркетинг', icon: Megaphone, keywords: ['маркетинг', 'seo', 'smm', 'реклама'], subcategories: [], gradient: 'from-amber-500 to-orange-600', hoverGradient: 'from-orange-600 to-amber-700' },
+  { id: 'business', label: 'Бизнес', icon: Briefcase, keywords: ['бизнес', 'менеджмент', 'стартап'], subcategories: [], gradient: 'from-emerald-500 to-teal-600', hoverGradient: 'from-teal-600 to-emerald-700' },
+  { id: 'data_science', label: 'Data Science', icon: Database, keywords: ['данные', 'аналитика', 'data science', 'ai', 'ml'], subcategories: [], gradient: 'from-cyan-500 to-blue-600', hoverGradient: 'from-blue-600 to-cyan-700' },
+  { id: 'soft_skills', label: 'Soft Skills', icon: MessageSquare, keywords: ['soft skills', 'общение', 'лидерство'], subcategories: [], gradient: 'from-fuchsia-500 to-indigo-600', hoverGradient: 'from-indigo-600 to-fuchsia-700' },
 ];
 
 const sortOptionsList = [
@@ -47,10 +47,39 @@ const sortOptionsList = [
   { value: 'rating', label: 'По рейтингу' },
 ];
 
-// Функция для округления цены до ближайших 1000 вверх
 const roundPriceToTenThousand = (price: number): number => {
   return Math.ceil(price / 1000) * 1000;
 };
+
+// Компонент анимированной частицы для фона
+const FloatingParticle = ({ 
+  delay, 
+  duration, 
+  size, 
+  left, 
+  top,
+  className = "animate-float"
+}: { 
+  delay: number; 
+  duration: number; 
+  size: number; 
+  left: string; 
+  top: string;
+  className?: string;
+}) => (
+  <div
+    className={`absolute rounded-full bg-white/20 ${className}`}
+    style={{
+      width: size,
+      height: size,
+      left,
+      top,
+      animationDelay: `${delay}s`,
+      animationDuration: `${duration}s`,
+      filter: 'blur(1px)',
+    }}
+  />
+);
 
 export default function HomePage() {
   const { isAuthenticated } = useAuth();
@@ -58,34 +87,27 @@ export default function HomePage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
   
-  // Динамические максимальные значения
   const [priceMax, setPriceMax] = useState<number>(100000);
   const [durationMax, setDurationMax] = useState<number>(DURATION_MAX_DEFAULT);
 
-  // Фильтры
   const [selectedLevels, setSelectedLevels] = useState<string[]>([]);
   const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedSubcategories, setSelectedSubcategories] = useState<string[]>([]);
   
-  // ИСПРАВЛЕНИЕ: Инициализируем диапазоны после загрузки данных, 
-  // но здесь ставим заглушки, которые обновятся в useEffect
   const [priceRange, setPriceRange] = useState<[number, number]>([0, 100000]);
   const [durationRange, setDurationRange] = useState<[number, number]>([DURATION_MIN, DURATION_MAX_DEFAULT]);
 
-  // Sort states
   const [sortOption, setSortOption] = useState('popularity');
   const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
 
-  // Избранное - состояние для ID курсов в избранном (как в CoursesPage)
   const [favorites, setFavorites] = useState<Set<string | number>>(new Set());
 
-  // Загрузка избранного при монтировании (из базы через API или localStorage)
+  // Загрузка избранного
   useEffect(() => {
     const loadFavorites = async () => {
       try {
         if (isAuthenticated) {
-          // Загружаем из базы для авторизованных пользователей
           const response = await coursesApi.getFavorites?.();
           if (Array.isArray(response)) {
             const favoriteIds = new Set<string | number>(
@@ -94,7 +116,6 @@ export default function HomePage() {
             setFavorites(favoriteIds);
           }
         } else {
-          // Fallback на localStorage для неавторизованных
           const saved = localStorage.getItem('courseFavorites');
           if (saved) {
             const parsed = JSON.parse(saved);
@@ -105,7 +126,6 @@ export default function HomePage() {
         }
       } catch (err) {
         console.error('Failed to load favorites:', err);
-        // Fallback на localStorage при ошибке API
         const saved = localStorage.getItem('courseFavorites');
         if (saved) {
           const parsed = JSON.parse(saved);
@@ -123,28 +143,18 @@ export default function HomePage() {
     const isCurrentlyFavorite = favorites.has(courseId);
     const newFavoriteStatus = !isCurrentlyFavorite;
     
-    // 1. Оптимистичное обновление UI
     setFavorites(prev => {
       const next = new Set(prev);
-      if (newFavoriteStatus) {
-        next.add(courseId);
-      } else {
-        next.delete(courseId);
-      }
+      if (newFavoriteStatus) next.add(courseId);
+      else next.delete(courseId);
       return next;
     });
     
-    // 2. Обновление бэкенда или localStorage
     try {
       if (isAuthenticated) {
-        // Авторизованный пользователь - вызов API
-        if (newFavoriteStatus) {
-          await coursesApi.addToFavorites?.(courseId);
-        } else {
-          await coursesApi.removeFromFavorites?.(courseId);
-        }
+        if (newFavoriteStatus) await coursesApi.addToFavorites?.(courseId);
+        else await coursesApi.removeFromFavorites?.(courseId);
       } else {
-        // Неавторизованный - сохраняем в localStorage
         const updatedFavorites = Array.from(
           newFavoriteStatus 
             ? new Set([...favorites, courseId]) 
@@ -154,61 +164,42 @@ export default function HomePage() {
       }
     } catch (err) {
       console.error('Error updating favorite:', err);
-      // 3. Откат при ошибке
       setFavorites(prev => {
         const next = new Set(prev);
-        if (isCurrentlyFavorite) {
-          next.add(courseId);
-        } else {
-          next.delete(courseId);
-        }
+        if (isCurrentlyFavorite) next.add(courseId);
+        else next.delete(courseId);
         return next;
       });
     }
   };
 
-  // Вспомогательная функция для проверки, в избранном ли курс
-  const isCourseFavorite = (courseId: string | number): boolean => {
-    return favorites.has(courseId);
-  };
+  const isCourseFavorite = (courseId: string | number): boolean => favorites.has(courseId);
 
   useEffect(() => {
     const fetchCourses = async () => {
       try {
         const response = await coursesApi.getAllCourses();
         const allCourses = Array.isArray(response) ? response as unknown as CourseWithAuthor[] : [];
-        
-        // Filter only public courses and ensure they have required fields
         const publicCourses = allCourses.filter(course =>
-          course &&
-          course.is_public === true &&
-          course.id &&
-          course.title
+          course && course.is_public === true && course.id && course.title
         );
         
-        console.log('Fetched public courses:', publicCourses);
         setCourses(publicCourses);
 
-        // ИСПРАВЛЕНИЕ: Вычисляем максимальную цену из всех курсов с округлением до 10000
         const maxPrice = publicCourses.reduce((max, course) => {
           const price = course.price || 0;
           return price > max ? price : max;
         }, 0);
         const calculatedPriceMax = roundPriceToTenThousand(maxPrice);
         setPriceMax(calculatedPriceMax);
-        
-        // Обновляем диапазон цен по умолчанию [0, max]
         setPriceRange([0, calculatedPriceMax]);
 
-        // Вычисляем максимальную длительность
         const maxDuration = publicCourses.reduce((max, course) => {
           const duration = course.durationHours || 0;
           return duration > max ? duration : max;
         }, 0);
         const calculatedDurationMax = maxDuration > 0 ? maxDuration : DURATION_MAX_DEFAULT;
         setDurationMax(calculatedDurationMax);
-        
-        // Обновляем диапазон длительности по умолчанию [0, max]
         setDurationRange([DURATION_MIN, calculatedDurationMax]);
 
       } catch (err) {
@@ -218,7 +209,6 @@ export default function HomePage() {
     fetchCourses();
   }, []);
 
-  // Toggle handlers for categories/subcategories
   const toggleCategory = (id: string) => {
     setSelectedCategories(prev => {
       const isCurrentlySelected = prev.includes(id);
@@ -237,48 +227,38 @@ export default function HomePage() {
   };
 
   const filteredCourses = courses.filter(course => {
-    // Ensure required fields exist
     if (!course.id || !course.title) return false;
-    // Only show public courses
     if (!course.is_public) return false;
 
     const searchLower = searchQuery.toLowerCase();
     const courseTitleLower = course.title.toLowerCase();
     const courseDescLower = (course.description || '').toLowerCase();
 
-    // 1. Apply search filter
     const matchesSearch = searchQuery === '' ||
       courseTitleLower.includes(searchLower) ||
       courseDescLower.includes(searchLower);
 
-    // 2. Apply level filter
     const matchesLevel = selectedLevels.length === 0 ||
       (course.level && selectedLevels.includes(course.level));
 
-    // 3. Apply language filter
     const matchesLanguage = selectedLanguages.length === 0 ||
       (course.language && selectedLanguages.includes(course.language));
 
-    // 4. Apply price filter
     const coursePrice = course.price || 0;
     const matchesPrice = coursePrice >= priceRange[0] && coursePrice <= priceRange[1];
 
-    // 5. Duration filter
     const courseDuration = course.durationHours || 0;
     const matchesDuration = courseDuration >= durationRange[0] && courseDuration <= durationRange[1];
 
-    // 6. Category Filter
     let matchesCategory = true;
     if (selectedCategories.length > 0 || selectedSubcategories.length > 0) {
       matchesCategory = false;
-      // Проверка подкатегорий (языков)
       if (selectedSubcategories.length > 0) {
         const subKeywords = selectedSubcategories.map(s => s.toLowerCase());
         if (subKeywords.some(keyword => courseTitleLower.includes(keyword) || courseDescLower.includes(keyword))) {
           matchesCategory = true;
         }
       }
-      // Проверка основных категорий
       if (!matchesCategory && selectedCategories.length > 0) {
         const activeKeywords: string[] = [];
         selectedCategories.forEach(id => {
@@ -300,37 +280,28 @@ export default function HomePage() {
     return matchesSearch && matchesLevel && matchesLanguage && matchesPrice && matchesDuration && matchesCategory;
   });
 
-  // Sort courses
   const sortedCourses = [...filteredCourses].sort((a, b) => {
     switch (sortOption) {
-      case 'price':
-        return (a.price || 0) - (b.price || 0);
-      case 'rating':
-        return (b.rating || 0) - (a.rating || 0);
+      case 'price': return (a.price || 0) - (b.price || 0);
+      case 'rating': return (b.rating || 0) - (a.rating || 0);
       case 'popularity':
-      default:
-        return (b.studentsCount || 0) - (a.studentsCount || 0);
+      default: return (b.studentsCount || 0) - (a.studentsCount || 0);
     }
   });
 
-  // ИСПРАВЛЕНИЕ: Популярные курсы - 5 курсов с наивысшим рейтингом из ВСЕХ курсов (не отфильтрованных)
   const popularCourses = [...courses]
     .sort((a, b) => (b.rating || 0) - (a.rating || 0))
     .slice(0, 5);
 
   const selectedSortLabel = sortOptionsList.find(opt => opt.value === sortOption)?.label || 'По популярности';
 
-  // Range Slider Helpers
   const handlePriceInput = (index: 0 | 1, value: string) => {
     let numValue = parseInt(value);
     if (isNaN(numValue)) numValue = index === 0 ? 0 : priceMax;
     let newMin = priceRange[0];
     let newMax = priceRange[1];
-    if (index === 0) {
-      newMin = Math.max(0, Math.min(numValue, newMax));
-    } else {
-      newMax = Math.min(priceMax, Math.max(numValue, newMin));
-    }
+    if (index === 0) newMin = Math.max(0, Math.min(numValue, newMax));
+    else newMax = Math.min(priceMax, Math.max(numValue, newMin));
     setPriceRange([newMin, newMax]);
   };
 
@@ -339,38 +310,26 @@ export default function HomePage() {
     if (isNaN(numValue)) numValue = index === 0 ? DURATION_MIN : durationMax;
     let newMin = durationRange[0];
     let newMax = durationRange[1];
-    if (index === 0) {
-      newMin = Math.max(DURATION_MIN, Math.min(numValue, newMax));
-    } else {
-      newMax = Math.min(durationMax, Math.max(numValue, newMin));
-    }
+    if (index === 0) newMin = Math.max(DURATION_MIN, Math.min(numValue, newMax));
+    else newMax = Math.min(durationMax, Math.max(numValue, newMin));
     setDurationRange([newMin, newMax]);
   };
 
   const isDevelopmentSelected = selectedCategories.includes('development');
 
   const filterProps = {
-    selectedLevels,
-    setSelectedLevels,
-    selectedLanguages,
-    setSelectedLanguages,
-    selectedCategories,
-    toggleCategory,
-    selectedSubcategories,
-    toggleSubcategory,
-    priceRange,
-    setPriceRange,
-    durationRange,
-    setDurationRange,
+    selectedLevels, setSelectedLevels,
+    selectedLanguages, setSelectedLanguages,
+    selectedCategories, toggleCategory,
+    selectedSubcategories, toggleSubcategory,
+    priceRange, setPriceRange,
+    durationRange, setDurationRange,
     isDevelopmentSelected,
-    handlePriceInput,
-    handleDurationInput,
-    priceMax,
-    durationMax,
+    handlePriceInput, handleDurationInput,
+    priceMax, durationMax,
     categories: CATEGORIES,
   };
 
-  // Добавляем состояние для текущей страницы
   const [currentPage, setCurrentPage] = useState(1);
   const COURSES_PER_PAGE = 15;
   const totalPages = Math.ceil(sortedCourses.length / COURSES_PER_PAGE);
@@ -380,10 +339,7 @@ export default function HomePage() {
   );
 
   const scrollToCourses = () => {
-    document.getElementById('courses-grid')?.scrollIntoView({
-      behavior: 'smooth',
-      block: 'start'
-    });
+    document.getElementById('courses-grid')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
 
   const goToPage = (page: number) => {
@@ -411,28 +367,20 @@ export default function HomePage() {
     const pages: (number | '...')[] = [];
     const maxVisible = 5;
     if (totalPages <= maxVisible) {
-      for (let i = 1; i <= totalPages; i++) {
-        pages.push(i);
-      }
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
     } else {
       if (currentPage <= 3) {
-        for (let i = 1; i <= 4; i++) {
-          pages.push(i);
-        }
+        for (let i = 1; i <= 4; i++) pages.push(i);
         pages.push('...');
         pages.push(totalPages);
       } else if (currentPage >= totalPages - 2) {
         pages.push(1);
         pages.push('...');
-        for (let i = totalPages - 3; i <= totalPages; i++) {
-          pages.push(i);
-        }
+        for (let i = totalPages - 3; i <= totalPages; i++) pages.push(i);
       } else {
         pages.push(1);
         pages.push('...');
-        for (let i = currentPage - 1; i <= currentPage + 1; i++) {
-          pages.push(i);
-        }
+        for (let i = currentPage - 1; i <= currentPage + 1; i++) pages.push(i);
         pages.push('...');
         pages.push(totalPages);
       }
@@ -446,46 +394,207 @@ export default function HomePage() {
     return `${text.slice(0, maxLength).trimEnd()}…`;
   };
 
+  const heroRef = useRef<HTMLDivElement>(null);
+
   return (
     <div className="bg-background">
-      {/* Hero Section */}
-      <div className="relative bg-background px-4 sm:px-6 lg:px-[20px]">
-        <div className="absolute inset-0 overflow-hidden pointer-events-none">
-          <div className="absolute top-10 left-20 w-32 h-32 rounded-full bg-gradient-to-r from-purple to-pink blur-xl"></div>
-          <div className="absolute top-20 right-20 w-48 h-24 rounded-full bg-gradient-to-r from-pink to-purple blur-2xl"></div>
-          <div className="absolute bottom-50 left-1/2 transform -translate-x-1/2 w-40 h-40 rounded-full bg-gradient-to-r from-purple to-pink blur-3xl"></div>
-        </div>
-        <div className="relative">
-          <div className="text-center">
-            <div className="bg-gradient-to-r from-white/10 to-white/30 backdrop-blur-lg rounded-xl px-4 py-35 shadow-md border border-white/30">
-              <h1 className="text-3xl sm:text-4xl lg:text-5xl font-Xolonium text-gray-800 leading-tight mb-4">
-                САМАЯ ЛУЧШАЯ<sup>*</sup> <br />
-                ПЛОЩАДКА <span className="font-RubikGlitch">ОНЛАЙН-</span>КУРСОВ
-              </h1>
-              <p className="text-sm sm:text-base text-gray-600 mt-4">
-                Найдите идеальный курс для Вашего развития — от программирования до дизайна и маркетинга.
-              </p>
-            </div>
-          </div>
-          <div className="mt-4 sm:mt-8">
-            <div className="flex flex-wrap justify-center gap-4">
-              {CATEGORIES.map((item, index) => (
-                <div
-                  key={index}
-                  className="animated-gradient animated-gradient-block flex items-center justify-center p-4 sm:p-5 border-2 border-purple/30 backdrop-blur-lg shadow-sm rounded-xl transition-all duration-300"
-                >
-                  <item.icon className="w-6 h-6 sm:w-8 sm:h-8 text-gray-700" />
-                  <span className="ml-2 text-xs sm:text-sm font-medium text-gray-700">
-                    {item.label}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* Глобальные стили для анимаций */}
+      <style>{`
+        @keyframes float {
+        0%, 100% { transform: translateY(0) translateX(0); opacity: 0.6; }
+        50% { transform: translateY(-20px) translateX(10px); opacity: 1; }
+        }
+        @keyframes gradient-shift {
+        0%, 100% { background-position: 0% 50%; }
+        50% { background-position: 100% 50%; }
+        }
+        @keyframes pulse-glow {
+        0%, 100% { box-shadow: 0 0 20px rgba(139, 92, 246, 0.4); }
+        50% { box-shadow: 0 0 40px rgba(139, 92, 246, 0.8); }
+        }
+        @keyframes slide-up {
+        from { opacity: 0; transform: translateY(20px); }
+        to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes shimmer {
+        0% { background-position: -200% 0; }
+        100% { background-position: 200% 0; }
+        }
+        @keyframes border-flow {
+        0% { background-position: 0% 50%; }
+        100% { background-position: 200% 50%; }
+        }
+        /* Новая анимация для диагональных частиц */
+        @keyframes diagonal-fly {
+        0% {
+            transform: translate(0, 0);
+            opacity: 0;
+        }
+        10% {
+            opacity: 0.4;
+        }
+        90% {
+            opacity: 0.4;
+        }
+        100% {
+            transform: translate(150vw, -150vh);
+            opacity: 0;
+        }
+        }
+        .animate-float { animation: float 6s ease-in-out infinite; }
+        .animate-gradient {
+        background-size: 200% 200%;
+        animation: gradient-shift 8s ease infinite;
+        }
+        .animate-pulse-glow { animation: pulse-glow 3s ease-in-out infinite; }
+        .animate-slide-up { animation: slide-up 0.6s ease-out forwards; }
+        .animate-shimmer {
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+        background-size: 200% 100%;
+        animation: shimmer 2s infinite;
+        }
+        .animate-border-flow {
+        background-size: 200% 100%;
+        animation: border-flow 3s linear infinite;
+        }
+        /* Класс для диагональных частиц */
+        .animate-diagonal {
+        animation: diagonal-fly linear infinite;
+        }
+        .glass-card {
+        background: rgba(255, 255, 255, 0.1);
+        backdrop-filter: blur(20px);
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        }
+        .category-card {
+        position: relative;
+        background: rgba(255, 255, 255, 0.85);
+        backdrop-filter: blur(10px);
+        border-radius: 1rem;
+        transition: all 0.5s ease;
+        }
+        .category-card::before {
+        content: '';
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        padding: 2px;
+        background: linear-gradient(90deg, #a855f7, #ec4899, #06b6d4, #a855f7);
+        background-size: 300% 100%;
+        -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+        -webkit-mask-composite: xor;
+        mask-composite: exclude;
+        animation: border-flow 3s linear infinite;
+        opacity: 0.7;
+        }
+        .category-card:hover::before {
+        opacity: 1;
+        padding: 3px;
+        }
+        .category-card:hover .category-icon {
+        transform: scale(1.1) rotate(5deg);
+        }
+        .category-card:hover .category-arrow {
+        transform: translateX(4px);
+        opacity: 1;
+        }
+        `}</style>
 
-      {/* Popular Courses Section */}
+      {/* ========== HERO SECTION ========== */}
+        <div className="px-4 sm:px-6 lg:px-[20px] pb-4">
+        <div ref={heroRef} className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 rounded-xl px-4 sm:px-6 lg:px-[20px] py-12 sm:py-16 lg:py-20">
+            {/* Анимированный фон с частицами */}
+            <div className="absolute inset-0 overflow-hidden pointer-events-none rounded-xl">
+            <div className="absolute top-0 left-1/4 w-64 h-64 sm:w-80 sm:h-80 bg-purple-500/30 rounded-full blur-3xl animate-pulse-glow" />
+            <div className="absolute bottom-0 right-1/4 w-56 h-56 sm:w-72 sm:h-72 bg-pink-500/25 rounded-full blur-3xl animate-pulse-glow" style={{ animationDelay: '1s' }} />
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-80 h-80 sm:w-[500px] sm:h-[500px] bg-gradient-to-r from-violet-600/20 to-fuchsia-600/20 rounded-full blur-3xl animate-gradient" />
+            
+            {/* Оригинальные плавающие частицы */}
+            {[...Array(10)].map((_, i) => (
+                <FloatingParticle
+                key={i}
+                delay={i * 0.5}
+                duration={8 + i % 4}
+                size={3 + (i % 3) * 2}
+                left={`${10 + (i % 5) * 18}%`}
+                top={`${15 + Math.floor(i / 5) * 40}%`}
+                />
+            ))}
+            
+            {/* ДИАГОНАЛЬНЫЕ ЧАСТИЦЫ - больше частиц с разными траекториями */}
+            {[...Array(20)].map((_, i) => (
+                <FloatingParticle
+                key={`diagonal-${i}`}
+                delay={i * 0.4}
+                duration={12 + (i % 6) * 2}
+                size={4 + (i % 3)}
+                left={`${5 + (i % 10) * 9}%`}
+                top={`${65 + Math.floor(i / 10) * 15}%`}
+                className="animate-diagonal"
+                />
+            ))}
+            
+            <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] bg-[size:35px_35px] rounded-xl" />
+            </div>
+
+            <div className="relative z-10">
+            <div className="text-center">
+                <div className="inline-flex items-center gap-2 px-3 py-1.5 sm:px-4 sm:py-2 rounded-full glass-card mb-4 sm:mb-6 animate-slide-up" style={{ animationDelay: '0.1s' }}>
+                <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-yellow-300" />
+                <span className="text-xs sm:text-sm font-medium text-white/90"> С ИИ-ассистентом<sup>**</sup> </span>
+                </div>
+
+                <h1 className="text-3xl sm:text-4xl lg:text-5xl font-Xolonium text-white leading-tight mb-4 sm:mb-6 animate-slide-up" style={{ animationDelay: '0.2s' }}>
+                САМАЯ ЛУЧШАЯ<sup>*</sup> <br />
+                <span>ПЛОЩАДКА </span>
+                    <span className="font-RubikGlitch bg-gradient-to-r from-white via-purple-200 to-white bg-clip-text text-transparent animate-gradient">
+                    ОНЛАЙН-
+                    </span>
+                <span className="font-RubikGlitch text-transparent bg-clip-text bg-gradient-to-r from-purple-300 via-pink-300 to-purple-300">
+                    КУРСОВ
+                </span>
+                </h1>
+
+                <p className="text-sm sm:text-base lg:text-lg text-purple-100/90 max-w-xl mx-auto mb-6 sm:mb-8 animate-slide-up" style={{ animationDelay: '0.3s' }}>
+                Найдите идеальный курс для Вашего развития — от программирования до дизайна и маркетинга. 
+                <span className="block mt-2 sm:mt-4 text-purple-200/80 text-xs sm:text-sm">Начните учиться сегодня, измените завтра.</span>
+                </p>
+            </div>
+            </div>
+        </div>
+        </div>
+
+      {/* ========== КАТЕГОРИИ - С ГРАДИЕНТНОЙ ОБВОДКОЙ ========== */}
+        <div className="relative w-full mt-2 lg:mt-4 px-10">
+
+        {/* Декоративная полоса на фоне */}
+        <div className="absolute top-1/2 left-0 right-0 -translate-y-1/2 pointer-events-none z-0">
+            <div className="h-px bg-gradient-to-r from-transparent via-purple-300/40 to-transparent" />
+        </div>
+
+        {/* Сетка категорий: 2 колонки на мобильных, 3 на планшетах, 6 на десктопе */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+            {CATEGORIES.map((item, index) => (
+            <div
+                key={index}
+                className="animated-gradient animated-gradient-block flex items-center gap-2 sm:gap-3 p-3 sm:p-4 border-2 border-purple/30 backdrop-blur-lg shadow-sm rounded-xl transition-all duration-300 justify-center sm:justify-start"
+            >
+                {/* Контейнер иконки с фоном */}
+                <div className="flex-shrink-0 w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-purple-100/60 flex items-center justify-center border border-purple-200/50">
+                <item.icon className="w-4 h-4 sm:w-5 sm:h-5 text-purple-700" />
+                </div>
+
+                {/* Текст справа */}
+                <span className="text-xs sm:text-sm font-medium text-gray-700 text-center sm:text-left truncate">
+                {item.label}
+                </span>
+            </div>
+            ))}
+        </div>
+        </div>
+
+      {/* ========== POPULAR COURSES SECTION ========== */}
       <div className="bg-background py-12 lg:py-16">
         <div className="px-4 sm:px-6 lg:px-[40px]">
           <div className="text-center mb-4 lg:mb-8">
@@ -520,7 +629,6 @@ export default function HomePage() {
                         {course.is_public ? 'Публичный' : 'Приватный'}
                       </span>
                     </div>
-                    {/* Кнопка избранного - логика как в CoursesPage, стиль как был */}
                     <button
                       onClick={(e: React.MouseEvent) => {
                         e.stopPropagation();
@@ -567,9 +675,7 @@ export default function HomePage() {
                       </div>
                     </div>
                     <Button asChild className="w-full mt-4 bg-purple text-white font-medium hover:bg-purple-600">
-                      <Link to={`/courses/${course.id}`}>
-                        Подробнее
-                      </Link>
+                      <Link to={`/courses/${course.id}`}>Подробнее</Link>
                     </Button>
                   </div>
                 </div>
@@ -585,7 +691,7 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* Main Courses Section */}
+      {/* ========== MAIN COURSES SECTION ========== */}
       <div className="py-2 sm:py-4 lg:py-6 bg-background">
         <div className="px-4 sm:px-6 lg:px-[40px]">
           <div className="text-center mb-4 sm:mb-5 lg:mb-6">
@@ -678,7 +784,6 @@ export default function HomePage() {
                         className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/10 to-transparent" />
-                      {/* Кнопка избранного - логика как в CoursesPage, стиль как был */}
                       <button
                         onClick={(e: React.MouseEvent) => {
                           e.stopPropagation();
@@ -807,7 +912,7 @@ export default function HomePage() {
         </div>
       </div>
 
-      {/* MOBILE FILTER MODAL */}
+      {/* ========== MOBILE FILTER MODAL ========== */}
       {isMobileFilterOpen && (
         <div className="fixed inset-0 z-102 flex items-end justify-center lg:hidden">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsMobileFilterOpen(false)} />
