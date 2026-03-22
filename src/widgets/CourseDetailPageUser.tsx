@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import { coursesApi, type Course, type Chapter, type Subchapter, type ContentBlock } from '@/shared/api/courses';
-import { getCoverImageUrl } from '@/shared/utils/courseTransform';
+import { getCoverImageUrl, resolveProfileMediaUrl } from '@/shared/utils/courseTransform';
 import HeroHeaderUser from "@/components/dashboard/HeroHeaderUser";
 import CourseModulesUser from "@/components/dashboard/CourseModulesUser";
 import CourseStats from "@/components/dashboard/CourseStats";
@@ -231,7 +231,7 @@ export default function CourseDetailPageUser({ onEnrolled }: CourseDetailPageUse
             courseTitle={course.title}
             courseDescription={course.description || ''}
             authorName={course.instructor_name || course.author?.name || 'Неизвестный автор'}
-            authorAvatar={course.instructor_avatar || null}
+            authorAvatar={resolveProfileMediaUrl(course.instructor_avatar) ?? null}
             coverImage={getCoverImageUrl(course.cover_image)}
             stats={{
               totalLectures: theoryCount,
@@ -245,11 +245,7 @@ export default function CourseDetailPageUser({ onEnrolled }: CourseDetailPageUse
             isBuyLoading={buyLoading}
             onToggleFavorite={handleToggleFavorite}
             onBuy={handleBuyCourse}
-            onAuthorClick={() => {
-              if (course.author_id) {
-                navigate(`/profile/${course.author_id}`);
-              }
-            }}
+            onAuthorClick={course.author_id ? () => navigate(`/profile/${course.author_id}`) : undefined}
           />
           <div className="bg-white rounded-xl shadow p-5">
           

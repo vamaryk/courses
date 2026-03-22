@@ -19,6 +19,7 @@ export default defineConfig(({ mode }) => {
       global: 'globalThis',
     },
     server: {
+      port: 5173,
       host: true,
       allowedHosts: 'all',
       proxy: {

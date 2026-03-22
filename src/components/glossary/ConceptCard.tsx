@@ -1,86 +1,145 @@
-import { motion } from "framer-motion";
+import { memo } from "react";
+import { Handle, Position, type NodeProps, type Node } from "@xyflow/react";
+import { Pencil, Trash2 } from "lucide-react";
 import type { ConceptNode } from "@/types/glossary";
-import { Pencil, Trash2, GripVertical } from "lucide-react";
 
-interface ConceptCardProps {
-  node: ConceptNode;
+/** Data payload stored inside a React Flow node */
+export type ConceptNodeData = ConceptNode & {
   isActiveStage: boolean;
   isHighlighted: boolean;
-  isDimmed: boolean;
+  isSearchMatch: boolean;
+  isCreator: boolean;
   onEdit: (node: ConceptNode) => void;
   onDelete: (id: string) => void;
-  onDragStart: (id: string, e: React.MouseEvent) => void;
-}
+};
 
-const ConceptCard = ({
-  node,
-  isActiveStage,
-  isHighlighted,
-  isDimmed,
-  onEdit,
-  onDelete,
-  onDragStart,
-}: ConceptCardProps) => {
+export type ConceptFlowNode = Node<ConceptNodeData, "concept">;
+
+const ConceptCard = ({ data }: NodeProps<ConceptFlowNode>) => {
+  const {
+    title,
+    description,
+    example,
+    image_description,
+    stage,
+    themes,
+    isActiveStage,
+    isHighlighted,
+    isSearchMatch,
+    isCreator,
+    onEdit,
+    onDelete,
+  } = data;
+
+  const locked = !isActiveStage;
+
+  const classList = [
+    "concept-node",
+    locked ? "locked" : "",
+    isHighlighted ? "highlighted" : "",
+    isSearchMatch ? "search-match" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
-    <motion.div
-      data-node-id={node.id}
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{
-        opacity: isDimmed ? 0.35 : 1,
-        scale: 1,
-        filter: !isActiveStage && !isHighlighted ? "blur(var(--stage-blur))" : "blur(0px)",
-      }}
-      transition={{ duration: 0.4, ease: "easeOut" }}
-      className="absolute w-[220px] group"
-      style={{ left: node.x, top: node.y }}
-    >
-      <div
-        className={`
-          relative rounded-2xl border-2 bg-card p-4 shadow-sm transition-all duration-300
-          ${isHighlighted ? "border-primary shadow-lg shadow-primary/20 ring-2 ring-primary/30" : "border-border"}
-          ${isActiveStage ? "hover:shadow-md hover:border-primary/50" : ""}
-        `}
-      >
-        <div
-          onMouseDown={(e) => onDragStart(node.id, e)}
-          className="absolute -top-1 left-1/2 -translate-x-1/2 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity"
-        >
-          <GripVertical className="h-4 w-4 text-muted-foreground" />
-        </div>
+    <div className={classList}>
+      {/* Connection handles — only for course owner */}
+      {isCreator && (
+        <>
+          <Handle
+            type="target"
+            position={Position.Top}
+            className="!w-3 !h-3 !bg-primary !border-2 !border-white !shadow"
+          />
+          <Handle
+            type="source"
+            position={Position.Bottom}
+            className="!w-3 !h-3 !bg-primary !border-2 !border-white !shadow"
+          />
+          <Handle
+            type="target"
+            position={Position.Left}
+            id="left-target"
+            className="!w-3 !h-3 !bg-primary !border-2 !border-white !shadow"
+          />
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="right-source"
+            className="!w-3 !h-3 !bg-primary !border-2 !border-white !shadow"
+          />
+        </>
+      )}
 
-        <span className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-primary text-primary-foreground text-xs flex items-center justify-center font-semibold shadow">
-          {node.stage}
-        </span>
+      <div className="concept-node-inner">
+        {/* Stage badge */}
+        <span className="concept-stage-badge">{stage}</span>
 
-        <h3 className="text-sm font-semibold text-foreground mb-1 pr-6">{node.title}</h3>
-        <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">{node.description}</p>
+        {/* Edit / Delete actions — only for course owner on unlocked cards */}
+        {isCreator && !locked && (
+          <div className="concept-actions">
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onEdit(data as ConceptNode);
+              }}
+              title="Редактировать"
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
+            <button
+              className="delete-btn"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete(data.id);
+              }}
+              title="Удалить"
+            >
+              <Trash2 className="h-3 w-3" />
+            </button>
+          </div>
+        )}
 
-        <div className="flex flex-wrap gap-1 mt-2">
-          {node.themes.map((t) => (
-            <span key={t} className="text-[10px] px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground">
-              {t}
-            </span>
-          ))}
-        </div>
+        {/* Title */}
+        <h3 className="text-sm font-semibold text-foreground mb-1 pr-6 leading-tight">
+          {title}
+        </h3>
 
-        <div className="absolute top-2 right-2 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button
-            onClick={() => onEdit(node)}
-            className="p-1 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <Pencil className="h-3 w-3" />
-          </button>
-          <button
-            onClick={() => onDelete(node.id)}
-            className="p-1 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-          >
-            <Trash2 className="h-3 w-3" />
-          </button>
-        </div>
+        {/* Description */}
+        <p className="text-xs text-muted-foreground leading-relaxed line-clamp-3">
+          {description}
+        </p>
+
+        {/* Code snippet */}
+        {example && (
+          <div className="concept-code">{example}</div>
+        )}
+
+        {/* Image description */}
+        {image_description && (
+          <div className="concept-image-description">
+            <p className="concept-image-label">Описание иллюстрации</p>
+            <p className="concept-image-text">{image_description}</p>
+          </div>
+        )}
+
+        {/* Theme tags */}
+        {themes && themes.length > 0 && (
+          <div className="flex flex-wrap gap-1 mt-2">
+            {themes.map((t) => (
+              <span
+                key={t}
+                className="text-[10px] px-1.5 py-0.5 rounded-full bg-secondary text-secondary-foreground"
+              >
+                {t}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
-    </motion.div>
+    </div>
   );
 };
 
-export default ConceptCard;
-
+export default memo(ConceptCard);

@@ -1,5 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 import type { ContentBlock } from '@/shared/api/courses';
+
+export interface HeadingItem {
+  id: string;
+  text: string;
+  level: number;
+}
 import { Button } from '@/components/ui/button';
 import {
   parseCodeTaskConfig,
@@ -20,13 +26,7 @@ interface LectureBlocksProps {
   storedAnswers?: Record<number, StoredAnswer>;
   onPersistAnswer?: (contentBlockId: number, userAnswer: string, isCorrect: boolean) => Promise<void>;
   onBlockTypeChange?: (blockType: 'theory' | 'task' | 'test' | 'code_task') => void;
-  /** Вызывается, когда пользователь нажимает "Далее" на последнем блоке —
-   *  используется, чтобы перейти к следующей подглаве.
-   */
   onLastBlockNext?: () => void;
-  /** Вызывается, когда пользователь жмёт "Предыдущий блок" на самом первом блоке —
-   *  используется, чтобы перейти к предыдущей подглаве.
-   */
   onFirstBlockPrev?: () => void;
 }
 
@@ -153,6 +153,8 @@ export default function LectureBlocks({
   const [codeTaskResults, setCodeTaskResults] = useState<CodeTaskTestResult[] | null>(null);
   const [codeTaskIsRunning, setCodeTaskIsRunning] = useState(false);
   const [codeTaskError, setCodeTaskError] = useState<string | null>(null);
+  const [headingsList, setHeadingsList] = useState<HeadingItem[]>([]);
+  const contentContainerRef = useRef<HTMLDivElement>(null);
 
   const meaningfulBlocks = useMemo(() => blocks.filter(isMeaningfulBlock), [blocks]);
   const viewBlocks = meaningfulBlocks.length > 0 ? meaningfulBlocks : blocks;
@@ -180,6 +182,25 @@ export default function LectureBlocks({
   const currentQuestion = quiz?.questions?.[currentQuestionIndex] || null;
   const isLastBlock = safeIndex === viewBlocks.length - 1;
   const blockHtmlText = stripHtml(block.content);
+
+  // Собираем заголовки из контента блока и присваиваем им id для навигации
+  useEffect(() => {
+    if (block.type === 'test' || !block.content) {
+      setHeadingsList([]);
+      return;
+    }
+    const container = contentContainerRef.current;
+    if (!container) return;
+    const headingTags = container.querySelectorAll('h1, h2, h3');
+    const list: HeadingItem[] = [];
+    headingTags.forEach((el, index) => {
+      const id = `heading-${block.id}-${index}`;
+      el.id = id;
+      const level = parseInt(el.tagName.charAt(1), 10);
+      list.push({ id, text: (el.textContent || '').trim(), level });
+    });
+    setHeadingsList(list);
+  }, [block.id, block.content, block.type]);
 
   useEffect(() => {
     setTaskInput('');
@@ -324,11 +345,33 @@ export default function LectureBlocks({
   const buttonOutlineClasses = `${buttonBaseClasses} border-2 border-purple text-darkgrey hover:bg-purple-50`;
   const buttonDisabledClasses = "opacity-50 cursor-not-allowed";
 
+  const scrollToHeading = (id: string) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const start = window.scrollY;
+    const target = el.getBoundingClientRect().top + start;
+    const offset = 24;
+    const to = Math.max(0, target - offset);
+    const duration = 900;
+    const startTime = performance.now();
+
+    const step = (now: number) => {
+      const elapsed = now - startTime;
+      const t = Math.min(elapsed / duration, 1);
+      const ease = 1 - (1 - t) * (1 - t);
+      window.scrollTo(0, start + (to - start) * ease);
+      if (t < 1) requestAnimationFrame(step);
+    };
+
+    requestAnimationFrame(step);
+  };
+
   return (
-    <div className="space-y-8 text-[#31323f] w-full min-w-0">
+    <div className="flex gap-6 w-full min-w-0">
+      <div className="flex-1 min-w-0 space-y-8 text-[#31323f]">
       <section key={block.id} className="w-full min-w-0">
         {block.type !== 'test' && block.content && (
-          <div className="w-full max-w-full overflow-x-hidden px-4">
+          <div ref={contentContainerRef} className="w-full max-w-full overflow-x-hidden px-4">
             <div
               className={`
                 prose break-words whitespace-pre-wrap overflow-x-hidden
@@ -672,6 +715,32 @@ export default function LectureBlocks({
             : 'Далее'}
         </Button>
       </div>
+      </div>
+
+      {/* Меню «Содержание» показываем только если в блоке есть заголовки (h1–h3) */}
+      {headingsList.length > 0 ? (
+        <div className="hidden lg:block w-56 flex-shrink-0">
+          <div className="sticky top-24 rounded-xl border border-[#e7e7f2] bg-white p-3 shadow-sm">
+            <h3 className="text-sm font-semibold text-[#35364a] mb-2">Содержание</h3>
+            <nav className="space-y-1 max-h-[60vh] overflow-y-auto">
+              {headingsList.map((h) => (
+                <button
+                  key={h.id}
+                  type="button"
+                  onClick={() => scrollToHeading(h.id)}
+                  className={`
+                    w-full text-left text-sm py-1.5 px-2 rounded-md transition-colors
+                    hover:bg-purple-50 hover:text-purple-700
+                    ${h.level === 1 ? 'font-semibold' : h.level === 2 ? 'pl-3 font-medium' : 'pl-5 text-[#595a67]'}
+                  `}
+                >
+                  {h.text || '(без текста)'}
+                </button>
+              ))}
+            </nav>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

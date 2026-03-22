@@ -29,10 +29,19 @@ class Settings(BaseSettings):
     llm_n_gpu_layers: int = 0         # 0=CPU, -1=все на GPU
     llm_temperature: float = 0.3
     llm_max_tokens: int = 2048
+    # Ограничение вывода JSON через GBNF (llama-cpp-python); надёжнее для слабых инструкт-моделей
+    llm_use_json_grammar: bool = True
 
     # Gemini API settings
     gemini_api_key: str = ""          # Google AI Studio API Key
     gemini_model: str = "gemini-2.5-flash"  # Модель Gemini
+
+    # OpenRouter API settings (совместим с OpenAI SDK)
+    openrouter_api_key: str = ""      # Ключ с https://openrouter.ai/keys
+    openrouter_model: str = "qwen/qwen3-coder:free"
+    openrouter_base_url: str = "https://openrouter.ai/api/v1"
+    openrouter_site_url: str = ""     # Опционально: ваш сайт (для рейтингов на OR)
+    openrouter_site_name: str = "Gollossary LMS"  # Имя приложения
 
     # Chunking
     max_chunk_chars: int = 3000       # Максимум символов в чанке
@@ -41,6 +50,10 @@ class Settings(BaseSettings):
     # Processing
     max_concepts: int = 50            # Макс. понятий на лекцию
     language: str = "ru"             # Язык промптов
+
+    # Опционально: каталог для сохранения входного текста лекции перед LLM (отладка).
+    # Пустая строка = не писать на диск. Пример: data/debug/lectures (относительно cwd сервиса).
+    debug_lecture_dir: str = ""
 
     # Services
     lecture_processor_port: int = 8001

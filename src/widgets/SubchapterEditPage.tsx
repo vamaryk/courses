@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import RichTextEditor from '@/components/RichTextEditor';
-import { ChevronLeft, Plus, Trash2, Save, List, X, Check, BookOpen, HelpCircle } from 'lucide-react';
+import { ChevronLeft, Plus, Trash2, Save, List, X, Check, BookOpen, HelpCircle, GripVertical } from 'lucide-react';
 import {
   Select,
   SelectContent,
@@ -137,6 +137,8 @@ function SubchapterEditPage() {
   const [dirtyBlocks, setDirtyBlocks] = useState<Set<number>>(new Set());
   const [contentBlocksMap, setContentBlocksMap] = useState<Map<number, ContentBlock[]>>(new Map());
   const [quizPayloads, setQuizPayloads] = useState<Map<number, QuizAnswerPayload>>(new Map());
+  const [draggedBlockId, setDraggedBlockId] = useState<number | null>(null);
+  const [dragOverBlockId, setDragOverBlockId] = useState<number | null>(null);
   
   const [isMobileSubchaptersOpen, setIsMobileSubchaptersOpen] = useState(false);
 
@@ -442,6 +444,67 @@ function SubchapterEditPage() {
     }
   };
 
+  const handleBlockDragStart = (e: React.DragEvent, blockId: number) => {
+    setDraggedBlockId(blockId);
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(blockId));
+  };
+
+  const handleBlockDragOver = (e: React.DragEvent, blockId: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (draggedBlockId !== blockId) setDragOverBlockId(blockId);
+  };
+
+  const handleBlockDragLeave = () => {
+    setDragOverBlockId(null);
+  };
+
+  const handleBlockDrop = async (e: React.DragEvent, dropBlockId: number) => {
+    e.preventDefault();
+    setDragOverBlockId(null);
+    const fromBlockId = draggedBlockId;
+    setDraggedBlockId(null);
+    if (fromBlockId == null || fromBlockId === dropBlockId || !selectedSubchapterId) return;
+
+    const blocks = contentBlocksMap.get(selectedSubchapterId) || [];
+    const fromIdx = blocks.findIndex((b) => b.id === fromBlockId);
+    const toIdx = blocks.findIndex((b) => b.id === dropBlockId);
+    if (fromIdx === -1 || toIdx === -1) return;
+
+    const reordered = [...blocks];
+    const [removed] = reordered.splice(fromIdx, 1);
+    reordered.splice(toIdx, 0, removed);
+
+    const withNewOrder = reordered.map((b, i) => ({ ...b, order: i + 1 }));
+    setContentBlocksMap((prev) => {
+      const next = new Map(prev);
+      next.set(selectedSubchapterId, withNewOrder);
+      return next;
+    });
+
+    try {
+      for (const block of withNewOrder) {
+        await coursesApi.updateContentBlock(block.id, {
+          type: block.type,
+          content: block.content,
+          answer: block.answer ?? '',
+          order: block.order,
+        });
+      }
+      toast.success('Порядок блоков сохранён');
+    } catch (err) {
+      console.error('Error reordering blocks:', err);
+      toast.error('Не удалось сохранить порядок блоков');
+      fetchSubchapters();
+    }
+  };
+
+  const handleBlockDragEnd = () => {
+    setDraggedBlockId(null);
+    setDragOverBlockId(null);
+  };
+
   const selectedSubchapter = subchapters.find((s) => s.id === selectedSubchapterId) || null;
   const selectedContentBlocks = selectedSubchapterId
     ? contentBlocksMap.get(selectedSubchapterId) || []
@@ -700,10 +763,27 @@ function SubchapterEditPage() {
                       </div>
                     ) : (
                       selectedContentBlocks.map((block, blockIndex) => (
-                        <div key={block.id} className="border rounded-lg p-4">
+                        <div
+                          key={block.id}
+                          onDragOver={(e) => handleBlockDragOver(e, block.id)}
+                          onDragLeave={handleBlockDragLeave}
+                          onDrop={(e) => handleBlockDrop(e, block.id)}
+                          onDragEnd={handleBlockDragEnd}
+                          className={`border rounded-lg p-4 transition-colors ${
+                            dragOverBlockId === block.id ? 'ring-2 ring-primary bg-primary/5' : ''
+                          } ${draggedBlockId === block.id ? 'opacity-60' : ''}`}
+                        >
                           <div className="space-y-3">
-                            {/* Block label - kept separate, not inline */}
-                            <div className="text-sm text-muted-foreground pt-2">
+                            {/* Block label + drag handle */}
+                            <div className="flex items-center gap-2 text-sm text-muted-foreground pt-2">
+                              <span
+                                draggable
+                                onDragStart={(e) => handleBlockDragStart(e, block.id)}
+                                className="cursor-grab active:cursor-grabbing touch-none p-1 rounded hover:bg-gray-200"
+                                title="Перетащите для изменения порядка"
+                              >
+                                <GripVertical className="w-4 h-4" />
+                              </span>
                               Блок {blockIndex + 1}
                             </div>
                             
@@ -855,12 +935,16 @@ function SubchapterEditPage() {
                               </div>
                             </div>
 
+                            {/* Содержание и вставка медиа — для теории, задания и кодовой задачи */}
                             {block.type !== 'test' && (
                               <div>
                                 <Label className="text-sm mb-2 flex items-center gap-2">
                                   <BookOpen className="w-4 h-4 text-muted-foreground" />
                                   Содержание
                                 </Label>
+                                <p className="text-xs text-muted-foreground mb-1.5">
+                                  Можно вставлять изображения и видео через панель инструментов выше.
+                                </p>
                                 <RichTextEditor
                                   value={block.content}
                                   onChange={(e) =>
@@ -869,6 +953,15 @@ function SubchapterEditPage() {
                                     })
                                   }
                                   placeholder="Введите содержание блока"
+                                  courseId={courseId ? parseInt(courseId, 10) : undefined}
+                                  onUploadImage={
+                                    courseId
+                                      ? async (file: File) => {
+                                          const { url } = await coursesApi.uploadCourseMedia(parseInt(courseId, 10), file);
+                                          return { url };
+                                        }
+                                      : undefined
+                                  }
                                 />
                               </div>
                             )}

@@ -166,7 +166,7 @@ async function buildUserStats(userId) {
       : totalStudyTimeInterval.total_seconds / 3600) || 0
   );
 
-  const [coursesCount, achievementsCount, subscriptionsCount, studyTimeResult] = await Promise.all([
+  const [coursesCount, achievementsCount, subscriptionsCount, studyTimeResult, friendsCountResult] = await Promise.all([
     pool.query(
       `SELECT 
           COUNT(DISTINCT CASE WHEN completion_status = 'completed' THEN course_id END) as completed,
@@ -186,6 +186,11 @@ async function buildUserStats(userId) {
       `SELECT COALESCE(SUM(time_spent_minutes), 0) as total_minutes 
          FROM activity_logs WHERE user_id = $1`,
       [userId]
+    ),
+    pool.query(
+      `SELECT COUNT(*) as count FROM friendships 
+       WHERE (user_id = $1 OR friend_id = $1) AND status = 'accepted'`,
+      [userId]
     )
   ]);
 
@@ -195,13 +200,15 @@ async function buildUserStats(userId) {
   const subscriptions = parseInt(subscriptionsCount.rows[0]?.count) || 0;
   const totalMinutes = parseInt(studyTimeResult.rows[0]?.total_minutes) || 0;
   const totalHoursCalculated = Math.floor(totalMinutes / 60);
+  const friendsCount = parseInt(friendsCountResult.rows[0]?.count) || 0;
 
   return {
     hoursOnPlatform: totalHoursCalculated,
     coursesCompleted: completedCourses,
     achievementsCount: achievements,
     subscriptionsCount: subscriptions,
-    coursesInProgress: inProgressCourses
+    coursesInProgress: inProgressCourses,
+    friendsCount
   };
 }
 
@@ -634,6 +641,33 @@ router.get('/:id/stats', async (req, res) => {
   } catch (error) {
     console.error(`Error fetching stats for profile ${id}:`, error.message);
     res.status(500).json({ error: 'Failed to fetch user statistics' });
+  }
+});
+
+// Public list of friends for a profile (id, first_name, last_name, avatar_url)
+router.get('/:id/friends', async (req, res) => {
+  const { id } = req.params;
+
+  if (!UUID_REGEX.test(id)) {
+    return res.status(400).json({ error: 'Invalid user ID format' });
+  }
+
+  try {
+    const result = await pool.query(
+      `SELECT p.id, p.first_name, p.last_name, p.avatar_url
+       FROM friendships f
+       JOIN profiles p ON (
+         CASE WHEN f.user_id = $1 THEN f.friend_id ELSE f.user_id END = p.id
+       )
+       WHERE (f.user_id = $1 OR f.friend_id = $1)
+         AND f.status = 'accepted'
+       ORDER BY p.first_name, p.last_name`,
+      [id]
+    );
+    res.status(200).json(result.rows);
+  } catch (error) {
+    console.error(`Error fetching friends for profile ${id}:`, error.message);
+    res.status(500).json({ error: 'Failed to fetch friends' });
   }
 });
 

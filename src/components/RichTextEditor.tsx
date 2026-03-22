@@ -1,4 +1,7 @@
 import React, { useRef, useCallback, useEffect } from 'react';
+import { Image, Video, Heading2, Heading3 } from 'lucide-react';
+
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 interface RichTextEditorProps {
   value: string;
@@ -6,6 +9,9 @@ interface RichTextEditorProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
+  /** Для загрузки изображений в контент (опционально) */
+  courseId?: number;
+  onUploadImage?: (file: File) => Promise<{ url: string }>;
 }
 
 const RichTextEditor: React.FC<RichTextEditorProps> = ({
@@ -14,8 +20,11 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   placeholder = 'Введите текст...',
   className = '',
   disabled = false,
+  courseId,
+  onUploadImage,
 }) => {
   const editorRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const lastSyncedValueRef = useRef<string>(value);
   const isEmpty = !value || value.replace(/<[^>]*>/g, '').trim().length === 0;
 
@@ -48,6 +57,55 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     editorRef.current?.focus();
     handleInput();
   }, [handleInput]);
+
+  const setHeading = useCallback((tag: 'h2' | 'h3') => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.focus();
+    document.execCommand('formatBlock', false, tag);
+    handleInput();
+  }, [handleInput]);
+
+  const insertHtml = useCallback((html: string) => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.focus();
+    document.execCommand('insertHTML', false, html);
+    handleInput();
+  }, [handleInput]);
+
+  const handleInsertImageByUrl = useCallback(() => {
+    const url = window.prompt('Введите URL изображения:');
+    if (url?.trim()) {
+      insertHtml(`<img src="${url.replace(/"/g, '&quot;')}" alt="" style="max-width:100%;height:auto;" />`);
+    }
+  }, [insertHtml]);
+
+  const handleInsertImageFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !onUploadImage) return;
+    try {
+      const { url } = await onUploadImage(file);
+      const fullUrl = url.startsWith('http') ? url : `${API_URL}${url}`;
+      insertHtml(`<img src="${fullUrl}" alt="" style="max-width:100%;height:auto;" />`);
+    } catch (err) {
+      console.error('Upload image failed:', err);
+    }
+  }, [onUploadImage, insertHtml]);
+
+  const handleInsertVideo = useCallback(() => {
+    const url = window.prompt('Введите URL видео (YouTube, или прямая ссылка на .mp4/.webm):');
+    if (!url?.trim()) return;
+    const u = url.trim();
+    const ytMatch = u.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)/);
+    if (ytMatch) {
+      const embed = `https://www.youtube.com/embed/${ytMatch[1]}`;
+      insertHtml(`<div class="video-wrapper" style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;max-width:100%;"><iframe style="position:absolute;top:0;left:0;width:100%;height:100%;" src="${embed}" frameborder="0" allowfullscreen></iframe></div>`);
+    } else {
+      insertHtml(`<video src="${u.replace(/"/g, '&quot;')}" controls style="max-width:100%;"></video>`);
+    }
+  }, [insertHtml]);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -83,6 +141,49 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           title="Подчеркнутый"
         >
           <u>U</u>
+        </button>
+        <div className="w-px h-6 bg-gray-300 mx-1" />
+        <button
+          type="button"
+          onClick={() => setHeading('h2')}
+          className="p-1.5 border rounded hover:bg-gray-200 cursor-pointer"
+          title="Заголовок 2 — выделите текст и нажмите"
+        >
+          <Heading2 className="w-4 h-4" />
+        </button>
+        <button
+          type="button"
+          onClick={() => setHeading('h3')}
+          className="p-1.5 border rounded hover:bg-gray-200 cursor-pointer"
+          title="Заголовок 3 — выделите текст и нажмите"
+        >
+          <Heading3 className="w-4 h-4" />
+        </button>
+        <div className="w-px h-6 bg-gray-300 mx-1" />
+        <button
+          type="button"
+          onClick={() => (onUploadImage ? fileInputRef.current?.click() : handleInsertImageByUrl())}
+          className="p-1.5 border rounded hover:bg-gray-200 cursor-pointer"
+          title="Вставить изображение"
+        >
+          <Image className="w-4 h-4" />
+        </button>
+        {onUploadImage && (
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={handleInsertImageFile}
+          />
+        )}
+        <button
+          type="button"
+          onClick={handleInsertVideo}
+          className="p-1.5 border rounded hover:bg-gray-200 cursor-pointer"
+          title="Вставить видео (URL или YouTube)"
+        >
+          <Video className="w-4 h-4" />
         </button>
         <div className="w-px h-6 bg-gray-300 mx-1" />
         <button

@@ -1,0 +1,202 @@
+/* ============================
+   Glossary React Flow — Custom Styles
+   ============================ */
+
+/* Wrapper fills parent */
+.glossary-flow-wrapper {
+  width: 100%;
+  height: 100%;
+}
+
+/* ---- Custom node ---- */
+.concept-node {
+  width: 240px;
+  transition: filter 0.4s ease, opacity 0.4s ease, transform 0.2s ease;
+}
+
+.concept-node.locked {
+  filter: blur(3px) saturate(0.4);
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+.concept-node.highlighted {
+  transform: scale(1.04);
+}
+
+.concept-node-inner {
+  position: relative;
+  border-radius: 1rem;
+  border: 2px solid hsl(var(--border));
+  background: hsl(var(--card));
+  padding: 1rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.concept-node:not(.locked) .concept-node-inner:hover {
+  border-color: hsl(var(--primary) / 0.5);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.concept-node.highlighted .concept-node-inner {
+  border-color: hsl(var(--primary));
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.2), 0 4px 16px rgba(0, 0, 0, 0.1);
+}
+
+/* Stage badge */
+.concept-stage-badge {
+  position: absolute;
+  top: -0.5rem;
+  right: -0.5rem;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  font-size: 0.65rem;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  z-index: 2;
+}
+
+/* Actions (edit/delete) */
+.concept-actions {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: flex;
+  gap: 0.25rem;
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.concept-node-inner:hover .concept-actions {
+  opacity: 1;
+}
+
+.concept-actions button {
+  padding: 0.25rem;
+  border-radius: 0.375rem;
+  border: none;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.concept-actions button:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--foreground));
+}
+
+.concept-actions button.delete-btn:hover {
+  background: hsl(var(--destructive) / 0.1);
+  color: hsl(var(--destructive));
+}
+
+/* Code snippet */
+.concept-code {
+  margin-top: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: 0.5rem;
+  background: hsl(var(--secondary));
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 0.65rem;
+  line-height: 1.4;
+  color: hsl(var(--foreground));
+  overflow: hidden;
+  max-height: 4rem;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* Image description block */
+.concept-image-description {
+  margin-top: 0.5rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: 0.5rem;
+  background: hsl(var(--secondary));
+  color: hsl(var(--foreground));
+}
+
+.concept-image-label {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: hsl(var(--muted-foreground));
+  margin-bottom: 0.25rem;
+  line-height: 1.2;
+}
+
+.concept-image-text {
+  font-size: 0.65rem;
+  line-height: 1.35;
+  color: hsl(var(--foreground));
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 3.2rem;
+  overflow: hidden;
+}
+
+/* Search highlight */
+.concept-node.search-match .concept-node-inner {
+  border-color: hsl(45 90% 55%);
+  box-shadow: 0 0 0 2px hsl(45 90% 55% / 0.3);
+}
+
+/* ---- React Flow overrides ---- */
+.glossary-flow-wrapper .react-flow__edge-path {
+  stroke: hsl(var(--primary));
+  stroke-opacity: 0.35;
+  transition: stroke-opacity 0.3s;
+}
+
+.glossary-flow-wrapper .react-flow__edge:hover .react-flow__edge-path {
+  stroke-opacity: 0.7;
+}
+
+.glossary-flow-wrapper .react-flow__arrowhead polyline,
+.glossary-flow-wrapper .react-flow__arrowhead polygon {
+  fill: hsl(var(--primary));
+  stroke: hsl(var(--primary));
+}
+
+.glossary-flow-wrapper .react-flow__background {
+  background: hsl(var(--background));
+}
+
+.glossary-flow-wrapper .react-flow__controls {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-radius: 0.75rem;
+  overflow: hidden;
+  border: 1px solid hsl(var(--border));
+}
+
+.glossary-flow-wrapper .react-flow__controls-button {
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.glossary-flow-wrapper .react-flow__controls-button:hover {
+  background: hsl(var(--accent));
+}
+
+.glossary-flow-wrapper .react-flow__minimap {
+  border-radius: 0.75rem;
+  border: 1px solid hsl(var(--border));
+  overflow: hidden;
+}
+
+/* Remove default node styling from React Flow */
+.glossary-flow-wrapper .react-flow__node {
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}

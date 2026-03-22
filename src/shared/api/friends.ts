@@ -116,4 +116,10 @@ export const friendsApi = {
     const res = await axios.get(`${API_URL}/api/friends/status/${userId}`, opts);
     return res.data;
   },
+
+  /** Public list of friends for a user profile (by user id) */
+  async getFriendsByUserId(userId: string): Promise<FriendProfile[]> {
+    const res = await axios.get(`${API_URL}/api/users/${userId}/friends`, opts);
+    return res.data;
+  },
 };

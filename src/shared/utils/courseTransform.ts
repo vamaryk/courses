@@ -99,6 +99,21 @@ function getInstructorAvatar(course: ApiCourse): string | undefined {
 }
 
 /**
+ * Resolve profile media URL (e.g. avatar) to a full URL.
+ * Paths like /profile-media/... are prefixed with API_URL.
+ */
+export function resolveProfileMediaUrl(url?: string | null): string | null {
+  if (!url) return null;
+  if (url.startsWith('/profile-media/')) {
+    return `${API_URL}${url}`;
+  }
+  if (url.startsWith('http') || url.startsWith('data:')) {
+    return url;
+  }
+  return url;
+}
+
+/**
  * Resolve a cover_image value to a full URL usable by <img> or CSS background.
  * Returns undefined when there is nothing to show so the caller can fall back.
  */

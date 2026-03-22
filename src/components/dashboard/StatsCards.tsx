@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { ChevronDown, Clock, BookOpen, Trophy, Users, X } from "lucide-react";
+import { friendsApi, type FriendProfile } from "@/shared/api/friends";
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -8,29 +10,28 @@ interface StatsData {
   coursesCompleted: number;
   achievementsCount: number;
   subscriptionsCount: number;
-}
-
-interface Subscription {
-  id: number;
-  user: {
-    id: number;
-    first_name: string;
-    last_name: string;
-    avatar?: string;
-  };
+  friendsCount?: number;
 }
 
 const StatsCards = () => {
+  const navigate = useNavigate();
   const [stats, setStats] = useState<StatsData>({
     hoursOnPlatform: 0,
     coursesCompleted: 0,
     achievementsCount: 0,
-    subscriptionsCount: 0
+    subscriptionsCount: 0,
+    friendsCount: 0
   });
-  const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
+  const [friends, setFriends] = useState<FriendProfile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [loadingSubscriptions, setLoadingSubscriptions] = useState(false);
-  const [showSubscriptions, setShowSubscriptions] = useState(false);
+  const [loadingFriends, setLoadingFriends] = useState(false);
+  const [showFriendsMenu, setShowFriendsMenu] = useState(false);
+
+  const resolveAvatarUrl = (url: string | null | undefined) => {
+    if (!url) return null;
+    if (url.startsWith('/profile-media/')) return `${API_URL}${url}`;
+    return url;
+  };
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -52,21 +53,16 @@ const StatsCards = () => {
     fetchStats();
   }, []);
 
-  const fetchSubscriptions = async () => {
-    if (subscriptions.length === 0 && !loadingSubscriptions) {
-      setLoadingSubscriptions(true);
+  const fetchFriends = async () => {
+    if (friends.length === 0 && !loadingFriends) {
+      setLoadingFriends(true);
       try {
-        const response = await fetch(`${API_URL}/api/users/profile/subscriptions`, {
-          credentials: 'include',
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setSubscriptions(data);
-        }
+        const list = await friendsApi.getFriends();
+        setFriends(list);
       } catch (error) {
-        console.error('Error fetching subscriptions:', error);
+        console.error('Error fetching friends:', error);
       } finally {
-        setLoadingSubscriptions(false);
+        setLoadingFriends(false);
       }
     }
   };
@@ -93,16 +89,16 @@ const StatsCards = () => {
     { 
       icon: Users, 
       label: "Друзья", 
-      value: stats.subscriptionsCount.toString(),
+      value: (stats.friendsCount ?? stats.subscriptionsCount ?? 0).toString(),
       hasDropdown: true
     },
   ];
 
-  const toggleSubscriptions = () => {
-    if (!showSubscriptions) {
-      fetchSubscriptions();
+  const toggleFriendsMenu = () => {
+    if (!showFriendsMenu) {
+      fetchFriends();
     }
-    setShowSubscriptions(!showSubscriptions);
+    setShowFriendsMenu(!showFriendsMenu);
   };
 
   return (
@@ -130,11 +126,11 @@ const StatsCards = () => {
             </span>
             {stat.hasDropdown && (
               <button 
-                onClick={toggleSubscriptions}
+                onClick={toggleFriendsMenu}
                 className="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors flex-shrink-0"
                 aria-label="Показать друзей"
               >
-                {showSubscriptions ? (
+                {showFriendsMenu ? (
                   <X className="w-4 h-4" />
                 ) : (
                   <ChevronDown className="w-4 h-4" />
@@ -143,56 +139,54 @@ const StatsCards = () => {
             )}
           </div>
 
-          {/* Выпадающий список друзей */}
-          {stat.hasDropdown && showSubscriptions && (
-            <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-lg shadow-lg z-50 border border-gray-200 animate-fade-in">
+          {/* Выпадающий список друзей: карточки с аватаркой, именем и фамилией */}
+          {stat.hasDropdown && showFriendsMenu && (
+            <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-lg z-50 border border-gray-200 overflow-hidden animate-fade-in min-w-[240px]">
               <div className="p-3 border-b border-gray-100">
                 <h4 className="text-sm font-semibold text-gray-700">
-                  Мои друзья ({subscriptions.length})
+                  Мои друзья ({friends.length})
                 </h4>
               </div>
-              <div 
-                className="max-h-96 overflow-y-auto"
-                style={{ maxHeight: '400px' }}
-              >
-                {loadingSubscriptions ? (
-                  <div className="p-4 text-center text-gray-500">
+              <div className="max-h-96 overflow-y-auto p-2">
+                {loadingFriends ? (
+                  <div className="p-4 text-center text-gray-500 text-sm">
                     Загрузка...
                   </div>
-                ) : subscriptions.length === 0 ? (
-                  <div className="p-4 text-center text-gray-500">
+                ) : friends.length === 0 ? (
+                  <div className="p-4 text-center text-gray-500 text-sm">
                     Нет друзей
                   </div>
                 ) : (
-                  <div className="divide-y divide-gray-100">
-                    {subscriptions.map((subscription) => (
-                      <div
-                        key={subscription.id}
-                        className="flex items-center gap-3 p-3 hover:bg-gray-50 transition-colors"
-                      >
-                        <div className="w-8 h-8 rounded-full bg-gray-200 flex-shrink-0 overflow-hidden">
-                          {subscription.user.avatar ? (
-                            <img
-                              src={subscription.user.avatar}
-                              alt={subscription.user.first_name}
-                              className="w-full h-full object-cover"
-                            />
-                          ) : (
-                            <div className="w-full h-full bg-background flex items-center justify-center">
-                              <span className="text-gray-500 font-medium text-sm">
-                                {subscription.user.first_name.charAt(0)}
-                                {subscription.user.last_name?.charAt(0) || ''}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-gray-900 truncate">
-                            {subscription.user.first_name} {subscription.user.last_name || ''}
-                          </p>
-                        </div>
-                      </div>
-                    ))}
+                  <div className="space-y-2">
+                    {friends.map((friend) => {
+                      const avatarSrc = resolveAvatarUrl(friend.avatar_url);
+                      return (
+                        <button
+                          key={friend.id}
+                          type="button"
+                          onClick={() => {
+                            setShowFriendsMenu(false);
+                            navigate(`/profile/${friend.id}`);
+                          }}
+                          className="w-full flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50/50 p-3 text-left hover:bg-gray-100 transition-colors cursor-pointer"
+                        >
+                          <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 bg-gray-200">
+                            {avatarSrc ? (
+                              <img src={avatarSrc} alt="" className="w-full h-full object-cover" />
+                            ) : (
+                              <div className="w-full h-full flex items-center justify-center text-sm font-semibold text-gray-500">
+                                {(friend.first_name?.charAt(0) || '') + (friend.last_name?.charAt(0) || '') || '?'}
+                              </div>
+                            )}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-gray-900 truncate">
+                              {friend.first_name} {friend.last_name}
+                            </p>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>

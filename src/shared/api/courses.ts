@@ -28,6 +28,8 @@ export interface Course {
   hoursTheory?: number;
   is_enrolled?: boolean;
   has_access?: boolean;
+  rating?: number;
+  my_rating?: number | null;
 }
 
 export interface CourseAccessStatus {
@@ -392,5 +394,14 @@ export const coursesApi = {
       { timeSpentMinutes },
       { withCredentials: true }
     );
+  },
+
+  async rateCourse(courseId: number, rating: number): Promise<{ rating: number; my_rating: number }> {
+    const response = await axios.post(
+      `${API_URL}/api/courses/${courseId}/rate`,
+      { rating },
+      { withCredentials: true }
+    );
+    return response.data;
   },
 };

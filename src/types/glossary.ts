@@ -7,6 +7,12 @@ export interface ConceptNode {
   themes: string[];
   x: number;
   y: number;
+  /** Код-сниппет / пример использования */
+  example?: string;
+  /** Описание иллюстрации (если LLM вернул image_description) */
+  image_description?: string;
+  /** Понятие разблокировано (пользователь прошёл соответствующую лекцию) */
+  unlocked?: boolean;
   /** Индекс понятия внутри MindMap в MongoDB (если загружено из БД) */
   conceptIndex?: number;
   /** ID MindMap в MongoDB, к которому относится понятие */

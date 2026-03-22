@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { ChevronDown, Users, X } from 'lucide-react';
 import StatsCards from '@/components/dashboard/StatsCards';
 import MyCourses from '@/components/dashboard/MyCourses';
 import CrCourse from '@/components/dashboard/CrCourses';
@@ -12,8 +13,9 @@ import ProgressRings from '@/components/dashboard/ProgressRings';
 import { SideCalendar } from '@/widgets/calendar/components/SideCalendar';
 import { Task } from '@/widgets/calendar/types';
 import { calendarApi } from '@/shared/api/calendar';
-import { friendsApi, type FriendStatus } from '@/shared/api/friends';
+import { friendsApi, type FriendStatus, type FriendProfile } from '@/shared/api/friends';
 import { Path } from '@/shared/routing/path';
+import { getCoverImageUrl } from '@/shared/utils/courseTransform';
 
 interface UserProfile {
   id: string;
@@ -41,6 +43,7 @@ interface PublicStats {
   achievementsCount: number;
   subscriptionsCount: number;
   coursesInProgress: number;
+  friendsCount?: number;
 }
 
 interface PublicCourse {
@@ -94,6 +97,9 @@ export default function ProfilePage() {
   const [publicCourses, setPublicCourses] = useState<PublicCourse[]>([]);
   const [authoredCourses, setAuthoredCourses] = useState<AuthoredCourse[]>([]);
   const [publicAchievements, setPublicAchievements] = useState<PublicAchievement[]>([]);
+  const [profileFriends, setProfileFriends] = useState<FriendProfile[] | null>(null);
+  const [profileFriendsLoading, setProfileFriendsLoading] = useState(false);
+  const [friendsBlockOpen, setFriendsBlockOpen] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -287,6 +293,11 @@ export default function ProfilePage() {
     void loadPublicData();
   }, [user, isOwnProfile]);
 
+  useEffect(() => {
+    setProfileFriends(null);
+    setFriendsBlockOpen(false);
+  }, [user?.id]);
+
   const refreshFriendStatusSafely = async () => {
     if (!user || isOwnProfile || !user.id) return;
     try {
@@ -344,6 +355,28 @@ export default function ProfilePage() {
   const handleStartChat = () => {
     if (!user) return;
     navigate(`${Path.VirtualClass}?friendId=${user.id}`);
+  };
+
+  const loadProfileFriends = async () => {
+    if (!user?.id) return;
+    setProfileFriendsLoading(true);
+    try {
+      const list = isOwnProfile ? await friendsApi.getFriends() : await friendsApi.getFriendsByUserId(user.id);
+      setProfileFriends(list);
+    } catch (err) {
+      console.error('Error loading profile friends:', err);
+      setProfileFriends(null);
+    } finally {
+      setProfileFriendsLoading(false);
+    }
+  };
+
+  const handleToggleFriendsBlock = () => {
+    const nextOpen = !friendsBlockOpen;
+    setFriendsBlockOpen(nextOpen);
+    if (nextOpen && profileFriends === null && !profileFriendsLoading) {
+      loadProfileFriends();
+    }
   };
 
   const handleSaveProfile = async () => {
@@ -638,14 +671,68 @@ export default function ProfilePage() {
                         {publicStats.achievementsCount}
                     </span>
                     </div>
-                    <div className="stat-card rounded-xl flex flex-col gap-2">
-                    <span className="text-xs text-white/60 font-medium min-h-[32px] line-clamp-2">
-                        Подписок
-                    </span>
-                    <span className="text-xl sm:text-2xl font-bold">
-                        {publicStats.subscriptionsCount}
-                    </span>
+                    {(publicStats.friendsCount ?? 0) > 0 && (
+                    <div className="stat-card rounded-xl flex flex-col gap-2 relative">
+                    <div className="flex items-start gap-2 text-white/60">
+                      <Users className="w-4 h-4 flex-shrink-0 mt-[2px]" />
+                      <span className="text-xs font-medium min-h-[32px] line-clamp-2 leading-tight">Друзей</span>
                     </div>
+                    <div className="flex items-center justify-between mt-auto">
+                      <span className="text-xl sm:text-2xl font-bold">{publicStats.friendsCount ?? 0}</span>
+                      {(publicStats.friendsCount ?? 0) > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleToggleFriendsBlock}
+                        className="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors flex-shrink-0"
+                        aria-label="Показать друзей"
+                      >
+                        {friendsBlockOpen ? <X className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                      </button>
+                      )}
+                    </div>
+                    {(publicStats.friendsCount ?? 0) > 0 && friendsBlockOpen && (
+                      <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-lg z-50 border border-gray-200 overflow-hidden min-w-[240px]">
+                        <div className="p-3 border-b border-gray-100">
+                          <h4 className="text-sm font-semibold text-gray-700">Друзья ({profileFriends?.length ?? 0})</h4>
+                        </div>
+                        <div className="max-h-96 overflow-y-auto p-2">
+                          {profileFriendsLoading ? (
+                            <div className="p-4 text-center text-gray-500 text-sm">Загрузка...</div>
+                          ) : profileFriends && profileFriends.length > 0 ? (
+                            <div className="space-y-2">
+                              {profileFriends.map((friend) => {
+                                const avatarSrc = resolveMediaUrl(friend.avatar_url);
+                                return (
+                                  <button
+                                    key={friend.id}
+                                    type="button"
+                                    onClick={() => { setFriendsBlockOpen(false); navigate(`/profile/${friend.id}`); }}
+                                    className="w-full flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50/50 p-3 text-left hover:bg-gray-100 transition-colors cursor-pointer"
+                                  >
+                                    <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 bg-gray-200">
+                                      {avatarSrc ? (
+                                        <img src={avatarSrc} alt="" className="w-full h-full object-cover" />
+                                      ) : (
+                                        <div className="w-full h-full flex items-center justify-center text-sm font-semibold text-gray-500">
+                                          {(friend.first_name?.charAt(0) || '') + (friend.last_name?.charAt(0) || '') || '?'}
+                                        </div>
+                                      )}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                      <p className="text-sm font-medium text-gray-900 truncate">{friend.first_name} {friend.last_name}</p>
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="p-4 text-center text-gray-500 text-sm">Нет друзей</div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    </div>
+                    )}
                 </div>
                 )}
 
@@ -660,32 +747,46 @@ export default function ProfilePage() {
                         Пользователь пока не записан ни на один курс.
                       </p>
                     ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-                        {publicCourses.map((course) => (
-                          <div
-                            key={course.id}
-                            className="rounded-lg border border-gray-200 bg-white overflow-hidden shadow-sm"
-                          >
-                            <div className="h-24 w-full bg-gray-100" />
-                            <div className="p-3">
-                              <p className="text-sm font-semibold text-gray-800 line-clamp-2 mb-2 break-words">
-                                {course.title}
-                              </p>
-                              <div className="flex items-center justify-between text-xs text-gray-500 mb-1">
-                                <span>
-                                  {course.isCompleted ? 'Завершён' : 'В процессе'}
-                                </span>
-                                <span>{course.progress}%</span>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {publicCourses.map((course) => {
+                          const coverUrl = getCoverImageUrl(course.image);
+                          return (
+                            <div
+                              key={course.id}
+                              className="group relative bg-card rounded-2xl overflow-hidden shadow-card hover:shadow-soft-xl transition-all duration-300 cursor-default"
+                            >
+                              <div className="relative h-44 overflow-hidden">
+                                {coverUrl ? (
+                                  <img
+                                    src={coverUrl}
+                                    alt={course.title}
+                                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full bg-muted" />
+                                )}
+                                <div className="absolute inset-0 bg-gradient-to-t from-foreground/80 via-foreground/20 to-transparent" />
+                                <h3 className="absolute bottom-3 left-4 right-4 text-lg font-semibold text-primary-foreground leading-tight">
+                                  {course.title}
+                                </h3>
                               </div>
-                              <div className="w-full bg-gray-100 rounded-full h-1.5 overflow-hidden">
-                                <div
-                                  className="h-1.5 bg-purple rounded-full"
-                                  style={{ width: `${course.progress}%` }}
-                                />
+                              <div className="p-4">
+                                <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
+                                  <span>
+                                    {course.isCompleted ? 'Завершён' : 'В процессе'}
+                                  </span>
+                                  <span>{course.progress}%</span>
+                                </div>
+                                <div className="w-full bg-secondary rounded-full h-1.5 overflow-hidden">
+                                  <div
+                                    className="h-1.5 bg-primary rounded-full transition-all"
+                                    style={{ width: `${course.progress}%` }}
+                                  />
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </section>
@@ -701,32 +802,48 @@ export default function ProfilePage() {
                         Пользователь ещё не создавал курсы.
                       </p>
                     ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {authoredCourses.map((course) => (
-                          <div
-                            key={course.id}
-                            className="rounded-lg border border-gray-200 bg-white overflow-hidden shadow-sm cursor-pointer hover:shadow-md transition-shadow"
-                            onClick={() => navigate(`/courses/${course.id}`)}
-                          >
-                            <div className="h-24 w-full bg-gray-100" />
-                            <div className="p-3">
-                              <p className="text-sm font-semibold text-gray-800 line-clamp-2 mb-1 break-words">
-                                {course.title}
-                              </p>
-                              <p className="text-xs text-gray-500 line-clamp-2 mb-2 break-words">
-                                {course.description}
-                              </p>
-                              <div className="flex items-center justify-between text-[11px] text-gray-400">
-                                <span>
-                                  {course.is_public ? 'Публичный курс' : 'Приватный курс'}
-                                </span>
-                                <span>
-                                  {course.students_count} ученик(ов)
-                                </span>
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {authoredCourses.map((course) => {
+                          const coverUrl = getCoverImageUrl(course.cover_image);
+                          return (
+                            <div
+                              key={course.id}
+                              onClick={() => navigate(`/courses/${course.id}`)}
+                              className="group relative bg-card rounded-2xl overflow-hidden shadow-card hover:shadow-soft-xl transition-all duration-300 cursor-pointer"
+                            >
+                              <div className="relative h-44 overflow-hidden">
+                                {coverUrl ? (
+                                  <img
+                                    src={coverUrl}
+                                    alt={course.title}
+                                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                                  />
+                                ) : (
+                                  <div className="w-full h-full bg-muted" />
+                                )}
+                                <div className="absolute inset-0 bg-gradient-to-t from-foreground/80 via-foreground/20 to-transparent" />
+                                <h3 className="absolute bottom-3 left-4 right-4 text-lg font-semibold text-primary-foreground leading-tight">
+                                  {course.title}
+                                </h3>
+                              </div>
+                              <div className="p-4">
+                                {course.description && (
+                                  <p className="text-sm text-muted-foreground line-clamp-2 mb-3 break-words">
+                                    {course.description}
+                                  </p>
+                                )}
+                                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                  <span>
+                                    {course.is_public ? 'Публичный курс' : 'Приватный курс'}
+                                  </span>
+                                  <span>
+                                    {course.students_count} ученик(ов)
+                                  </span>
+                                </div>
                               </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </section>

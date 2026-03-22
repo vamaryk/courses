@@ -79,47 +79,113 @@ async function main() {
   // как ожидает Python-бэкенд gollossary.
   const mindmapsCol = db.collection(collectionName);
 
+  // Чтобы не мешали старые тестовые документы (seed версии 1),
+  // при желании очищаем только mock-данные.
+  const clearMock =
+    (process.env.CLEAR_MOCK_MINDMAPS || "true").toLowerCase() === "true";
+  if (clearMock) {
+    await mindmapsCol.deleteMany({ model_used: "mock-seed-script" });
+  }
+
   const now = new Date();
 
-  const docs = courses.map((course, idx) => {
-    const baseTitle = course.title || `Курс #${course.id}`;
-    return {
-      lecture_number: `Лекция 1 по курсу ${baseTitle}`,
-      topic: `${baseTitle}: обзор основных понятий`,
-      description:
-        'Тестовая карта знаний, созданная для проверки интеграции фронтенда с backend глоссария.',
-      concepts: [
-        {
-          term: 'Основное понятие курса',
-          definition: `Ключевая идея курса «${baseTitle}», используемая для демонстрации работы mindmap.`,
-          example: 'Студент знакомится с этим понятием на вводной лекции.',
-          image_description: 'Иконка или схема, отражающая тему курса.',
-          relations: {
-            parent: null,
-            children: ['Связанное понятие курса'],
-          },
-        },
-        {
-          term: 'Связанное понятие курса',
-          definition:
-            'Дополнительное понятие, расширяющее основную идею и показывающее связи в карте знаний.',
-          example: 'Используется как следующий шаг после основного понятия.',
-          image_description: '',
-          relations: {
-            parent: 'Основное понятие курса',
-            children: [],
-          },
-        },
-      ],
-      source_lecture_id: String(course.id),
-      created_at: now,
-      updated_at: now,
-      model_used: 'mock-seed-script',
-      chunk_count: 1,
-    };
+  // Создаем mindmap-документы привязанные к subchapter_id,
+  // чтобы фронтенд смог связать их с выбранным курсом.
+  const courseIds = courses.map((c) => c.id);
+  const subchaptersRes = await pool.query(
+    `
+      SELECT
+        s.id AS subchapter_id,
+        s.title AS subchapter_title,
+        c.id AS chapter_id,
+        c.order AS chapter_order,
+        c.course_id AS course_id,
+        s.order AS subchapter_order
+      FROM subchapters s
+      JOIN chapters c ON c.id = s.chapter_id
+      WHERE c.course_id = ANY($1::int[])
+      ORDER BY c.course_id, chapter_order, subchapter_order
+    `,
+    [courseIds],
+  );
+
+  const byCourse: Record<number, any[]> = {};
+  subchaptersRes.rows.forEach((r) => {
+    if (!byCourse[r.course_id]) byCourse[r.course_id] = [];
+    byCourse[r.course_id].push(r);
   });
 
+  // Для теста не генерим mindmap для абсолютно всех лекций: берем первые N по каждому курсу.
+  const MAX_LECTURES_PER_COURSE = 3;
+
+  const docs = [];
+  for (const course of courses) {
+    const baseTitle = course.title || `Курс #${course.id}`;
+    const subs = byCourse[course.id] || [];
+    const picked = subs.slice(0, MAX_LECTURES_PER_COURSE);
+
+    for (const sub of picked) {
+      const subTitle =
+        sub.subchapter_title && String(sub.subchapter_title).trim().length > 0
+          ? String(sub.subchapter_title)
+          : `Лекция ${String(sub.subchapter_id)}`;
+
+      docs.push({
+        lecture_number: subTitle,
+        topic: `${baseTitle}: ${subTitle}`,
+        description:
+          'Тестовая карта знаний, созданная для проверки интеграции фронтенда с backend глоссария (seed script).',
+        concepts: [
+          {
+            term: 'Основное понятие',
+            definition: `Ключевая идея из лекции «${subTitle}» по курсу «${baseTitle}».`,
+            example: 'Демо-понятие для отображения облаков в Knowledge Map.',
+            image_description: '—',
+            relations: {
+              parent: null,
+              children: ['Связанное понятие'],
+            },
+          },
+          {
+            term: 'Связанное понятие',
+            definition:
+              'Дополнительное понятие, связанное с основным и используемое для построения ребер.',
+            example: 'Ребро parent->child строится по term/relations.',
+            image_description: '',
+            relations: {
+              parent: 'Основное понятие',
+              children: ['Дальнейший шаг'],
+            },
+          },
+          {
+            term: 'Дальнейший шаг',
+            definition:
+              'Третий уровень иерархии, чтобы была видна вложенность и карта выглядела объемнее.',
+            example: 'Используется как термин на следующем шаге.',
+            image_description: '',
+            relations: {
+              parent: 'Связанное понятие',
+              children: [],
+            },
+          },
+        ],
+        source_lecture_id: String(sub.subchapter_id),
+        created_at: now,
+        updated_at: now,
+        model_used: 'mock-seed-script',
+        chunk_count: 1,
+      });
+    }
+  }
+
   console.log(`🧾 Подготовлено документов MindMap для вставки: ${docs.length}`);
+
+  if (!docs.length) {
+    console.warn('⚠️ Не удалось подготовить mindmap: нет subchapters для курсов пользователя.');
+    await client.close();
+    await pool.end();
+    process.exit(0);
+  }
 
   const result = await mindmapsCol.insertMany(docs);
   console.log('✅ Вставка завершена. Созданы MindMap с _id:');

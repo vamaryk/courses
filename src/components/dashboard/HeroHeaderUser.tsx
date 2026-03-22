@@ -79,22 +79,35 @@ const HeroHeaderUser = ({
             </p>
             
             <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={onAuthorClick}
-                className="flex items-center gap-3 group cursor-pointer"
-              >
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center overflow-hidden ring-2 ring-white/30 group-hover:ring-white/60 transition">
-                  {authorAvatar ? (
-                    <img src={authorAvatar} alt={authorName} className="w-full h-full object-cover" />
-                  ) : (
-                    <User className="w-4 h-4 text-white" />
-                  )}
-                </div>
-                <span className="text-white text-sm font-medium group-hover:underline">
-                  {authorName}
-                </span>
-              </button>
+              {onAuthorClick ? (
+                <button
+                  type="button"
+                  onClick={onAuthorClick}
+                  className="flex items-center gap-3 group cursor-pointer"
+                >
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center overflow-hidden ring-2 ring-white/30 group-hover:ring-white/60 transition">
+                    {authorAvatar ? (
+                      <img src={authorAvatar} alt={authorName} className="w-full h-full object-cover" />
+                    ) : (
+                      <User className="w-4 h-4 text-white" />
+                    )}
+                  </div>
+                  <span className="text-white text-sm font-medium group-hover:underline">
+                    {authorName}
+                  </span>
+                </button>
+              ) : (
+                <>
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center overflow-hidden">
+                    {authorAvatar ? (
+                      <img src={authorAvatar} alt={authorName} className="w-full h-full object-cover" />
+                    ) : (
+                      <User className="w-4 h-4 text-white" />
+                    )}
+                  </div>
+                  <span className="text-white text-sm font-medium">{authorName}</span>
+                </>
+              )}
             </div>
           </div>
           

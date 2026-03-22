@@ -1,4 +1,4 @@
-import { ChevronLeft, BookOpen, FileCheck, TrendingUp, User } from "lucide-react";
+import { ChevronLeft, BookOpen, FileCheck, TrendingUp, User, Star } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import heroImage from "@/assets/hero-robot.jpg";
 
@@ -6,8 +6,10 @@ interface HeroHeaderProps {
   courseTitle?: string;
   courseDescription?: string;
   authorName?: string;
+  authorAvatar?: string | null;
   coverImage?: string | null;
   price?: number;
+  rating?: number;
   stats?: {
     tests?: string;
     programs?: string;
@@ -16,12 +18,14 @@ interface HeroHeaderProps {
   };
   tags?: string[];
   progress?: number;
+  onAuthorClick?: () => void;
 }
 
 const HeroHeader = ({ 
   courseTitle = "Основы HTML и CSS",
   courseDescription = "Курс для начинающих верстальщиков сайтов на HTML и CSS. Разбираем реальные макеты, изучаем семантику языка, отрабатываем навыки в тренажере. В курсе более 190 заданий. Из них 150 – решение практических задач.",
   authorName = "Иван Иванов",
+  authorAvatar,
   coverImage,
   price,
   stats = {
@@ -31,7 +35,9 @@ const HeroHeader = ({
     progress: "1%"
   },
   tags = ["Программирование", "HTML", "CSS"],
-  progress = 1
+  progress = 1,
+  rating,
+  onAuthorClick,
 }: HeroHeaderProps) => {
   const navigate = useNavigate();
   const isFreeCourse = !price || price <= 0;
@@ -75,10 +81,33 @@ const HeroHeader = ({
             </p>
             
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center">
-                <User className="w-4 h-4 text-white" />
-              </div>
-              <span className="text-white text-sm font-medium">{authorName}</span>
+              {onAuthorClick ? (
+                <button
+                  type="button"
+                  onClick={onAuthorClick}
+                  className="flex items-center gap-3 group cursor-pointer"
+                >
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center overflow-hidden ring-2 ring-white/30 group-hover:ring-white/60 transition">
+                    {authorAvatar ? (
+                      <img src={authorAvatar} alt={authorName} className="w-full h-full object-cover" />
+                    ) : (
+                      <User className="w-4 h-4 text-white" />
+                    )}
+                  </div>
+                  <span className="text-white text-sm font-medium group-hover:underline">{authorName}</span>
+                </button>
+              ) : (
+                <>
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center overflow-hidden">
+                    {authorAvatar ? (
+                      <img src={authorAvatar} alt={authorName} className="w-full h-full object-cover" />
+                    ) : (
+                      <User className="w-4 h-4 text-white" />
+                    )}
+                  </div>
+                  <span className="text-white text-sm font-medium">{authorName}</span>
+                </>
+              )}
             </div>
           </div>
           
@@ -98,6 +127,13 @@ const HeroHeader = ({
         {/* Stats row - responsive grid for mobile */}
         <div className="mt-2 mb-6">
           <div className="flex flex-wrap items-center gap-4 md:gap-8 pt-4">
+            {rating != null && rating > 0 && (
+              <div className="flex items-center gap-2">
+                <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
+                <span className="text-white/60 text-xs md:text-sm">Рейтинг:</span>
+                <span className="text-white font-semibold text-sm">{rating.toFixed(1)}</span>
+              </div>
+            )}
             {typeof price === "number" && (
               <div className="flex items-center gap-2">
                 <span className="text-white/60 text-xs md:text-sm">Стоимость:</span>

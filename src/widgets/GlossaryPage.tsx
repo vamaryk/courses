@@ -1,53 +1,315 @@
-import { useState, useCallback, useMemo, useRef, useEffect } from "react";
-import { AnimatePresence, motion } from "framer-motion";
-import { Plus } from "lucide-react";
+import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import {
+  ReactFlow,
+  Background,
+  Controls,
+  MiniMap,
+  useNodesState,
+  useEdgesState,
+  type Edge,
+  type Node,
+  type NodeTypes,
+  type Connection,
+  BackgroundVariant,
+  MarkerType,
+} from "@xyflow/react";
+import "@xyflow/react/dist/style.css";
+import { Plus, Loader2 } from "lucide-react";
+import { motion } from "framer-motion";
+
 import ConceptCard from "@/components/glossary/ConceptCard";
-import ConceptEdgesCanvas from "@/components/glossary/ConceptEdges";
 import NodeDialog from "@/components/glossary/NodeDialog";
 import RightSidebar from "@/components/glossary/RightSidebar";
 import StageBar from "@/components/glossary/StageBar";
-import type { ConceptNode } from "@/types/glossary";
-import type { ConceptEdge } from "@/types/glossary";
+import type { ConceptNode, ConceptEdge } from "@/types/glossary";
 import {
   fetchMindmaps,
   fetchMindmapById,
   createConcept,
+  updateConcept,
+  deleteConcept,
+  fetchCanvasEdges,
+  createCanvasEdge,
+  deleteCanvasEdge,
   type MindMapSummary,
   type MindMapFull,
+  type CanvasEdgeData,
 } from "@/shared/api/gollossary";
+import { coursesApi } from "@/shared/api/courses";
+import { progressApi } from "@/shared/api/progress";
+import "@/components/glossary/glossary-flow.css";
 
+/* ─── React Flow custom node type registry ─── */
+const nodeTypes: NodeTypes = {
+  concept: ConceptCard as any,
+};
+
+/* ─── Default edge style ─── */
+const defaultEdgeOptions = {
+  type: "smoothstep" as const,
+  animated: true,
+  style: { strokeWidth: 2, stroke: "hsl(var(--primary))" },
+  markerEnd: {
+    type: MarkerType.ArrowClosed,
+    width: 16,
+    height: 16,
+    color: "hsl(var(--primary))",
+  },
+};
+
+/* ─── Auto-layout helpers ─── */
+const COL_COUNT = 4;
+const BASE_X = 80;
+const BASE_Y = 80;
+const DX = 300;
+const DY = 220;
+
+function autoLayoutPosition(index: number) {
+  const row = Math.floor(index / COL_COUNT);
+  const col = index % COL_COUNT;
+  return { x: BASE_X + col * DX, y: BASE_Y + row * DY };
+}
+
+/** Строит ConceptNode[] и ConceptEdge[] из массива понятий MindMap. */
+function buildGraphFromConcepts(
+  concepts: import("@/shared/api/gollossary").GollossaryConcept[],
+  mindmapId: string,
+  stage: number,
+  course: string,
+): { nodes: ConceptNode[]; edges: ConceptEdge[] } {
+  const nodes: ConceptNode[] = concepts.map((c, index) => {
+    const pos = autoLayoutPosition(index);
+    return {
+      id: c._id || `${mindmapId}-${index}`,
+      title: c.term,
+      description: c.definition,
+      example: c.example,
+      image_description: c.image_description,
+      stage,
+      course,
+      themes: [],
+      x: pos.x,
+      y: pos.y,
+      conceptIndex: index,
+      mindmapId,
+    };
+  });
+
+  const termToId = new Map<string, string>();
+  nodes.forEach((n) => termToId.set(n.title.trim().toLowerCase(), n.id));
+
+  const edges: ConceptEdge[] = [];
+  const edgeSet = new Set<string>();
+
+  concepts.forEach((c) => {
+    const selfId = termToId.get(c.term.trim().toLowerCase());
+    const children = c.relations?.children || [];
+
+    children.forEach((childName) => {
+      const childId = termToId.get(childName.trim().toLowerCase());
+      if (selfId && childId && selfId !== childId) {
+        const key = `${selfId}->${childId}`;
+        if (!edgeSet.has(key)) {
+          edgeSet.add(key);
+          edges.push({ id: key, from: selfId, to: childId });
+        }
+      }
+    });
+
+    const parentName = c.relations?.parent?.trim().toLowerCase();
+    if (parentName && selfId) {
+      const parentId = termToId.get(parentName);
+      if (parentId && parentId !== selfId) {
+        const key = `${parentId}->${selfId}`;
+        if (!edgeSet.has(key)) {
+          edgeSet.add(key);
+          edges.push({ id: key, from: parentId, to: selfId });
+        }
+      }
+    }
+  });
+
+  return { nodes, edges };
+}
+
+type UserCourseItem = { id: number; title: string };
+type CourseLectureMap = {
+  orderedSubchapterIds: number[];
+  subchapterSet: Set<number>;
+};
+
+// source_lecture_id is now part of MindMapSummary — no need for a separate type
+type MindMapMeta = MindMapSummary;
+
+/* ═══════════════════════════════════════════════════
+   GlossaryPage — Main Widget
+   ═══════════════════════════════════════════════════ */
 const GlossaryPage = () => {
-  const [nodes, setNodes] = useState<ConceptNode[]>([]);
-  const [edges, setEdges] = useState<ConceptEdge[]>([]);
-  const [mindmaps, setMindmaps] = useState<MindMapSummary[]>([]);
+  /* ─── State ─── */
+  const API_URL = import.meta.env.VITE_API_URL || "";
+  const [allMindmaps, setAllMindmaps] = useState<MindMapMeta[]>([]);
   const [activeStage, setActiveStage] = useState(1);
-  const [currentCourse, setCurrentCourse] = useState<string>("all");
+  const [currentCourse, setCurrentCourse] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // CRUD dialog
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingNode, setEditingNode] = useState<ConceptNode | null>(null);
-  const [draggingId, setDraggingId] = useState<string | null>(null);
-  const dragOffset = useRef({ dx: 0, dy: 0 });
-  const canvasRef = useRef<HTMLDivElement | null>(null);
 
+  // React Flow nodes & edges
+  const [rfNodes, setRfNodes, onNodesChange] = useNodesState<Node>([]);
+  const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState<Edge>([]);
+
+  // Raw concept data from API (for rebuild)
+  const [rawNodes, setRawNodes] = useState<ConceptNode[]>([]);
+  const [rawEdges, setRawEdges] = useState<ConceptEdge[]>([]);
+  // Manual edges saved to canvas API (separate from concept-relation edges)
+  const [canvasEdges, setCanvasEdges] = useState<CanvasEdgeData[]>([]);
+  const [activeLectureUnlocked, setActiveLectureUnlocked] = useState(true);
+  const [userCourses, setUserCourses] = useState<UserCourseItem[]>([]);
+  const [courseLectureMap, setCourseLectureMap] = useState<
+    Record<number, CourseLectureMap>
+  >({});
+  const [completedLectureIds, setCompletedLectureIds] = useState<Set<number>>(
+    new Set(),
+  );
+  const [isCourseOwner, setIsCourseOwner] = useState(false);
+  const [isCreatingMindmap, setIsCreatingMindmap] = useState(false);
+  // Прогресс генерации: сколько задач running/pending из отправленных
+  const [jobsStatus, setJobsStatus] = useState<{
+    total: number;
+    done: number;
+    failed: number;
+  } | null>(null);
+  const jobPollerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const [mindmapsReloadTick, setMindmapsReloadTick] = useState(0);
+
+  const filteredMindmaps = useMemo(() => {
+    if (!currentCourse) return allMindmaps;
+    const courseId = Number(currentCourse);
+    const mapping = courseLectureMap[courseId];
+    if (!mapping) return [];
+
+    const mapped = allMindmaps.filter((mm) => {
+      const sourceId = Number(mm.source_lecture_id);
+      return Number.isFinite(sourceId) && mapping.subchapterSet.has(sourceId);
+    });
+    // Порядок стадий = порядок подглав в курсе (а не порядок из Mongo).
+    const order = mapping.orderedSubchapterIds;
+    const rank = (sid: number) => {
+      const i = order.indexOf(sid);
+      return i === -1 ? order.length + sid : i;
+    };
+    return [...mapped].sort((a, b) => {
+      const sa = Number(a.source_lecture_id);
+      const sb = Number(b.source_lecture_id);
+      if (!Number.isFinite(sa) || !Number.isFinite(sb)) return 0;
+      return rank(sa) - rank(sb);
+    });
+  }, [allMindmaps, currentCourse, courseLectureMap]);
+
+  /* ─── Derived ─── */
   const activeMindmapId = useMemo(
-    () => mindmaps[activeStage - 1]?._id ?? null,
-    [mindmaps, activeStage],
+    () => filteredMindmaps[activeStage - 1]?._id ?? null,
+    [filteredMindmaps, activeStage],
   );
 
-  // Загружаем список mindmap при монтировании
+  const stages = useMemo(
+    () =>
+      filteredMindmaps.length ? filteredMindmaps.map((_, idx) => idx + 1) : [],
+    [filteredMindmaps],
+  );
+
+  const lectureNames = useMemo(() => {
+    const mapping: Record<number, string> = {};
+    filteredMindmaps.forEach((mm, index) => {
+      const num = index + 1;
+      mapping[num] = mm.topic || mm.lecture_number || `Лекция ${num}`;
+    });
+    return mapping;
+  }, [filteredMindmaps]);
+
+  const unlockedStages = useMemo(() => {
+    if (!currentCourse) {
+      return new Set(stages);
+    }
+    const courseId = Number(currentCourse);
+    const mapping = courseLectureMap[courseId];
+    if (!mapping) return new Set<number>();
+
+    const set = new Set<number>();
+    let firstLocked = false;
+    filteredMindmaps.forEach((mm, idx) => {
+      const sourceId = Number(mm.source_lecture_id);
+      const isCompleted = Number.isFinite(sourceId)
+        ? completedLectureIds.has(sourceId)
+        : false;
+      if (!firstLocked || isCompleted) {
+        set.add(idx + 1);
+      }
+      if (!isCompleted && !firstLocked) {
+        firstLocked = true;
+      }
+    });
+    return set;
+  }, [
+    currentCourse,
+    stages,
+    courseLectureMap,
+    filteredMindmaps,
+    completedLectureIds,
+  ]);
+
+  const courseProgress = useMemo(() => {
+    if (!filteredMindmaps.length) {
+      return { completed: 0, total: 0, percent: 0 };
+    }
+    if (!currentCourse) {
+      return { completed: filteredMindmaps.length, total: filteredMindmaps.length, percent: 100 };
+    }
+
+    const completed = filteredMindmaps.reduce((acc, mm) => {
+      const sourceId = Number(mm.source_lecture_id);
+      if (Number.isFinite(sourceId) && completedLectureIds.has(sourceId)) {
+        return acc + 1;
+      }
+      return acc;
+    }, 0);
+    const total = filteredMindmaps.length;
+    const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+    return { completed, total, percent };
+  }, [filteredMindmaps, currentCourse, completedLectureIds]);
+
+  const searchLower = searchQuery.trim().toLowerCase();
+
+  /* ─── Load mindmap list ─── */
   useEffect(() => {
     let cancelled = false;
-    const loadMindmaps = async () => {
+    const load = async () => {
       setLoading(true);
       setError(null);
       try {
+        // source_lecture_id теперь включён в MindMapSummary — не нужно делать N лишних запросов.
         const data = await fetchMindmaps();
         if (cancelled) return;
-        setMindmaps(data);
-        if (data.length > 0) {
-          setActiveStage(1);
+        // Дедупликация по source_lecture_id: при повторной генерации оставляем только последний mindmap.
+        const sorted = [...data].sort((a, b) => {
+          const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
+          const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+          return tb - ta;
+        });
+        const map = new Map<string, MindMapMeta>();
+        for (const mm of sorted) {
+          const key = mm.source_lecture_id
+            ? `src:${String(mm.source_lecture_id)}`
+            : `id:${mm._id}`;
+          if (!map.has(key)) map.set(key, mm);
         }
+        setAllMindmaps([...map.values()]);
+        if (data.length > 0) setActiveStage(1);
       } catch (e: any) {
         if (cancelled) return;
         console.error("Failed to load mindmaps", e);
@@ -56,304 +318,602 @@ const GlossaryPage = () => {
         if (!cancelled) setLoading(false);
       }
     };
-    loadMindmaps();
+    load();
+    return () => {
+      cancelled = true;
+    };
+  }, [mindmapsReloadTick]);
+
+  /* ─── Owner state for selected course ─── */
+  useEffect(() => {
+    let cancelled = false;
+    const loadOwner = async () => {
+      if (!currentCourse) {
+        if (!cancelled) setIsCourseOwner(false);
+        return;
+      }
+      const courseId = Number(currentCourse);
+      if (!Number.isFinite(courseId)) {
+        if (!cancelled) setIsCourseOwner(false);
+        return;
+      }
+
+      try {
+        const status = await coursesApi.getCourseAccessStatus(courseId);
+        if (!cancelled) setIsCourseOwner(Boolean(status?.isAuthor));
+      } catch {
+        if (!cancelled) setIsCourseOwner(false);
+      }
+    };
+
+    void loadOwner();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentCourse]);
+
+  /* ─── Load user courses + lecture ids + progress ─── */
+  useEffect(() => {
+    let cancelled = false;
+    const loadCoursesAndProgress = async () => {
+      try {
+        const [ownRes, enrolledRes] = await Promise.allSettled([
+          coursesApi.getMyCourses(),
+          fetch(`${import.meta.env.VITE_API_URL || ""}/api/users/profile/courses`, {
+            credentials: "include",
+          }).then((r) => (r.ok ? r.json() : [])),
+        ]);
+
+        const ownCourses =
+          ownRes.status === "fulfilled" && Array.isArray(ownRes.value)
+            ? ownRes.value
+            : [];
+
+        const enrolledCourses =
+          enrolledRes.status === "fulfilled" && Array.isArray(enrolledRes.value)
+            ? enrolledRes.value
+            : [];
+
+        // Только "мои" (авторские) + "enrolled", без "всех" курсов.
+        const courseMap = new Map<number, UserCourseItem>();
+        [...enrolledCourses, ...ownCourses].forEach((c: any) => {
+          const id = Number(c.id);
+          if (!Number.isFinite(id)) return;
+          if (!courseMap.has(id)) {
+            courseMap.set(id, { id, title: c.title || `Курс ${id}` });
+          }
+        });
+
+        const courseItems = Array.from(courseMap.values());
+        const lectureMap: Record<number, CourseLectureMap> = {};
+        const completedSet = new Set<number>();
+
+        await Promise.all(
+          courseItems.map(async (course) => {
+            try {
+              const full = await coursesApi.getCourse(course.id);
+              const orderedSubchapterIds = (full.chapters || [])
+                .slice()
+                .sort((a, b) => a.order - b.order)
+                .flatMap((ch) =>
+                  (ch.subchapters || [])
+                    .slice()
+                    .sort((a, b) => a.order - b.order)
+                    .map((s) => s.id),
+                );
+
+              lectureMap[course.id] = {
+                orderedSubchapterIds,
+                subchapterSet: new Set(orderedSubchapterIds),
+              };
+
+              const progress = await progressApi.getCourseProgress(course.id);
+              (progress.progress || []).forEach((p) => {
+                if (p.is_completed && p.subchapter_id) {
+                  completedSet.add(p.subchapter_id);
+                }
+              });
+            } catch (e) {
+              console.error(
+                `Failed to load course/progress for glossary course ${course.id}`,
+                e,
+              );
+              lectureMap[course.id] = {
+                orderedSubchapterIds: [],
+                subchapterSet: new Set<number>(),
+              };
+            }
+          }),
+        );
+
+        if (cancelled) return;
+        setUserCourses(courseItems);
+        if (courseItems.length > 0) {
+          setCurrentCourse(String(courseItems[0].id));
+        }
+        setCourseLectureMap(lectureMap);
+        setCompletedLectureIds(completedSet);
+      } catch (e) {
+        console.error("Failed to load courses/progress for glossary", e);
+      }
+    };
+
+    loadCoursesAndProgress();
     return () => {
       cancelled = true;
     };
   }, []);
 
-  // При смене активной MindMap загружаем её понятия и строим узлы/рёбра
+  useEffect(() => {
+    if (activeStage > stages.length) {
+      setActiveStage(1);
+    }
+  }, [activeStage, stages.length]);
+
+  /* ─── Sync activeLectureUnlocked whenever stage or unlocked set changes ─── */
+  useEffect(() => {
+    setActiveLectureUnlocked(unlockedStages.has(activeStage));
+  }, [unlockedStages, activeStage]);
+
+  /* ─── Load active mindmap concepts + canvas edges ─── */
   useEffect(() => {
     let cancelled = false;
     const loadMindmap = async (mindmapId: string) => {
       try {
-        const mm: MindMapFull = await fetchMindmapById(mindmapId);
+        const [mm, savedEdges] = await Promise.all([
+          fetchMindmapById(mindmapId),
+          fetchCanvasEdges(mindmapId),
+        ]);
         if (cancelled) return;
 
-        const concepts = mm.concepts || [];
-
-        // Преобразуем понятия в ConceptNode с автолейаутом
-        const nodesFromConcepts: ConceptNode[] = concepts.map((c, index) => {
-          const colCount = 4;
-          const row = Math.floor(index / colCount);
-          const col = index % colCount;
-          const baseX = 160;
-          const baseY = 120;
-          const dx = 260;
-          const dy = 200;
-
-          return {
-            id: c._id || `${mindmapId}-${index}`,
-            title: c.term,
-            description: c.definition,
-            stage: 1,
-            course: "all",
-            themes: [],
-            x: baseX + col * dx,
-            y: baseY + row * dy,
-            conceptIndex: index,
-            mindmapId,
-          };
-        });
-
-        // Строим рёбра по связям parent/children
-        const termToId = new Map<string, string>();
-        nodesFromConcepts.forEach((n) =>
-          termToId.set(n.title.trim().toLowerCase(), n.id),
+        const { nodes, edges } = buildGraphFromConcepts(
+          mm.concepts || [],
+          mindmapId,
+          activeStage,
+          currentCourse,
         );
-
-        const edgesFromConcepts: ConceptEdge[] = [];
-        const edgeSet = new Set<string>();
-
-        concepts.forEach((c) => {
-          const parentName = c.relations?.parent?.trim().toLowerCase();
-          const children = c.relations?.children || [];
-          const parentId = parentName ? termToId.get(parentName) : undefined;
-
-          children.forEach((childName) => {
-            const childId = termToId.get(childName.trim().toLowerCase());
-            if (parentId && childId) {
-              const edgeKey = `${parentId}->${childId}`;
-              if (!edgeSet.has(edgeKey)) {
-                edgeSet.add(edgeKey);
-                edgesFromConcepts.push({
-                  id: edgeKey,
-                  from: parentId,
-                  to: childId,
-                });
-              }
-            }
-          });
-        });
-
-        setNodes(nodesFromConcepts);
-        setEdges(edgesFromConcepts);
+        setRawNodes(nodes);
+        setRawEdges(edges);
+        setCanvasEdges(savedEdges);
       } catch (e) {
         console.error("Failed to load mindmap details", e);
-        setNodes([]);
-        setEdges([]);
+        setRawNodes([]);
+        setRawEdges([]);
+        setCanvasEdges([]);
       }
     };
 
     if (activeMindmapId) {
       loadMindmap(activeMindmapId);
     } else {
-      setNodes([]);
-      setEdges([]);
+      setRawNodes([]);
+      setRawEdges([]);
+      setCanvasEdges([]);
     }
 
     return () => {
       cancelled = true;
     };
-  }, [activeMindmapId]);
+  }, [activeMindmapId, activeStage, currentCourse]);
 
-  // Пока mindmap не привязаны жёстко к конкретным курсам,
-  // отображаем все узлы независимо от выбранного курса.
-  const filteredNodes = useMemo(() => nodes, [nodes]);
-
-  const filteredEdges = useMemo(() => {
-    const ids = new Set(filteredNodes.map((n) => n.id));
-    return edges.filter((e) => ids.has(e.from) && ids.has(e.to));
-  }, [edges, filteredNodes]);
-
-  const stages = useMemo(
-    () => (mindmaps.length ? mindmaps.map((_, idx) => idx + 1) : [1]),
-    [mindmaps],
-  );
-
-  const lectureNames = useMemo(() => {
-    const mapping: Record<number, string> = {};
-    mindmaps.forEach((mm, index) => {
-      const num = index + 1;
-      mapping[num] = mm.topic || mm.lecture_number || `Лекция ${num}`;
-    });
-    return mapping;
-  }, [mindmaps]);
-
-  const handleSave = useCallback(
-    async (data: Omit<ConceptNode, "id" | "x" | "y"> & { id?: string }) => {
-      // Локальное обновление существующего узла (редактирование только в UI)
-      if (data.id) {
-        setNodes((prev) =>
-          prev.map((n) => (n.id === data.id ? ({ ...n, ...data } as ConceptNode) : n)),
-        );
-        return;
-      }
-
-      // Создание нового понятия в MongoDB через gollossary
-      if (!activeMindmapId) return;
-      try {
-        await createConcept(activeMindmapId, {
-          term: data.title,
-          definition: data.description,
-        });
-        // После успешного создания перезагружаем MindMap, чтобы получить свежий список понятий
-        const mm = await fetchMindmapById(activeMindmapId);
-        const concepts = mm.concepts || [];
-
-        const colCount = 4;
-        const nodesFromConcepts: ConceptNode[] = concepts.map((c, index) => {
-          const row = Math.floor(index / colCount);
-          const col = index % colCount;
-          const baseX = 160;
-          const baseY = 120;
-          const dx = 260;
-          const dy = 200;
-
-          return {
-            id: c._id || `${activeMindmapId}-${index}`,
-            title: c.term,
-            description: c.definition,
-            stage: 1,
-            course: "all",
-            themes: [],
-            x: baseX + col * dx,
-            y: baseY + row * dy,
-            conceptIndex: index,
-            mindmapId: activeMindmapId,
-          };
-        });
-        setNodes(nodesFromConcepts);
-      } catch (e) {
-        console.error("Failed to create concept in MongoDB", e);
-      }
-    },
-    [activeMindmapId],
-  );
-
-  // Синхронизация смены стадии по событию из правого сайдбара
-  useEffect(() => {
-    const handler = (event: Event) => {
-      const custom = event as CustomEvent<{ stage: number }>;
-      if (typeof custom.detail?.stage === "number") {
-        setActiveStage(custom.detail.stage);
-      }
-    };
-    window.addEventListener("glossary:set-stage", handler as EventListener);
-    return () => {
-      window.removeEventListener("glossary:set-stage", handler as EventListener);
-    };
-  }, []);
-
-  const handleDelete = useCallback((id: string) => {
-    setNodes((prev) => prev.filter((n) => n.id !== id));
-    setEdges((prev) => prev.filter((e) => e.from !== id && e.to !== id));
-  }, []);
-
+  /* ─── CRUD callbacks (stable refs) ─── */
   const handleEdit = useCallback((node: ConceptNode) => {
     setEditingNode(node);
     setDialogOpen(true);
   }, []);
+
+  const handleDelete = useCallback(
+    async (id: string) => {
+      const node = rawNodes.find((n) => n.id === id);
+      if (!node?.mindmapId || node.conceptIndex == null) return;
+
+      try {
+        await deleteConcept(node.mindmapId, node.conceptIndex);
+        const mm = await fetchMindmapById(node.mindmapId);
+        const { nodes, edges } = buildGraphFromConcepts(
+          mm.concepts || [],
+          node.mindmapId,
+          activeStage,
+          currentCourse,
+        );
+        setRawNodes(nodes);
+        setRawEdges(edges);
+      } catch (e) {
+        console.error("Failed to delete concept", e);
+      }
+    },
+    [rawNodes, activeStage, currentCourse],
+  );
 
   const handleAddNode = useCallback(() => {
     setEditingNode(null);
     setDialogOpen(true);
   }, []);
 
-  const handleDragStart = useCallback(
-    (id: string, e: React.MouseEvent) => {
-      e.preventDefault();
-      const node = nodes.find((n) => n.id === id);
-      if (!node || !canvasRef.current) return;
-      const rect = canvasRef.current.getBoundingClientRect();
-      dragOffset.current = {
-        dx: e.clientX - rect.left - node.x,
-        dy: e.clientY - rect.top - node.y,
-      };
-      setDraggingId(id);
+  const handleSave = useCallback(
+    async (data: Omit<ConceptNode, "id" | "x" | "y"> & { id?: string }) => {
+      // Edit existing
+      if (data.id) {
+        const node = rawNodes.find((n) => n.id === data.id);
+        if (!node?.mindmapId || node.conceptIndex == null) return;
+        try {
+          await updateConcept(node.mindmapId, node.conceptIndex, {
+            term: data.title,
+            definition: data.description,
+            example: data.example,
+          });
+          const mm = await fetchMindmapById(node.mindmapId);
+          const { nodes, edges } = buildGraphFromConcepts(
+            mm.concepts || [],
+            node.mindmapId,
+            activeStage,
+            currentCourse,
+          );
+          setRawNodes(nodes);
+          setRawEdges(edges);
+        } catch (e) {
+          console.error("Failed to update concept", e);
+        }
+        return;
+      }
 
-      const onMove = (ev: MouseEvent) => {
-        if (!canvasRef.current) return;
-        const r = canvasRef.current.getBoundingClientRect();
-        setNodes((prev) =>
-          prev.map((n) =>
-            n.id === id
-              ? {
-                  ...n,
-                  x: ev.clientX - r.left - dragOffset.current.dx,
-                  y: ev.clientY - r.top - dragOffset.current.dy,
-                }
-              : n
-          )
+      // Create new via API
+      if (!activeMindmapId) return;
+      try {
+        await createConcept(activeMindmapId, {
+          term: data.title,
+          definition: data.description,
+          example: data.example,
+        });
+        const mm = await fetchMindmapById(activeMindmapId);
+        const { nodes, edges } = buildGraphFromConcepts(
+          mm.concepts || [],
+          activeMindmapId,
+          activeStage,
+          currentCourse,
         );
-      };
-
-      const onUp = () => {
-        setDraggingId(null);
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
-      };
-
-      window.addEventListener("mousemove", onMove);
-      window.addEventListener("mouseup", onUp);
+        setRawNodes(nodes);
+        setRawEdges(edges);
+      } catch (e) {
+        console.error("Failed to create concept", e);
+      }
     },
-    [nodes]
+    [activeMindmapId, rawNodes, activeStage, currentCourse],
   );
 
+  /* ─── Edge connect: создатель соединяет два блока ─── */
+  const handleConnect = useCallback(
+    async (connection: Connection) => {
+      if (!isCourseOwner || !activeMindmapId) return;
+      const { source, target } = connection;
+      if (!source || !target || source === target) return;
+
+      // Prevent duplicate canvas edges
+      const duplicate = canvasEdges.some(
+        (e) => e.from === source && e.to === target,
+      );
+      if (duplicate) return;
+
+      try {
+        const result = await createCanvasEdge(activeMindmapId, source, target);
+        setCanvasEdges(result.edges ?? []);
+      } catch (e) {
+        console.error("Failed to create canvas edge", e);
+      }
+    },
+    [isCourseOwner, activeMindmapId, canvasEdges],
+  );
+
+  /* ─── Edge delete: создатель удаляет вручную созданные рёбра ─── */
+  const handleEdgesDelete = useCallback(
+    async (deletedEdges: Edge[]) => {
+      if (!isCourseOwner || !activeMindmapId) return;
+      for (const edge of deletedEdges) {
+        // Only delete from canvas API if it's a canvas edge (UUID format)
+        const canvasEdge = canvasEdges.find((e) => e.id === edge.id);
+        if (!canvasEdge) continue;
+        try {
+          const result = await deleteCanvasEdge(activeMindmapId, edge.id);
+          setCanvasEdges(result.edges ?? []);
+        } catch (e) {
+          console.error("Failed to delete canvas edge", e);
+        }
+      }
+    },
+    [isCourseOwner, activeMindmapId, canvasEdges],
+  );
+
+  /* ─── Rebuild React Flow nodes/edges whenever raw data or filters change ─── */
+  useEffect(() => {
+    const flowNodes = rawNodes.map((node) => {
+      const isActiveStage = activeLectureUnlocked && unlockedStages.has(node.stage);
+      const isSearchMatch =
+        searchLower.length > 0 &&
+        (node.title.toLowerCase().includes(searchLower) ||
+          node.description.toLowerCase().includes(searchLower));
+
+      return {
+        id: node.id,
+        type: "concept" as const,
+        position: { x: node.x, y: node.y },
+        data: {
+          ...node,
+          isActiveStage,
+          isHighlighted: false,
+          isSearchMatch,
+          isCreator: isCourseOwner,
+          onEdit: isCourseOwner ? handleEdit : undefined,
+          onDelete: isCourseOwner ? handleDelete : undefined,
+        } as Record<string, unknown>,
+        // Только создатель может перетаскивать узлы
+        draggable: isCourseOwner && isActiveStage,
+      };
+    });
+
+    // Concept-relation edges (из parent/children полей)
+    const relationEdges: Edge[] = rawEdges.map((e) => ({
+      id: e.id,
+      source: e.from,
+      target: e.to,
+      ...defaultEdgeOptions,
+      deletable: false, // relation edges не удаляются вручную
+    }));
+
+    // Canvas edges (вручную созданные создателем)
+    const canvasFlowEdges: Edge[] = canvasEdges.map((e) => ({
+      id: e.id,
+      source: e.from,
+      target: e.to,
+      ...defaultEdgeOptions,
+      deletable: isCourseOwner,
+      style: {
+        ...defaultEdgeOptions.style,
+        strokeDasharray: "6 3",
+      },
+    }));
+
+    // Объединяем, исключая дубликаты по source+target
+    const seen = new Set<string>();
+    const allEdges: Edge[] = [];
+    for (const e of [...relationEdges, ...canvasFlowEdges]) {
+      const key = `${e.source}->${e.target}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        allEdges.push(e);
+      }
+    }
+
+    setRfNodes(flowNodes);
+    setRfEdges(allEdges);
+  }, [
+    rawNodes,
+    rawEdges,
+    canvasEdges,
+    activeLectureUnlocked,
+    unlockedStages,
+    activeStage,
+    searchLower,
+    isCourseOwner,
+    handleEdit,
+    handleDelete,
+    setRfNodes,
+    setRfEdges,
+  ]);
+
+  /* ─── Render ─── */
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-[70vh]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="ml-3 text-muted-foreground">
+          Загрузка карты знаний…
+        </span>
+      </div>
+    );
+  }
+
   return (
-    <div className="flex bg-background overflow-hidden min-h-[600px]">
-      <div className="flex-1 flex flex-col min-w-0">
+    <div className="flex flex-col lg:flex-row bg-background overflow-hidden min-h-[calc(100vh-5rem)]">
+      {/* ── Main area ── */}
+      <div className="flex-1 flex flex-col min-w-0 order-1">
         <StageBar
           stages={stages}
           activeStage={activeStage}
           onStageChange={setActiveStage}
           lectureNames={lectureNames}
+          progressPercent={courseProgress.percent}
+          completedLectures={courseProgress.completed}
         />
 
-        <div ref={canvasRef} className="flex-1 relative overflow-auto p-4">
-          <div className="relative min-w-[1000px] min-h-[700px]">
-            <ConceptEdgesCanvas edges={filteredEdges} nodes={filteredNodes} />
-            <AnimatePresence>
-              {filteredNodes.map((node) => {
-                const isActiveStage = node.stage <= activeStage;
-                const isHighlighted = false;
-                const isDimmed = false;
-
-                return (
-                  <ConceptCard
-                    key={node.id}
-                    node={node}
-                    isActiveStage={isActiveStage}
-                    isHighlighted={isHighlighted}
-                    isDimmed={isDimmed}
-                    onEdit={handleEdit}
-                    onDelete={handleDelete}
-                    onDragStart={handleDragStart}
-                  />
-                );
-              })}
-            </AnimatePresence>
+        {filteredMindmaps.length === 0 ? (
+          <div className="flex-1 flex items-center justify-center min-h-[55vh] lg:min-h-0 p-6">
+            <div className="max-w-md text-center">
+              <p className="text-sm text-muted-foreground">
+                Для данного курса пока нет глоссария.
+              </p>
+              <p className="mt-3 text-sm text-muted-foreground">
+                Попробуйте нажать “Создать mindmap”, если вы владелец курса.
+              </p>
+            </div>
           </div>
-
-          <motion.button
-            onClick={handleAddNode}
-            whileHover={{ scale: 1.1 }}
-            whileTap={{ scale: 0.95 }}
-            className="absolute bottom-6 right-6 w-12 h-12 rounded-full bg-sidebar text-sidebar-foreground shadow-lg flex items-center justify-center hover:opacity-90 transition-colors z-10"
-            title="Добавить понятие"
+        ) : (
+          <div
+            className="flex-1 relative min-h-[55vh] lg:min-h-0"
+            style={{ minHeight: 0 }}
           >
-            <Plus className="h-5 w-5" />
-          </motion.button>
-        </div>
+            <div className="glossary-flow-wrapper absolute inset-0">
+              <ReactFlow
+                nodes={rfNodes}
+                edges={rfEdges}
+                onNodesChange={onNodesChange}
+                onEdgesChange={onEdgesChange}
+                onConnect={isCourseOwner ? handleConnect : undefined}
+                onEdgesDelete={isCourseOwner ? handleEdgesDelete : undefined}
+                nodeTypes={nodeTypes}
+                defaultEdgeOptions={defaultEdgeOptions}
+                fitView
+                fitViewOptions={{ padding: 0.2 }}
+                minZoom={0.3}
+                maxZoom={2}
+                proOptions={{ hideAttribution: true }}
+                // Запрет взаимодействия с рёбрами для обычных пользователей
+                edgesReconnectable={isCourseOwner}
+                deleteKeyCode={isCourseOwner ? "Delete" : null}
+                selectionKeyCode={isCourseOwner ? "Shift" : null}
+              >
+                <Background
+                  variant={BackgroundVariant.Dots}
+                  gap={20}
+                  size={1}
+                  color="hsl(var(--border))"
+                />
+                <Controls
+                  showInteractive={false}
+                  position="bottom-left"
+                />
+                <MiniMap
+                  nodeStrokeWidth={3}
+                  pannable
+                  zoomable
+                  position="bottom-left"
+                  style={{ marginBottom: 60 }}
+                />
+              </ReactFlow>
+            </div>
+
+            {/* Floating add button — только для создателя курса */}
+            {isCourseOwner && (
+              <motion.button
+                onClick={handleAddNode}
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.95 }}
+                className="absolute bottom-6 right-6 w-12 h-12 rounded-full bg-primary text-primary-foreground shadow-lg flex items-center justify-center hover:opacity-90 transition-colors z-50"
+                title="Добавить понятие"
+              >
+                <Plus className="h-5 w-5" />
+              </motion.button>
+            )}
+          </div>
+        )}
       </div>
 
-      <RightSidebar
-        currentCourse={currentCourse}
-        onCourseChange={setCurrentCourse}
-        mindmaps={mindmaps}
-        activeStage={activeStage}
-      />
+      {/* ── Right sidebar ── */}
+      <div className="w-full lg:w-72 xl:w-80 shrink-0 overflow-y-auto order-2 border-t lg:border-t-0 lg:border-l border-border">
+        <RightSidebar
+          currentCourse={currentCourse}
+          onCourseChange={setCurrentCourse}
+          userCourses={userCourses}
+          mindmaps={filteredMindmaps}
+          activeStage={activeStage}
+          onStageChange={setActiveStage}
+          unlockedStages={unlockedStages}
+          searchQuery={searchQuery}
+          onSearchChange={setSearchQuery}
+          isCourseOwner={isCourseOwner}
+          isCreatingMindmap={isCreatingMindmap}
+          jobsStatus={jobsStatus}
+          onCreateMindmap={async () => {
+            if (!currentCourse || isCreatingMindmap) return;
+            const courseId = Number(currentCourse);
+            if (!Number.isFinite(courseId)) return;
 
-      <NodeDialog
-        open={dialogOpen}
-        onClose={() => setDialogOpen(false)}
-        onSave={handleSave}
-        editNode={editingNode}
-        currentCourse={currentCourse}
-      />
+            // Сбрасываем предыдущий поллер, если вдруг остался
+            if (jobPollerRef.current) {
+              clearInterval(jobPollerRef.current);
+              jobPollerRef.current = null;
+            }
+            setJobsStatus(null);
+            setIsCreatingMindmap(true);
+
+            try {
+              const resp = await fetch(
+                `${API_URL}/api/courses/${courseId}/glossary/mindmaps/generate`,
+                { method: "POST", credentials: "include" },
+              );
+
+              if (!resp.ok) {
+                const text = await resp.text().catch(() => "");
+                throw new Error(text || `HTTP ${resp.status}`);
+              }
+
+              const data = await resp.json().catch(() => ({}));
+              const totalSubchapters: number = data?.totalSubchapters ?? 1;
+
+              // Инициализируем статус
+              setJobsStatus({ total: totalSubchapters, done: 0, failed: 0 });
+
+              const GOLLOSSARY_URL =
+                (import.meta.env.VITE_GOLLOSSARY_PROCESSOR_URL as string) ||
+                "http://127.0.0.1:8001";
+
+              // Поллинг статуса задач каждые 5 с
+              const pollStart = Date.now();
+              const MAX_POLL_MS = 15 * 60 * 1000; // 15 минут максимум
+
+              jobPollerRef.current = setInterval(async () => {
+                try {
+                  const jobsResp = await fetch(`${GOLLOSSARY_URL}/api/v1/lectures/jobs`);
+                  if (!jobsResp.ok) return;
+                  const jobs: Array<{
+                    status: string;
+                    created_at: string;
+                    mindmap_id?: string | null;
+                  }> = await jobsResp.json();
+
+                  // Берём задачи, запущенные не раньше, чем 30 с назад (наши)
+                  const cutoff = new Date(Date.now() - 30_000).toISOString();
+                  const ourJobs = jobs.filter((j) => j.created_at >= cutoff);
+                  if (ourJobs.length === 0) return;
+
+                  const done = ourJobs.filter((j) => j.status === "done").length;
+                  const failed = ourJobs.filter((j) => j.status === "failed").length;
+                  const finished = done + failed;
+
+                  setJobsStatus({ total: Math.max(totalSubchapters, ourJobs.length), done, failed });
+
+                  // Перезагружаем mindmaps когда появляются результаты
+                  if (done > 0) {
+                    setMindmapsReloadTick((t) => t + 1);
+                  }
+
+                  // Останавливаем поллер если всё готово или таймаут
+                  const allDone = finished >= totalSubchapters || finished >= ourJobs.length;
+                  const timedOut = Date.now() - pollStart > MAX_POLL_MS;
+
+                  if (allDone || timedOut) {
+                    if (jobPollerRef.current) {
+                      clearInterval(jobPollerRef.current);
+                      jobPollerRef.current = null;
+                    }
+                    setIsCreatingMindmap(false);
+                    setMindmapsReloadTick((t) => t + 1);
+                  }
+                } catch {
+                  // Игнорируем ошибки поллинга
+                }
+              }, 5000);
+
+            } catch (e) {
+              console.error("Failed to generate mindmaps:", e);
+              setIsCreatingMindmap(false);
+            }
+          }}
+        />
+      </div>
+
+      {/* ── CRUD Dialog — только для создателя курса ── */}
+      {isCourseOwner && (
+        <NodeDialog
+          open={dialogOpen}
+          onClose={() => setDialogOpen(false)}
+          onSave={handleSave}
+          editNode={editingNode}
+          currentCourse={currentCourse}
+          lectureNames={lectureNames}
+        />
+      )}
     </div>
   );
 };
 
 export default GlossaryPage;
-

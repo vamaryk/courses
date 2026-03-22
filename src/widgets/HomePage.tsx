@@ -613,9 +613,10 @@ export default function HomePage() {
                 ? `${rawPrice.toLocaleString('ru-RU')} ₽`
                 : 'Бесплатно';
               return (
-                <div
+                <Link
                   key={course.id}
-                  className="bg-background rounded-xl shadow-md overflow-hidden group hover:shadow-lg transition-shadow duration-300 flex flex-col"
+                  to={`/courses/${course.id}`}
+                  className="bg-background rounded-xl shadow-md overflow-hidden group hover:shadow-lg transition-shadow duration-300 flex flex-col block cursor-pointer"
                 >
                   <div className="aspect-video relative overflow-hidden">
                     <img
@@ -631,6 +632,7 @@ export default function HomePage() {
                     </div>
                     <button
                       onClick={(e: React.MouseEvent) => {
+                        e.preventDefault();
                         e.stopPropagation();
                         handleFavoriteToggle(course.id);
                       }}
@@ -648,7 +650,7 @@ export default function HomePage() {
                       <div className="flex items-center gap-1 bg-background/80 backdrop-blur-sm px-2 py-1 rounded-full">
                         <Star className="w-4 h-4 text-yellow-400 fill-current" />
                         <span className="text-xs font-medium text-gray-900">
-                          {course.rating ? course.rating.toFixed(1) : '4.8'}
+                          {course.rating != null && Number(course.rating) > 0 ? Number(course.rating).toFixed(1) : '—'}
                         </span>
                       </div>
                       <div className="flex items-center gap-1 bg-purple text-white px-2 py-1 rounded-full text-xs font-semibold">
@@ -674,11 +676,11 @@ export default function HomePage() {
                         </span>
                       </div>
                     </div>
-                    <Button asChild className="w-full mt-4 bg-purple text-white font-medium hover:bg-purple-600">
-                      <Link to={`/courses/${course.id}`}>Подробнее</Link>
-                    </Button>
+                    <span className="inline-flex items-center justify-center w-full mt-4 bg-purple text-white font-medium hover:bg-purple-600 rounded-md px-4 py-2 text-sm">
+                      Подробнее
+                    </span>
                   </div>
-                </div>
+                </Link>
               );
             }) : (
               <div className="col-span-full text-center py-8">
@@ -776,7 +778,11 @@ export default function HomePage() {
               {/* Course Cards Grid */}
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-4">
                 {paginatedCourses.length > 0 ? paginatedCourses.map((course) => (
-                  <div key={course.id} className="relative bg-background rounded-xl sm:rounded-2xl shadow-md overflow-hidden group hover:shadow-lg transition-shadow duration-300 flex flex-col">
+                  <Link
+                    key={course.id}
+                    to={`/courses/${course.id}`}
+                    className="relative bg-background rounded-xl sm:rounded-2xl shadow-md overflow-hidden group hover:shadow-lg transition-shadow duration-300 flex flex-col block cursor-pointer"
+                  >
                     <div className="aspect-video relative overflow-hidden">
                       <img
                         src={course.cover_image ? `${API_URL}${course.cover_image}` : heroFallbackCover}
@@ -786,6 +792,7 @@ export default function HomePage() {
                       <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/10 to-transparent" />
                       <button
                         onClick={(e: React.MouseEvent) => {
+                          e.preventDefault();
                           e.stopPropagation();
                           handleFavoriteToggle(course.id);
                         }}
@@ -807,10 +814,7 @@ export default function HomePage() {
                         )}
                       </div>
                     </div>
-                    <Link
-                      to={`/courses/${course.id}`}
-                      className="block flex-1 p-3 sm:p-4 lg:p-3 flex flex-col"
-                    >
+                    <div className="flex-1 p-3 sm:p-4 lg:p-3 flex flex-col">
                       <h3 className="lg:text-lg sm:text-xs font-semibold text-gray-900 mb-2 line-clamp-1">
                         {course.title}
                       </h3>
@@ -827,18 +831,26 @@ export default function HomePage() {
                               {course.author?.name || 'Автор не указан'}
                             </span>
                           </div>
-                          <div className="flex items-center gap-1 border-2 rounded-full px-2 py-1">
-                            <CreditCard className="w-4 h-4 text-gray-500" />
-                            <span className="text-xs font-bold text-gray-900">
-                              {course.price && course.price > 0
-                                ? `${Number(course.price).toLocaleString('ru-RU')} ₽`
-                                : 'Бесплатно'}
-                            </span>
+                          <div className="flex items-center gap-2">
+                            <div className="flex items-center gap-1 border rounded-full px-2 py-1">
+                              <Star className="w-3.5 h-3.5 text-yellow-500 fill-current" />
+                              <span className="text-xs font-medium text-gray-900">
+                                {course.rating != null && course.rating > 0 ? Number(course.rating).toFixed(1) : '—'}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 border-2 rounded-full px-2 py-1">
+                              <CreditCard className="w-4 h-4 text-gray-500" />
+                              <span className="text-xs font-bold text-gray-900">
+                                {course.price && course.price > 0
+                                  ? `${Number(course.price).toLocaleString('ru-RU')} ₽`
+                                  : 'Бесплатно'}
+                              </span>
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </Link>
-                  </div>
+                    </div>
+                  </Link>
                 )) : (
                   <div className="col-span-full text-center py-12">
                     <BookOpen className="w-12 h-12 text-gray-300 mx-auto mb-4" />

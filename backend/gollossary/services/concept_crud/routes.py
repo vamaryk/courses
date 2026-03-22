@@ -7,7 +7,7 @@ from __future__ import annotations
 import logging
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 import sys
@@ -21,6 +21,12 @@ from shared.models import (
     ConceptUpdate,
     MindMap,
     MindMapSummary,
+    CanvasNode,
+    CanvasNodeCreate,
+    CanvasNodeUpdate,
+    CanvasEdge,
+    CanvasEdgeCreate,
+    CanvasData,
 )
 from .repository import MindMapRepository
 
@@ -74,7 +80,7 @@ async def get_mindmap(
 async def delete_mindmap(
     mindmap_id: str,
     db: Annotated[AsyncIOMotorDatabase, Depends(get_db)],
-) -> None:
+) -> Response:
     repo = MindMapRepository(db)
     try:
         deleted = await repo.delete_mindmap(mindmap_id)
@@ -82,6 +88,9 @@ async def delete_mindmap(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MindMap не найден")
+
+    # For 204 No Content FastAPI must not attempt to return a body.
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 # ---------------------------------------------------------------------------
@@ -189,3 +198,129 @@ async def delete_concept(
     if not updated:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MindMap или понятие не найдено")
     return updated
+
+
+# ---------------------------------------------------------------------------
+# Canvas endpoints
+# ---------------------------------------------------------------------------
+
+@router.get(
+    "/mindmaps/{mindmap_id}/canvas",
+    response_model=CanvasData,
+    summary="Получить канвас (узлы + рёбра)",
+)
+async def get_canvas(
+    mindmap_id: str,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)],
+) -> CanvasData:
+    repo = MindMapRepository(db)
+    try:
+        canvas = await repo.get_canvas(mindmap_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    if canvas is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MindMap не найден")
+    return canvas
+
+
+@router.post(
+    "/mindmaps/{mindmap_id}/canvas/nodes",
+    response_model=CanvasData,
+    status_code=status.HTTP_201_CREATED,
+    summary="Добавить узел на канвас",
+)
+async def add_canvas_node(
+    mindmap_id: str,
+    body: CanvasNodeCreate,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)],
+) -> CanvasData:
+    repo = MindMapRepository(db)
+    try:
+        canvas = await repo.add_canvas_node(mindmap_id, body)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    if canvas is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MindMap не найден")
+    return canvas
+
+
+@router.put(
+    "/mindmaps/{mindmap_id}/canvas/nodes/{node_id}",
+    response_model=CanvasData,
+    summary="Обновить узел канваса",
+)
+async def update_canvas_node(
+    mindmap_id: str,
+    node_id: str,
+    body: CanvasNodeUpdate,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)],
+) -> CanvasData:
+    repo = MindMapRepository(db)
+    try:
+        canvas = await repo.update_canvas_node(mindmap_id, node_id, body)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    if canvas is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MindMap или узел не найден")
+    return canvas
+
+
+@router.delete(
+    "/mindmaps/{mindmap_id}/canvas/nodes/{node_id}",
+    response_model=CanvasData,
+    summary="Удалить узел канваса (и связанные рёбра)",
+)
+async def delete_canvas_node(
+    mindmap_id: str,
+    node_id: str,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)],
+) -> CanvasData:
+    repo = MindMapRepository(db)
+    try:
+        canvas = await repo.delete_canvas_node(mindmap_id, node_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    if canvas is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MindMap не найден")
+    return canvas
+
+
+@router.post(
+    "/mindmaps/{mindmap_id}/canvas/edges",
+    response_model=CanvasData,
+    status_code=status.HTTP_201_CREATED,
+    summary="Добавить ребро (стрелку) на канвас",
+)
+async def add_canvas_edge(
+    mindmap_id: str,
+    body: CanvasEdgeCreate,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)],
+) -> CanvasData:
+    repo = MindMapRepository(db)
+    try:
+        canvas = await repo.add_canvas_edge(mindmap_id, body)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    if canvas is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MindMap не найден")
+    return canvas
+
+
+@router.delete(
+    "/mindmaps/{mindmap_id}/canvas/edges/{edge_id}",
+    response_model=CanvasData,
+    summary="Удалить ребро канваса",
+)
+async def delete_canvas_edge(
+    mindmap_id: str,
+    edge_id: str,
+    db: Annotated[AsyncIOMotorDatabase, Depends(get_db)],
+) -> CanvasData:
+    repo = MindMapRepository(db)
+    try:
+        canvas = await repo.delete_canvas_edge(mindmap_id, edge_id)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    if canvas is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="MindMap не найден")
+    return canvas

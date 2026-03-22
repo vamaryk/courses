@@ -1,4 +1,3 @@
-README.md
 pyproject.toml
 src/gollossary/__init__.py
 src/gollossary/config.py
@@ -12,13 +11,17 @@ src/gollossary.egg-info/top_level.txt
 src/gollossary/analysis/__init__.py
 src/gollossary/analysis/term_extractor.py
 src/gollossary/analysis/topic_extractor.py
+src/gollossary/db/__init__.py
+src/gollossary/db/mongo_manager.py
 src/gollossary/export/__init__.py
 src/gollossary/export/json_exporter.py
 src/gollossary/export/mermaid_exporter.py
+src/gollossary/export/mongo_exporter.py
 src/gollossary/generation/__init__.py
 src/gollossary/generation/relation_builder.py
 src/gollossary/ingest/__init__.py
 src/gollossary/ingest/base.py
+src/gollossary/ingest/mongo_loader.py
 src/gollossary/ingest/text_loader.py
 src/gollossary/ingest/transcript_loader.py
 src/gollossary/llm/__init__.py
@@ -28,6 +31,7 @@ src/gollossary/llm/prompts.py
 src/gollossary/models/__init__.py
 src/gollossary/models/mindmap.py
 src/gollossary/models/term.py
+tests/test_chunker.py
 tests/test_export.py
 tests/test_ingest.py
 tests/test_models.py

@@ -7,9 +7,11 @@
 from __future__ import annotations
 
 import logging
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
+import re
 
 from bson import ObjectId
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -18,14 +20,48 @@ from .chunker import LectureChunker
 from .llm_client import LLMClient
 from .prompts import build_lecture_prompt
 
-# sys.path magic не нужен — используем относительный импорт через PYTHONPATH
-import sys, os
+import sys
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 from shared.models import Concept, ConceptRelations, MindMap
 from shared.config import get_settings
 
 logger = logging.getLogger(__name__)
+
+_GOLLOSSARY_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _maybe_debug_save_lecture(
+    settings,
+    content: str,
+    lecture_number: Optional[str],
+    source_id: Optional[str],
+) -> None:
+    """
+    Опционально сохраняет входной текст в DEBUG_LECTURE_DIR для отладки цепочки
+    Node → Python → LLM. Не влияет на обработку.
+    """
+    raw = (settings.debug_lecture_dir or "").strip()
+    if not raw:
+        return
+    try:
+        base = _GOLLOSSARY_ROOT / raw
+        base.mkdir(parents=True, exist_ok=True)
+        safe_src = re.sub(r"[^\w.\-]+", "_", str(source_id or "unknown"))[:80]
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        fname = f"{safe_src}_{ts}.md"
+        path = base / fname
+        header = (
+            f"---\n"
+            f"source_id: {source_id!r}\n"
+            f"lecture_number: {lecture_number!r}\n"
+            f"chars: {len(content)}\n"
+            f"---\n\n"
+        )
+        path.write_text(header + content, encoding="utf-8")
+        logger.info("[processor] Отладка: текст лекции сохранён → %s", path)
+    except OSError as e:
+        logger.warning("[processor] Не удалось записать debug-файл лекции: %s", e)
 
 
 class LectureProcessor:
@@ -66,27 +102,56 @@ class LectureProcessor:
         Returns:
             Сохранённый MindMap-документ с _id
         """
+        total_t0 = time.perf_counter()
         settings = get_settings()
+        backend = settings.llm_backend.lower()
+
+        logger.info(
+            "=" * 60 + "\n"
+            "[processor] СТАРТ обработки лекции\n"
+            "  source_id     : %s\n"
+            "  lecture_number: %s\n"
+            "  language      : %s\n"
+            "  backend       : %s\n"
+            "  chars         : %d",
+            source_id, lecture_number, language, backend, len(content),
+        )
+
+        _maybe_debug_save_lecture(settings, content, lecture_number, source_id)
 
         # 1. Разбиваем на чанки
         chunks = self.chunker.split(content)
-        logger.info("Лекция разбита на %d чанк(ов) (%d символов)", len(chunks), len(content))
+        logger.info(
+            "[processor] Разбивка на чанки: %d чанков | max_chunk_chars=%d | overlap=%d",
+            len(chunks), settings.max_chunk_chars, settings.chunk_overlap_chars,
+        )
+        for i, ch in enumerate(chunks, 1):
+            logger.info("[processor]   Чанк %d/%d: %d символов", i, len(chunks), len(ch))
 
-        # 2. Обрабатываем чанки
+        # 2. Обрабатываем чанки через LLM
         all_concepts: list[Concept] = []
         detected_lecture_number: str = lecture_number or "Лекция"
         detected_topic: str = ""
         detected_description: str = ""
 
         for idx, chunk in enumerate(chunks, 1):
-            logger.info("Обработка чанка %d/%d...", idx, len(chunks))
+            chunk_t0 = time.perf_counter()
+            logger.info(
+                "[processor] ── Чанк %d/%d ── %d символов → отправка в LLM...",
+                idx, len(chunks), len(chunk),
+            )
             prompt = build_lecture_prompt(chunk, language)
 
             try:
                 data = await self.llm.generate_json(prompt)
             except Exception as e:
-                logger.warning("Ошибка LLM для чанка %d: %s", idx, e)
+                logger.warning(
+                    "[processor] ✗ Чанк %d/%d ОШИБКА за %.1f с: %s",
+                    idx, len(chunks), time.perf_counter() - chunk_t0, e,
+                )
                 continue
+
+            chunk_elapsed = time.perf_counter() - chunk_t0
 
             # Номер лекции и тема — берём из первого чанка
             if idx == 1:
@@ -95,24 +160,67 @@ class LectureProcessor:
                 detected_topic = data.get("topic", "")
                 detected_description = data.get("description", "")
 
-            # Понятия из чанка
             raw_concepts = data.get("concepts", [])
+            chunk_ok = 0
+            chunk_skip = 0
+
             for item in raw_concepts:
                 try:
+                    relations_in = item.get("relations", {}) if isinstance(item, dict) else {}
+                    parent_raw = (
+                        relations_in.get("parent")
+                        if isinstance(relations_in, dict)
+                        else None
+                    )
+                    if isinstance(parent_raw, str) and parent_raw.strip().lower() == "null":
+                        parent_raw = None
+
+                    children_raw = (
+                        relations_in.get("children", [])
+                        if isinstance(relations_in, dict)
+                        else []
+                    )
+                    normalized_children: list[str] = []
+                    if isinstance(children_raw, list):
+                        for ch in children_raw:
+                            if ch is None:
+                                continue
+                            ch_str = str(ch).strip()
+                            if ch_str:
+                                normalized_children.append(ch_str)
+                    elif isinstance(children_raw, str):
+                        ch = children_raw.strip()
+                        if ch:
+                            normalized_children = [ch]
+
                     concept = Concept(
                         term=str(item.get("term", "")).strip(),
                         definition=str(item.get("definition", "")).strip(),
                         example=str(item.get("example", "")),
                         image_description=str(item.get("image_description", "")),
                         relations=ConceptRelations(
-                            parent=item.get("relations", {}).get("parent"),
-                            children=item.get("relations", {}).get("children", []),
+                            parent=parent_raw,
+                            children=normalized_children,
                         ),
                     )
                     if concept.term and concept.definition:
                         all_concepts.append(concept)
+                        chunk_ok += 1
+                    else:
+                        chunk_skip += 1
+                        logger.debug(
+                            "[processor] Пропуск пустого понятия: term=%r", item.get("term"),
+                        )
                 except Exception as e:
-                    logger.warning("Пропуск понятия из-за ошибки: %s | %s", e, item)
+                    chunk_skip += 1
+                    logger.warning("[processor] Пропуск понятия из-за ошибки: %s | %s", e, item)
+
+            logger.info(
+                "[processor] ✓ Чанк %d/%d завершён за %.2f с | "
+                "тема=%r | понятий в чанке: +%d (пропущено %d)",
+                idx, len(chunks), chunk_elapsed,
+                data.get("topic", "?"), chunk_ok, chunk_skip,
+            )
 
         # 3. Дедупликация по term.lower()
         seen: set[str] = set()
@@ -123,11 +231,21 @@ class LectureProcessor:
                 seen.add(key)
                 unique_concepts.append(c)
 
+        duplicates_removed = len(all_concepts) - len(unique_concepts)
+        logger.info(
+            "[processor] Дедупликация: %d → %d понятий (убрано дублей: %d)",
+            len(all_concepts), len(unique_concepts), duplicates_removed,
+        )
+
         # 4. Ограничиваем количество
         final_concepts = unique_concepts[:self.max_concepts]
+        if len(unique_concepts) > self.max_concepts:
+            logger.info(
+                "[processor] Обрезано до max_concepts=%d (было %d)",
+                self.max_concepts, len(unique_concepts),
+            )
 
-        # Определяем имя использованной модели
-        backend = settings.llm_backend.lower()
+        # Определяем имя модели
         if backend == "gemini":
             model_used = f"gemini:{settings.gemini_model}"
         else:
@@ -149,11 +267,29 @@ class LectureProcessor:
         # 6. Сохраняем в MongoDB
         collection = settings.collection_name
         doc = mindmap.to_mongo()
+        t_save = time.perf_counter()
         result = await self.db[collection].insert_one(doc)
+        save_elapsed = time.perf_counter() - t_save
         mindmap = mindmap.model_copy(update={"id": str(result.inserted_id)})
 
+        total_elapsed = time.perf_counter() - total_t0
         logger.info(
-            "MindMap сохранён: id=%s, понятий=%d, чанков=%d",
-            str(result.inserted_id), len(final_concepts), len(chunks)
+            "[processor] ✅ ГОТОВО source_id=%s\n"
+            "  MindMap id  : %s\n"
+            "  Тема        : %r\n"
+            "  Понятий     : %d\n"
+            "  Чанков      : %d\n"
+            "  Модель      : %s\n"
+            "  MongoDB save: %.3f с\n"
+            "  Итого       : %.1f с",
+            source_id,
+            str(result.inserted_id),
+            mindmap.topic,
+            len(final_concepts),
+            len(chunks),
+            model_used,
+            save_elapsed,
+            total_elapsed,
         )
+        logger.info("=" * 60)
         return mindmap

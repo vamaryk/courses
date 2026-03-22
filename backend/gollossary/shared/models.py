@@ -6,8 +6,9 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from typing import Annotated, Any, Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_serializer
 from bson import ObjectId
+import uuid
 
 
 # ---------------------------------------------------------------------------
@@ -88,6 +89,71 @@ class ConceptUpdate(BaseModel):
 # MindMap (карта понятий лекции)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Canvas models (визуальный слой — ноды и рёбра на канвасе)
+# ---------------------------------------------------------------------------
+
+class CanvasNode(BaseModel):
+    """Визуальный узел на канвасе (облако понятия)."""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="UUID узла")
+    title: str = Field(min_length=1, max_length=300)
+    description: str = Field(default="")
+    stage: int = Field(default=1, ge=1, description="Номер лекции/этапа")
+    course: str = Field(default="", description="ID курса")
+    themes: list[str] = Field(default_factory=list)
+    x: float = Field(default=100.0)
+    y: float = Field(default=100.0)
+
+    model_config = {"populate_by_name": True}
+
+
+class CanvasNodeCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=300)
+    description: str = Field(default="")
+    stage: int = Field(default=1, ge=1)
+    course: str = Field(default="")
+    themes: list[str] = Field(default_factory=list)
+    x: float = Field(default=100.0)
+    y: float = Field(default=100.0)
+
+
+class CanvasNodeUpdate(BaseModel):
+    title: Optional[str] = Field(default=None, max_length=300)
+    description: Optional[str] = None
+    stage: Optional[int] = None
+    course: Optional[str] = None
+    themes: Optional[list[str]] = None
+    x: Optional[float] = None
+    y: Optional[float] = None
+
+
+class CanvasEdge(BaseModel):
+    """Связь (стрелка) между двумя узлами канваса."""
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), description="UUID ребра")
+    from_node: str = Field(alias="from", description="ID исходного узла")
+    to_node: str = Field(alias="to", description="ID целевого узла")
+
+    model_config = {"populate_by_name": True}
+
+    @model_serializer
+    def _serialize(self) -> dict:
+        """Всегда сериализуем с алиасами `from`/`to` для API-ответов."""
+        return {"id": self.id, "from": self.from_node, "to": self.to_node}
+
+
+class CanvasEdgeCreate(BaseModel):
+    from_node: str = Field(alias="from")
+    to_node: str = Field(alias="to")
+
+    model_config = {"populate_by_name": True}
+
+
+class CanvasData(BaseModel):
+    """Полное состояние канваса — узлы + рёбра."""
+    nodes: list[CanvasNode] = Field(default_factory=list)
+    edges: list[CanvasEdge] = Field(default_factory=list)
+
+
 class MindMap(BaseModel):
     """Результат анализа лекции — карта понятий."""
     id: Optional[PyObjectId] = Field(default=None, alias="_id")
@@ -95,6 +161,8 @@ class MindMap(BaseModel):
     topic: str = Field(min_length=1, description="Центральная тема лекции")
     description: str = Field(default="", description="Краткое описание темы")
     concepts: list[Concept] = Field(default_factory=list)
+    canvas_nodes: list[CanvasNode] = Field(default_factory=list, description="Узлы канваса")
+    canvas_edges: list[CanvasEdge] = Field(default_factory=list, description="Рёбра канваса")
     source_lecture_id: Optional[str] = Field(default=None, description="ID исходной лекции (если из БД)")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
@@ -104,11 +172,12 @@ class MindMap(BaseModel):
     model_config = {"populate_by_name": True}
 
     def to_mongo(self) -> dict:
-        d = self.model_dump(exclude={"id"})
+        d = self.model_dump(exclude={"id"}, by_alias=True)
         if self.id:
             d["_id"] = ObjectId(self.id)
-        # Concepts — вложенные документы без _id на верхнем уровне
         d["concepts"] = [c.to_mongo() for c in self.concepts]
+        d["canvas_nodes"] = [n.model_dump() for n in self.canvas_nodes]
+        d["canvas_edges"] = [e.model_dump(by_alias=True) for e in self.canvas_edges]
         return d
 
 
@@ -119,6 +188,7 @@ class MindMapSummary(BaseModel):
     topic: str
     concept_count: int
     created_at: datetime
+    source_lecture_id: Optional[str] = Field(default=None, description="ID исходной лекции (подглавы) в БД курса")
 
     model_config = {"populate_by_name": True}
 

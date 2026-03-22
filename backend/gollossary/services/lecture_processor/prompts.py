@@ -10,8 +10,55 @@ LANG_SYSTEM: dict[str, str] = {
 }
 
 LANG_JSON_INSTRUCTION: dict[str, str] = {
-    "ru": "Ответь ТОЛЬКО валидным JSON без каких-либо пояснений и markdown.",
-    "en": "Respond ONLY with valid JSON, no explanations, no markdown.",
+    "ru": (
+        "Ответь ТОЛЬКО валидным JSON-объектом: без текста до или после, без markdown, "
+        "без комментариев. Первый символ ответа — «{», последний — «}»."
+    ),
+    "en": (
+        "Respond ONLY with one valid JSON object: no text before/after, no markdown, "
+        "no comments. First character must be «{», last must be «}»."
+    ),
+}
+
+# JSON Schema для LlamaGrammar.from_json_schema (локальная LLM) — структура ответа по чанку лекции
+LECTURE_CHUNK_JSON_SCHEMA: dict = {
+    "type": "object",
+    "properties": {
+        "lecture_number": {"type": "string"},
+        "topic": {"type": "string"},
+        "description": {"type": "string"},
+        "concepts": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "term": {"type": "string"},
+                    "definition": {"type": "string"},
+                    "example": {"type": "string"},
+                    "image_description": {"type": "string"},
+                    "relations": {
+                        "type": "object",
+                        "properties": {
+                            "parent": {"type": ["string", "null"]},
+                            "children": {
+                                "type": "array",
+                                "items": {"type": "string"},
+                            },
+                        },
+                        "required": ["parent", "children"],
+                    },
+                },
+                "required": [
+                    "term",
+                    "definition",
+                    "example",
+                    "image_description",
+                    "relations",
+                ],
+            },
+        },
+    },
+    "required": ["lecture_number", "topic", "description", "concepts"],
 }
 
 # ---------------------------------------------------------------------------

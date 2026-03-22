@@ -19,6 +19,10 @@ const LECTURE_PROCESSOR_URL =
   process.env.GOLLOSSARY_LECTURE_PROCESSOR_URL ||
   'http://127.0.0.1:8001/api/v1/lectures/process';
 
+const LECTURE_PROCESSOR_ASYNC_URL =
+  process.env.GOLLOSSARY_LECTURE_PROCESSOR_ASYNC_URL ||
+  LECTURE_PROCESSOR_URL.replace('/process', '/process-async');
+
 async function getFetch() {
   if (typeof fetch !== 'undefined') {
     return fetch;
@@ -46,7 +50,7 @@ async function sendSubchapterToGollossary(subchapterId) {
     const meta = subchapterResult.rows[0];
     if (!meta) {
       console.warn(`[GOLLOSSARY] Subchapter ${subchapterId} not found, skipping lecture processing`);
-      return;
+      return false;
     }
 
     // Собираем содержимое лекции из content_blocks
@@ -60,7 +64,7 @@ async function sendSubchapterToGollossary(subchapterId) {
 
     if (blocksResult.rows.length === 0) {
       console.warn(`[GOLLOSSARY] No content blocks for subchapter ${subchapterId}, nothing to process`);
-      return;
+      return false;
     }
 
     const title =
@@ -80,7 +84,7 @@ async function sendSubchapterToGollossary(subchapterId) {
       console.warn(
         `[GOLLOSSARY] Aggregated content for subchapter ${subchapterId} is too short, skipping`,
       );
-      return;
+      return false;
     }
 
     const payload = {
@@ -91,7 +95,8 @@ async function sendSubchapterToGollossary(subchapterId) {
     };
 
     const f = await getFetch();
-    const response = await f(LECTURE_PROCESSOR_URL, {
+    // LLM generation can take a long time; use async endpoint to avoid Node-side timeouts.
+    const response = await f(LECTURE_PROCESSOR_ASYNC_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
@@ -102,19 +107,33 @@ async function sendSubchapterToGollossary(subchapterId) {
       console.error(
         `[GOLLOSSARY] Lecture processing failed for subchapter ${subchapterId}: ${response.status} ${response.statusText} ${text.slice(0, 300)}`,
       );
-      return;
+      return false;
     }
 
     const data = await response.json().catch(() => null);
+    const isAsyncQueued =
+      response.status === 202 || data?.accepted === true;
+
+    if (isAsyncQueued) {
+      // /process-async не возвращает mindmap_id — mindmap появится в Mongo после LLM (минуты).
+      console.log(
+        `[GOLLOSSARY] Async OK: подглава ${subchapterId} поставлена в очередь lecture-processor (${LECTURE_PROCESSOR_ASYNC_URL}), ~${payload.content.length} симв. ` +
+          `Mindmap ещё не создан — смотрите логи Python (uvicorn :8001): «Async mindmap: в очереди…», чанки LLM, «Async MindMap сохранён».`,
+      );
+      return true;
+    }
+
     console.log(
-      `[GOLLOSSARY] Mindmap created for subchapter ${subchapterId}:`,
-      data?.mindmap_id || '<no id>',
+      `[GOLLOSSARY] Mindmap сохранён (sync) subchapter ${subchapterId}:`,
+      data?.mindmap_id || JSON.stringify(data),
     );
+    return true;
   } catch (err) {
     console.error(
       `[GOLLOSSARY] Error while sending subchapter ${subchapterId} to lecture-processor:`,
       err.message,
     );
+    return false;
   }
 }
 
@@ -375,7 +394,7 @@ router.get('/', optionalAuthenticateSession, async (req, res) => {
           COALESCE(c.hours_practice, 0) as "hoursPractice",
           COALESCE(c.hours_theory, 0) as "hoursTheory",
           0 as "durationHours",
-          0 as rating,
+          COALESCE((SELECT ROUND(AVG(rating)::numeric, 2) FROM course_ratings WHERE course_id = c.id), 0) as rating,
           COALESCE((SELECT COUNT(*) FROM user_enrollments WHERE course_id = c.id), 0) as "studentsCount",
           COALESCE(p.first_name || ' ' || p.last_name, 'Преподаватель') as instructor_name,
           COALESCE(p.avatar_url, NULL) as instructor_avatar,
@@ -440,7 +459,7 @@ router.get('/', optionalAuthenticateSession, async (req, res) => {
           COALESCE(c.hours_practice, 0) as "hoursPractice",
           COALESCE(c.hours_theory, 0) as "hoursTheory",
           0 as "durationHours",
-          0 as rating,
+          COALESCE((SELECT ROUND(AVG(rating)::numeric, 2) FROM course_ratings WHERE course_id = c.id), 0) as rating,
           COALESCE((SELECT COUNT(*) FROM user_enrollments WHERE course_id = c.id), 0) as "studentsCount",
           COALESCE(p.first_name || ' ' || p.last_name, 'Преподаватель') as instructor_name,
           COALESCE(p.avatar_url, NULL) as instructor_avatar,
@@ -567,6 +586,8 @@ router.get('/:id(\\d+)', optionalAuthenticateSession, async (req, res) => {
       COALESCE(c.price, 0) as price,
       COALESCE(c.hours_practice, 0) as "hoursPractice",
       COALESCE(c.hours_theory, 0) as "hoursTheory",
+      COALESCE((SELECT ROUND(AVG(rating)::numeric, 2) FROM course_ratings WHERE course_id = c.id), 0) as rating,
+      (SELECT rating FROM course_ratings WHERE course_id = c.id AND user_id = $2::uuid LIMIT 1) as my_rating,
       COALESCE((SELECT COUNT(*) FROM user_enrollments ue WHERE ue.course_id = c.id), 0) as "studentsCount",
       EXISTS (
         SELECT 1
@@ -654,6 +675,56 @@ router.get('/:id(\\d+)', optionalAuthenticateSession, async (req, res) => {
   } catch (error) {
     console.error(`Error fetching course ${id}:`, error.message);
     res.status(500).json({ error: 'Failed to fetch course' });
+  }
+});
+
+// POST /api/courses/:id/rate - Rate course (only enrolled users, not author). Body: { rating: 1-5 }
+router.post('/:id(\\d+)/rate', authenticateSession, async (req, res) => {
+  const courseId = parseInt(req.params.id, 10);
+  const userId = req.user.userId;
+  const rating = req.body?.rating != null ? Math.round(Number(req.body.rating)) : null;
+
+  if (!Number.isInteger(courseId) || rating == null || rating < 1 || rating > 5) {
+    return res.status(400).json({ error: 'Rating must be a number from 1 to 5' });
+  }
+
+  try {
+    const courseRow = await pool.query(
+      'SELECT author_id FROM courses WHERE id = $1',
+      [courseId]
+    );
+    if (courseRow.rows.length === 0) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+    if (courseRow.rows[0].author_id === userId) {
+      return res.status(403).json({ error: 'Course author cannot rate their own course' });
+    }
+
+    const enrolled = await pool.query(
+      'SELECT 1 FROM user_enrollments WHERE course_id = $1 AND user_id = $2 LIMIT 1',
+      [courseId, userId]
+    );
+    if (enrolled.rows.length === 0) {
+      return res.status(403).json({ error: 'Only enrolled students can rate this course' });
+    }
+
+    await pool.query(
+      `INSERT INTO course_ratings (user_id, course_id, rating, updated_at)
+       VALUES ($1, $2, $3, now())
+       ON CONFLICT (user_id, course_id)
+       DO UPDATE SET rating = $3, updated_at = now()`,
+      [userId, courseId, rating]
+    );
+
+    const avgResult = await pool.query(
+      'SELECT ROUND(AVG(rating)::numeric, 2) as rating FROM course_ratings WHERE course_id = $1',
+      [courseId]
+    );
+    const newRating = parseFloat(avgResult.rows[0]?.rating) || 0;
+    return res.status(200).json({ rating: newRating, my_rating: rating });
+  } catch (error) {
+    console.error(`Error rating course ${courseId}:`, error.message);
+    return res.status(500).json({ error: 'Failed to save rating' });
   }
 });
 
@@ -1038,6 +1109,147 @@ router.post('/:chapterId/subchapters', authenticateSession, async (req, res) => 
   } catch (error) {
     console.error('Error creating subchapter:', error.message);
     res.status(500).json({ error: 'Failed to create subchapter' });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Gollossary: generate mindmaps for course (only course author)
+// ---------------------------------------------------------------------------
+router.post('/:id(\\d+)/glossary/mindmaps/generate', authenticateSession, async (req, res) => {
+  const courseId = Number(req.params.id);
+  const userId = req.user?.userId;
+
+  if (!Number.isFinite(courseId)) {
+    return res.status(400).json({ error: 'Invalid courseId' });
+  }
+  if (!userId) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  try {
+    const isAuthor = await isCourseAuthor(courseId, userId);
+    if (!isAuthor) {
+      return res.status(403).json({ error: 'Only course owner can generate glossary mindmaps' });
+    }
+
+    const subchaptersResult = await pool.query(
+      `
+        SELECT s.id AS subchapter_id
+        FROM subchapters s
+        JOIN chapters c ON s.chapter_id = c.id
+        WHERE c.course_id = $1
+          AND EXISTS (
+            SELECT 1
+            FROM content_blocks cb
+            WHERE cb.subchapter_id = s.id
+              AND cb.content IS NOT NULL
+              AND cb.content <> ''
+          )
+        ORDER BY s."order" ASC
+      `,
+      [courseId],
+    );
+
+    const subchapterIds = (subchaptersResult.rows || []).map((r) => Number(r.subchapter_id)).filter(Number.isFinite);
+
+    if (!subchapterIds.length) {
+      return res.status(200).json({ started: false, totalSubchapters: 0, processed: 0, failed: 0 });
+    }
+
+    console.log(
+      `[GOLLOSSARY] Старт фоновой отправки ${subchapterIds.length} подглав в Gollossary (async). ` +
+        `URL=${LECTURE_PROCESSOR_ASYNC_URL} | логи генерации — в терминале lecture-processor (порт 8001), не только в Node.`,
+    );
+
+    // Запускаем обработку в фоне, чтобы не держать запрос пока выполняются LLM-вызовы.
+    void (async () => {
+      let processed = 0;
+      let failed = 0;
+      for (const sid of subchapterIds) {
+        const ok = await sendSubchapterToGollossary(sid);
+        if (ok) processed += 1;
+        else failed += 1;
+      }
+      console.log(`[GOLLOSSARY] Generate mindmaps finished: course=${courseId} processed=${processed} failed=${failed}`);
+    })();
+
+    return res.status(202).json({ started: true, totalSubchapters: subchapterIds.length });
+  } catch (e) {
+    console.error(`[GOLLOSSARY] generate mindmaps error course=${courseId}:`, e);
+    return res.status(500).json({ error: 'Failed to generate glossary mindmaps' });
+  }
+});
+
+// Fallback route (without regex constraint) to avoid path-regexp mismatches.
+router.post('/:id/glossary/mindmaps/generate', authenticateSession, async (req, res) => {
+  const courseId = Number(req.params.id);
+  const userId = req.user?.userId;
+
+  if (!Number.isFinite(courseId)) {
+    return res.status(400).json({ error: 'Invalid courseId' });
+  }
+  if (!userId) {
+    return res.status(401).json({ error: 'Authentication required' });
+  }
+
+  try {
+    const isAuthor = await isCourseAuthor(courseId, userId);
+    if (!isAuthor) {
+      return res
+        .status(403)
+        .json({ error: 'Only course owner can generate glossary mindmaps' });
+    }
+
+    const subchaptersResult = await pool.query(
+      `
+        SELECT s.id AS subchapter_id
+        FROM subchapters s
+        JOIN chapters c ON s.chapter_id = c.id
+        WHERE c.course_id = $1
+          AND EXISTS (
+            SELECT 1
+            FROM content_blocks cb
+            WHERE cb.subchapter_id = s.id
+              AND cb.content IS NOT NULL
+              AND cb.content <> ''
+          )
+        ORDER BY s."order" ASC
+      `,
+      [courseId],
+    );
+
+    const subchapterIds = (subchaptersResult.rows || [])
+      .map((r) => Number(r.subchapter_id))
+      .filter(Number.isFinite);
+
+    if (!subchapterIds.length) {
+      return res
+        .status(200)
+        .json({ started: false, totalSubchapters: 0, processed: 0, failed: 0 });
+    }
+
+    console.log(
+      `[GOLLOSSARY] Старт фоновой отправки ${subchapterIds.length} подглав в Gollossary (async). ` +
+        `URL=${LECTURE_PROCESSOR_ASYNC_URL} | логи генерации — в терминале lecture-processor (порт 8001), не только в Node.`,
+    );
+
+    void (async () => {
+      let processed = 0;
+      let failed = 0;
+      for (const sid of subchapterIds) {
+        const ok = await sendSubchapterToGollossary(sid);
+        if (ok) processed += 1;
+        else failed += 1;
+      }
+      console.log(
+        `[GOLLOSSARY] Generate mindmaps finished: course=${courseId} processed=${processed} failed=${failed}`,
+      );
+    })();
+
+    return res.status(202).json({ started: true, totalSubchapters: subchapterIds.length });
+  } catch (e) {
+    console.error(`[GOLLOSSARY] generate mindmaps error course=${courseId}:`, e);
+    return res.status(500).json({ error: 'Failed to generate glossary mindmaps' });
   }
 });
 

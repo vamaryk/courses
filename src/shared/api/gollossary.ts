@@ -21,6 +21,7 @@ export interface MindMapSummary {
   topic: string;
   concept_count: number;
   created_at: string;
+  source_lecture_id?: string | null;
 }
 
 export interface MindMapFull {
@@ -77,6 +78,112 @@ export async function createConcept(
     throw new Error(
       `Failed to create concept: ${res.status} ${res.statusText} ${text}`,
     );
+  }
+  return res.json();
+}
+
+export interface UpdateConceptPayload {
+  term?: string;
+  definition?: string;
+  example?: string;
+  image_description?: string;
+  relations?: GollossaryConceptRelations;
+}
+
+export async function updateConcept(
+  mindmapId: string,
+  conceptIndex: number,
+  payload: UpdateConceptPayload,
+): Promise<MindMapFull> {
+  const res = await fetch(
+    `${GOLLOSSARY_API_URL}/api/v1/mindmaps/${mindmapId}/concepts/${conceptIndex}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(
+      `Failed to update concept: ${res.status} ${res.statusText} ${text}`,
+    );
+  }
+  return res.json();
+}
+
+export async function deleteConcept(
+  mindmapId: string,
+  conceptIndex: number,
+): Promise<MindMapFull> {
+  const res = await fetch(
+    `${GOLLOSSARY_API_URL}/api/v1/mindmaps/${mindmapId}/concepts/${conceptIndex}`,
+    {
+      method: "DELETE",
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(
+      `Failed to delete concept: ${res.status} ${res.statusText} ${text}`,
+    );
+  }
+  return res.json();
+}
+
+// ---------------------------------------------------------------------------
+// Canvas edges API
+// ---------------------------------------------------------------------------
+
+export interface CanvasEdgeData {
+  id: string;
+  from: string;
+  to: string;
+}
+
+export interface CanvasData {
+  nodes: unknown[];
+  edges: CanvasEdgeData[];
+}
+
+export async function fetchCanvasEdges(mindmapId: string): Promise<CanvasEdgeData[]> {
+  const res = await fetch(`${GOLLOSSARY_API_URL}/api/v1/mindmaps/${mindmapId}/canvas`);
+  if (!res.ok) return [];
+  const data: CanvasData = await res.json();
+  return data.edges ?? [];
+}
+
+export async function createCanvasEdge(
+  mindmapId: string,
+  from: string,
+  to: string,
+): Promise<CanvasData> {
+  const res = await fetch(
+    `${GOLLOSSARY_API_URL}/api/v1/mindmaps/${mindmapId}/canvas/edges`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ from, to }),
+    },
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Failed to create canvas edge: ${res.status} ${text}`);
+  }
+  return res.json();
+}
+
+export async function deleteCanvasEdge(
+  mindmapId: string,
+  edgeId: string,
+): Promise<CanvasData> {
+  const res = await fetch(
+    `${GOLLOSSARY_API_URL}/api/v1/mindmaps/${mindmapId}/canvas/edges/${edgeId}`,
+    { method: "DELETE" },
+  );
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Failed to delete canvas edge: ${res.status} ${text}`);
   }
   return res.json();
 }

@@ -23,9 +23,47 @@ dist-ssr
 *.sln
 *.sw?
 
-# Environment files
-.env
-.env.*.local
+# Environment: ignore real secrets; keep only example templates tracked
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.*.example
+
+# Node / package manager caches
+.npm
+.pnpm-store
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+
+# Python caches & tooling
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+*.egg
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.hypothesis/
+.coverage
+htmlcov/
+.tox/
+.nox/
+venv/
+.venv/
+ENV/
+pip-log.txt
+
+# GGUF model weights only (not the whole models/ directory)
+*.gguf
+
+# Generated / debug dumps (lecture markdown, etc.)
+**/data/debug/
 
 # Backend data (uploads, chats, courses, etc.)
 backend/data/

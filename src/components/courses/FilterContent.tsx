@@ -237,23 +237,27 @@ const FilterContent: React.FC<FilterContentProps> = ({
               </div>
             </div>
           )}
-          renderThumb={({ props }) => (
-            <div
-              {...props}
-              style={{
-                ...props.style,
-                height: '14px',
-                width: '14px',
-                borderRadius: '50%',
-                backgroundColor: '#FFF',
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                boxShadow: '0px 2px 6px #AAA',
-                border: '2px solid #B291FF',
-              }}
-            />
-          )}
+          renderThumb={({ props: thumbProps }) => {
+            const { key, style, ...rest } = thumbProps;
+            return (
+              <div
+                key={key}
+                {...rest}
+                style={{
+                  ...style,
+                  height: '14px',
+                  width: '14px',
+                  borderRadius: '50%',
+                  backgroundColor: '#FFF',
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  boxShadow: '0px 2px 6px #AAA',
+                  border: '2px solid #B291FF',
+                }}
+              />
+            );
+          }}
         />
       </div>
       <div className="flex justify-between text-xs sm:text-sm text-gray-600 mt-2">
@@ -325,23 +329,27 @@ const FilterContent: React.FC<FilterContentProps> = ({
               </div>
             </div>
           )}
-          renderThumb={({ props }) => (
-            <div
-              {...props}
-              style={{
-                ...props.style,
-                height: '14px',
-                width: '14px',
-                borderRadius: '50%',
-                backgroundColor: '#FFF',
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                boxShadow: '0px 2px 6px #AAA',
-                border: '2px solid #B291FF',
-              }}
-            />
-          )}
+          renderThumb={({ props: thumbProps }) => {
+            const { key, style, ...rest } = thumbProps;
+            return (
+              <div
+                key={key}
+                {...rest}
+                style={{
+                  ...style,
+                  height: '14px',
+                  width: '14px',
+                  borderRadius: '50%',
+                  backgroundColor: '#FFF',
+                  display: 'flex',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  boxShadow: '0px 2px 6px #AAA',
+                  border: '2px solid #B291FF',
+                }}
+              />
+            );
+          }}
         />
       </div>
       <div className="flex justify-between text-xs sm:text-sm text-gray-600 mt-2">

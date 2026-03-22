@@ -1,7 +1,7 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect, useState, useRef } from 'react';
 import { coursesApi, type Course, type Chapter, type Subchapter, type ContentBlock } from '@/shared/api/courses';
-import { getCoverImageUrl } from '@/shared/utils/courseTransform';
+import { getCoverImageUrl, resolveProfileMediaUrl } from '@/shared/utils/courseTransform';
 import HeroHeader from "@/components/dashboard/HeroHeader";
 // import CourseProgress from "@/components/dashboard/CourseProgress";
 import CourseModules from "@/components/dashboard/CourseModules";
@@ -9,7 +9,7 @@ import ActivitySection from "@/components/dashboard/ActivitySection";
 import AboutCourse from "@/components/dashboard/AboutCourse";
 import ResumeSection from "@/components/dashboard/ResumeSection";
 import { Button } from "@/components/ui/button";
-import { Edit } from "lucide-react";
+import { Edit, Star } from "lucide-react";
 import { useAuth } from "@/app/providers/AuthProvider";
 import { progressApi } from '@/shared/api/progress';
 
@@ -43,6 +43,10 @@ export default function CourseDetailPage() {
   } | null>(null);
   // Реальный процент прогресса по курсу
   const [progressPercentage, setProgressPercentage] = useState<number>(0);
+  // Рейтинг курса и оценка текущего пользователя (для блока "Оценить курс")
+  const [courseRating, setCourseRating] = useState<number | null>(null);
+  const [myRating, setMyRating] = useState<number | null>(null);
+  const [ratingSubmitting, setRatingSubmitting] = useState(false);
   
   // Track time spent on page
   const pageLoadTime = useRef<number>(Date.now());
@@ -50,6 +54,8 @@ export default function CourseDetailPage() {
 
   // Check if current user is the author of the course
   const isAuthor = course && user && course.author_id && user.id && course.author_id === user.id;
+  const isEnrolled = Boolean(course?.is_enrolled);
+  const canRate = isAuthenticated && isEnrolled && !isAuthor;
 
   useEffect(() => {
     const fetchCourse = async () => {
@@ -83,6 +89,8 @@ export default function CourseDetailPage() {
           totalLessons,
           totalDuration
         });
+        setCourseRating(courseData.rating != null ? Number(courseData.rating) : null);
+        setMyRating(courseData.my_rating != null ? Number(courseData.my_rating) : null);
       } catch (err) {
         console.error('Error fetching course:', err);
         setError('Не удалось загрузить информацию о курсе');
@@ -248,11 +256,14 @@ export default function CourseDetailPage() {
             courseTitle={course.title}
             courseDescription={course.description || ''}
             authorName={course.instructor_name || course.author?.name || 'Неизвестный автор'}
+            authorAvatar={resolveProfileMediaUrl(course.instructor_avatar) ?? null}
             coverImage={getCoverImageUrl(course.cover_image)}
             price={Number.isFinite(numericPrice) ? numericPrice : 0}
+            rating={course.rating != null ? Number(course.rating) : undefined}
             stats={stats}
             tags={tags}
             progress={progressPercentage}
+            onAuthorClick={course.author_id ? () => navigate(`/profile/${course.author_id}`) : undefined}
           />
           <div className="bg-white rounded-xl shadow p-5">
           {/* Main grid layout */}
@@ -271,6 +282,46 @@ export default function CourseDetailPage() {
             
             {/* Right column - Activity & About */}
             <div className="lg:col-span-2">
+              {canRate && (
+                <div className="mb-6 p-4 rounded-xl border border-gray-200 bg-gray-50/50">
+                  <h3 className="text-sm font-semibold text-foreground mb-2">Оценить курс</h3>
+                  <p className="text-xs text-muted-foreground mb-3">Вы записаны на курс. Поставьте оценку от 1 до 5.</p>
+                  <div className="flex items-center gap-1">
+                    {[1, 2, 3, 4, 5].map((value) => (
+                      <button
+                        key={value}
+                        type="button"
+                        disabled={ratingSubmitting}
+                        onClick={async () => {
+                          if (!id) return;
+                          setRatingSubmitting(true);
+                          try {
+                            const res = await coursesApi.rateCourse(parseInt(id, 10), value);
+                            setMyRating(value);
+                            setCourseRating(res.rating);
+                            setCourse((prev) => prev ? { ...prev, rating: res.rating, my_rating: value } : null);
+                          } catch (err) {
+                            console.error('Failed to rate course:', err);
+                          } finally {
+                            setRatingSubmitting(false);
+                          }
+                        }}
+                        className="p-1 rounded hover:bg-amber-100 transition-colors disabled:opacity-50"
+                        aria-label={`Оценка ${value}`}
+                      >
+                        <Star
+                          className={`w-8 h-8 transition-colors ${
+                            (myRating ?? 0) >= value ? 'text-amber-500 fill-amber-500' : 'text-gray-300'
+                          }`}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                  {(myRating != null && myRating > 0) && (
+                    <p className="text-xs text-muted-foreground mt-2">Ваша оценка: {myRating}</p>
+                  )}
+                </div>
+              )}
               <ActivitySection 
                 activityStats={activityData ? [
                   { value: activityData.stats.today, label: "сегодня" },
