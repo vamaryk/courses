@@ -43,6 +43,10 @@ export interface GroupMessage {
   reply_to_id?: string | null;
   reply_to_text?: string | null;
   reply_to_sender?: string | null;
+  forward_from_name?: string | null;
+  forward_original_text?: string | null;
+  forward_media_url?: string | null;
+  forward_media_type?: 'image' | 'video' | null;
 }
 
 export const groupsApi = {

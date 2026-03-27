@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import { friendsApi, type DirectMessage } from '@/shared/api/friends';
+import type { ForwardInfo } from '@/hooks/useChat';
 
 export interface ReplyInfo {
   id: string;
@@ -11,7 +12,9 @@ export interface ReplyInfo {
 export interface UseDirectMessagesReturn {
   messages: DirectMessage[];
   loading: boolean;
-  sendMessage: (text: string, replyTo?: ReplyInfo) => void;
+  sendMessage: (text: string, replyTo?: ReplyInfo, forwardFrom?: ForwardInfo) => void;
+  /** Отправить в личку конкретному пользователю (без смены активного чата), в т.ч. пересылку */
+  sendMessageTo: (receiverId: string, text: string, replyTo?: ReplyInfo, forwardFrom?: ForwardInfo) => void;
   sendMedia: (file: File, caption?: string) => Promise<void>;
   editMessage: (messageId: string, text: string) => void;
   deleteMessage: (messageId: string) => void;
@@ -161,20 +164,52 @@ export function useDirectMessages(
     }
   }, [loading]);
 
-  const sendMessage = useCallback(
-    (text: string, replyTo?: ReplyInfo) => {
-      if (!socket || !activeFriendRef.current || !text.trim()) return;
+  const emitDm = useCallback(
+    (
+      receiverId: string,
+      trimmed: string,
+      replyTo?: ReplyInfo,
+      forwardFrom?: ForwardInfo,
+    ) => {
+      if (!socket) return;
+      const hasForward = Boolean(
+        forwardFrom?.senderName && (forwardFrom.text?.trim() || (forwardFrom.mediaUrl && forwardFrom.mediaType)),
+      );
+      if (!trimmed && !hasForward) return;
+
       socket.emit('dm:send', {
-        receiverId: activeFriendRef.current,
-        text: text.trim(),
+        receiverId,
+        text: trimmed,
         ...(replyTo && {
           replyToId: replyTo.id,
           replyToText: replyTo.text,
           replyToSender: replyTo.senderName,
         }),
+        ...(hasForward && forwardFrom && {
+          forwardFromName: forwardFrom.senderName,
+          forwardOriginalText: forwardFrom.text || '',
+          forwardMediaUrl: forwardFrom.mediaUrl ?? null,
+          forwardMediaType: forwardFrom.mediaType ?? null,
+        }),
       });
     },
     [socket],
+  );
+
+  const sendMessage = useCallback(
+    (text: string, replyTo?: ReplyInfo, forwardFrom?: ForwardInfo) => {
+      if (!activeFriendRef.current) return;
+      emitDm(activeFriendRef.current, text.trim(), replyTo, forwardFrom);
+    },
+    [emitDm],
+  );
+
+  const sendMessageTo = useCallback(
+    (receiverId: string, text: string, replyTo?: ReplyInfo, forwardFrom?: ForwardInfo) => {
+      if (!receiverId) return;
+      emitDm(receiverId, text.trim(), replyTo, forwardFrom);
+    },
+    [emitDm],
   );
 
   const sendMedia = useCallback(
@@ -228,6 +263,7 @@ export function useDirectMessages(
     messages,
     loading,
     sendMessage,
+    sendMessageTo,
     sendMedia,
     editMessage,
     deleteMessage,

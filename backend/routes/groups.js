@@ -190,6 +190,10 @@ router.get('/:groupId/messages', authenticateSession, async (req, res) => {
         reply_to_id: doc.reply_to_id ?? null,
         reply_to_text: doc.reply_to_text ?? null,
         reply_to_sender: doc.reply_to_sender ?? null,
+        forward_from_name: doc.forward_from_name ?? null,
+        forward_original_text: doc.forward_original_text ?? null,
+        forward_media_url: doc.forward_media_url ?? null,
+        forward_media_type: doc.forward_media_type ?? null,
       };
     });
 

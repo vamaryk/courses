@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import { groupsApi, type GroupChat, type GroupMessage } from '@/shared/api/groups';
+import type { ForwardInfo } from '@/hooks/useChat';
 
 export interface ReplyInfo {
   id: string;
@@ -15,7 +16,9 @@ export interface UseGroupChatReturn {
   loading: boolean;
   setActiveGroupId: (id: number | null) => void;
   loadHistory: (groupId: number) => Promise<void>;
-  sendMessage: (text: string, replyTo?: ReplyInfo) => void;
+  sendMessage: (text: string, replyTo?: ReplyInfo, forwardFrom?: ForwardInfo) => void;
+  /** Отправить в указанную группу без смены активного чата */
+  sendMessageToGroup: (groupId: number, text: string, replyTo?: ReplyInfo, forwardFrom?: ForwardInfo) => void;
   sendMedia: (file: File, caption?: string) => Promise<void>;
   editMessage: (messageId: string, text: string) => void;
   deleteMessage: (messageId: string) => void;
@@ -97,9 +100,13 @@ export function useGroupChat(socket: Socket | null): UseGroupChatReturn {
           const isOpen = activeGroupRef.current === msg.group_id;
           const isMine = msg.sender_id === dbUserIdRef.current;
 
+          const lastPreview =
+            msg.text?.trim()
+            || (msg.forward_from_name ? `Переслано от ${msg.forward_from_name}` : '')
+            || (msg.media_url ? 'Медиа' : '');
           return {
             ...g,
-            last_message: msg.text,
+            last_message: lastPreview,
             last_message_at: msg.created_at,
             unread_count: isOpen || isMine ? 0 : (g.unread_count ?? 0) + 1,
           };
@@ -143,20 +150,46 @@ export function useGroupChat(socket: Socket | null): UseGroupChatReturn {
     }
   }, [socket]);
 
-  const sendMessage = useCallback(
-    (text: string, replyTo?: ReplyInfo) => {
-      if (!socket || !activeGroupRef.current || !text.trim()) return;
+  const emitGroup = useCallback(
+    (groupId: number, trimmed: string, replyTo?: ReplyInfo, forwardFrom?: ForwardInfo) => {
+      if (!socket) return;
+      const hasForward = Boolean(
+        forwardFrom?.senderName && (forwardFrom.text?.trim() || (forwardFrom.mediaUrl && forwardFrom.mediaType)),
+      );
+      if (!trimmed && !hasForward) return;
+
       socket.emit('group:send', {
-        groupId: activeGroupRef.current,
-        text: text.trim(),
+        groupId,
+        text: trimmed,
         ...(replyTo && {
           replyToId: replyTo.id,
           replyToText: replyTo.text,
           replyToSender: replyTo.senderName,
         }),
+        ...(hasForward && forwardFrom && {
+          forwardFromName: forwardFrom.senderName,
+          forwardOriginalText: forwardFrom.text || '',
+          forwardMediaUrl: forwardFrom.mediaUrl ?? null,
+          forwardMediaType: forwardFrom.mediaType ?? null,
+        }),
       });
     },
     [socket],
+  );
+
+  const sendMessage = useCallback(
+    (text: string, replyTo?: ReplyInfo, forwardFrom?: ForwardInfo) => {
+      if (!activeGroupRef.current) return;
+      emitGroup(activeGroupRef.current, text.trim(), replyTo, forwardFrom);
+    },
+    [emitGroup],
+  );
+
+  const sendMessageToGroup = useCallback(
+    (groupId: number, text: string, replyTo?: ReplyInfo, forwardFrom?: ForwardInfo) => {
+      emitGroup(groupId, text.trim(), replyTo, forwardFrom);
+    },
+    [emitGroup],
   );
 
   const sendMedia = useCallback(
@@ -221,6 +254,7 @@ export function useGroupChat(socket: Socket | null): UseGroupChatReturn {
     setActiveGroupId,
     loadHistory,
     sendMessage,
+    sendMessageToGroup,
     sendMedia,
     editMessage,
     deleteMessage,

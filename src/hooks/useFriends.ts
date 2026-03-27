@@ -98,7 +98,10 @@ export function useFriends(socket: Socket | null): UseFriendsReturn {
   const updateRecentChat = useCallback(
     (msg: DirectMessage, myId: string | null, activeFriendId: string | null) => {
       const friendId = msg.sender_id === myId ? msg.receiver_id : msg.sender_id;
-      const previewText = msg.text || (msg.media_type ? 'Медиа' : '');
+      const previewText =
+        msg.text?.trim()
+        || (msg.forward_from_name ? `Переслано от ${msg.forward_from_name}` : '')
+        || (msg.media_type ? 'Медиа' : '');
 
       setRecentChats((prev) => {
         const existing = prev.find((c) => c.friend_id === friendId);

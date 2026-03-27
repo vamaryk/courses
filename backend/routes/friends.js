@@ -464,6 +464,10 @@ router.get('/messages/:friendId', authenticateSession, async (req, res) => {
       reply_to_id: doc.reply_to_id ?? null,
       reply_to_text: doc.reply_to_text ?? null,
       reply_to_sender: doc.reply_to_sender ?? null,
+      forward_from_name: doc.forward_from_name ?? null,
+      forward_original_text: doc.forward_original_text ?? null,
+      forward_media_url: doc.forward_media_url ?? null,
+      forward_media_type: doc.forward_media_type ?? null,
     }));
 
     // Mark unread messages as read
@@ -504,12 +508,16 @@ router.get('/recent-chats', authenticateSession, async (req, res) => {
       ]);
 
       if (!lastDoc) return null;
+      const previewForward = lastDoc.forward_from_name
+        ? `Переслано от ${lastDoc.forward_from_name}`
+        : '';
+      const previewText = lastDoc.message?.trim() || (lastDoc.media_id ? 'Медиа' : '');
       return {
         friend_id: friend.id,
         first_name: friend.first_name,
         last_name: friend.last_name,
         avatar_url: friend.avatar_url,
-        last_message: lastDoc.message || (lastDoc.media_id ? 'Медиа' : ''),
+        last_message: previewText || previewForward || '',
         last_message_at: new Date(lastDoc.sended_time || Date.now()).toISOString(),
         last_sender_id: lastDoc.id_user,
         unread_count: unreadCount,

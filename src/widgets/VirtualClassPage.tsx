@@ -33,6 +33,8 @@ import ChatArea from '@/components/virtual-class/ChatArea';
 import RecentChats from '@/components/virtual-class/RecentChats';
 import AddFriendModal from '@/components/virtual-class/AddFriendModal';
 import CreateGroupModal from '@/components/virtual-class/CreateGroupModal';
+import ForwardMessageModal, { type ForwardPickDestination } from '@/components/virtual-class/ForwardMessageModal';
+import type { ForwardInfo } from '@/hooks/useChat';
 
 const RemoteAudio = memo(function RemoteAudio({ stream }: { stream: MediaStream }) {
   const ref = useRef<HTMLAudioElement>(null);
@@ -113,6 +115,9 @@ export default function VirtualClassPage() {
   const [copied, setCopied] = useState(false);
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [forwardModalSnapshot, setForwardModalSnapshot] = useState<ForwardInfo | null>(null);
+  const [pendingForward, setPendingForward] = useState<ForwardInfo | null>(null);
+  const forwardSnapshotRef = useRef<ForwardInfo | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('room');
 
   const formatCallDuration = (secs: number) => {
@@ -150,6 +155,7 @@ export default function VirtualClassPage() {
   const activeGroup = groups.find((g) => g.id === activeGroupId);
 
   const handleSelectFriend = useCallback((friendId: string) => {
+    setPendingForward(null);
     setViewMode('dm');
     setActiveGroupId(null);
     setActiveFriendId(friendId);
@@ -158,6 +164,7 @@ export default function VirtualClassPage() {
   }, [setActiveFriendId, setActiveGroupId, loadDmHistory, clearUnread]);
 
   const handleSelectGroup = useCallback((groupId: number) => {
+    setPendingForward(null);
     setViewMode('group');
     setActiveFriendId(null);
     setActiveGroupId(groupId);
@@ -183,10 +190,64 @@ export default function VirtualClassPage() {
   }, [searchParams, friends, recentChats, handleSelectFriend, setSearchParams]);
 
   const handleRoomMode = useCallback(() => {
+    setPendingForward(null);
     setViewMode('room');
     setActiveFriendId(null);
     setActiveGroupId(null);
   }, [setActiveFriendId, setActiveGroupId]);
+
+  const handleForwardSnapshot = useCallback((snapshot: ForwardInfo) => {
+    setPendingForward(null);
+    forwardSnapshotRef.current = snapshot;
+    setForwardModalSnapshot(snapshot);
+  }, []);
+
+  const handlePickForwardDestination = useCallback(
+    (dest: ForwardPickDestination) => {
+      const snap = forwardSnapshotRef.current;
+      if (!snap) return;
+      forwardSnapshotRef.current = null;
+      setForwardModalSnapshot(null);
+      if (dest.type === 'dm') {
+        setViewMode('dm');
+        setActiveGroupId(null);
+        setActiveFriendId(dest.friendId);
+        void loadDmHistory(dest.friendId);
+        clearUnread(dest.friendId);
+      } else {
+        setViewMode('group');
+        setActiveFriendId(null);
+        setActiveGroupId(dest.groupId);
+        void loadGroupHistory(dest.groupId);
+        clearGroupUnread(dest.groupId);
+      }
+      setPendingForward(snap);
+    },
+    [
+      loadDmHistory,
+      loadGroupHistory,
+      clearUnread,
+      clearGroupUnread,
+      setActiveFriendId,
+      setActiveGroupId,
+    ],
+  );
+
+  const sendDmComposed = useCallback<typeof sendDm>(
+    (text, reply, forward) => {
+      sendDm(text, reply, forward);
+      if (forward) setPendingForward(null);
+    },
+    [sendDm],
+  );
+
+  const sendGroupComposed = useCallback<typeof sendGroupMsg>(
+    (text, reply, forward) => {
+      sendGroupMsg(text, reply, forward);
+      if (forward) setPendingForward(null);
+    },
+    [sendGroupMsg],
+  );
 
   const handleCopyId = () => {
     if (!userId) return;
@@ -288,6 +349,7 @@ export default function VirtualClassPage() {
                   onToggleMute={toggleMute}
                   onSend={sendRoomMessage} onSendMedia={sendRoomMedia}
                   onEditMessage={editRoomMessage} onDeleteMessage={deleteRoomMessage}
+                  onForwardSnapshot={handleForwardSnapshot}
                   status={status} />
               </div>
             </div>
@@ -302,10 +364,12 @@ export default function VirtualClassPage() {
               currentUserId={dbUserId}
               loading={dmLoading}
               isConnected={isConnected}
-              onSend={sendDm}
+              onSend={sendDmComposed}
               onSendMedia={sendDmMedia}
               onEditMessage={editDmMessage}
               onDeleteMessage={deleteDmMessage}
+              pendingForward={pendingForward}
+              onCancelPendingForward={() => setPendingForward(null)}
               onHeaderClick={() => {
                 if (activeFriendId) {
                   navigate(`/profile/${activeFriendId}`);
@@ -321,14 +385,18 @@ export default function VirtualClassPage() {
                     }
                   : undefined
               }
+              onForwardSnapshot={handleForwardSnapshot}
             />
           )}
 
           {viewMode === 'group' && activeGroup && (
             <ChatArea mode="group" groupName={activeGroup.name} memberCount={activeGroup.member_count}
               inviteToken={activeGroup.invite_token} messages={groupMessages} currentUserId={dbUserId}
-              loading={groupLoading} isConnected={isConnected} onSend={sendGroupMsg} onSendMedia={sendGroupMedia}
-              onEditMessage={editGroupMessage} onDeleteMessage={deleteGroupMessage} />
+              loading={groupLoading} isConnected={isConnected} onSend={sendGroupComposed} onSendMedia={sendGroupMedia}
+              onEditMessage={editGroupMessage} onDeleteMessage={deleteGroupMessage}
+              pendingForward={pendingForward}
+              onCancelPendingForward={() => setPendingForward(null)}
+              onForwardSnapshot={handleForwardSnapshot} />
           )}
         </div>
 
@@ -473,6 +541,23 @@ export default function VirtualClassPage() {
           handleSelectGroup(groupId);
         }}
       />
+
+      {forwardModalSnapshot && (
+        <ForwardMessageModal
+          open
+          snapshot={forwardModalSnapshot}
+          onClose={() => {
+            forwardSnapshotRef.current = null;
+            setForwardModalSnapshot(null);
+          }}
+          friends={friends}
+          recentChats={recentChats}
+          groups={groups}
+          excludeDmFriendId={viewMode === 'dm' ? activeFriendId : null}
+          excludeGroupId={viewMode === 'group' ? activeGroupId : null}
+          onPickDestination={handlePickForwardDestination}
+        />
+      )}
     </div>
   );
 }

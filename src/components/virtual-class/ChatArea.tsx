@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import {
   Check,
   Copy,
@@ -8,6 +8,7 @@ import {
   Pencil,
   Phone,
   Plus,
+  Forward,
   Reply,
   Send,
   Trash2,
@@ -15,7 +16,7 @@ import {
   WifiOff,
   X,
 } from 'lucide-react';
-import type { ChatMessage } from '@/hooks/useChat';
+import type { ChatMessage, ForwardInfo } from '@/hooks/useChat';
 import type { ReplyInfo as DmReplyInfo } from '@/hooks/useDirectMessages';
 import type { ReplyInfo as GroupReplyInfo } from '@/hooks/useGroupChat';
 import type { NetworkStatus } from '@/hooks/useWebRTC';
@@ -36,10 +37,11 @@ interface RoomChatProps {
   onStartVoice: () => void;
   onStopVoice: () => void;
   onToggleMute: () => void;
-  onSend: (text: string, replyTo?: ReplyInfo) => void;
+  onSend: (text: string, replyTo?: ReplyInfo, forwardFrom?: ForwardInfo) => void;
   onSendMedia: (file: File, caption?: string) => Promise<void>;
   onEditMessage: (messageId: string, text: string) => void;
   onDeleteMessage: (messageId: string) => void;
+  onForwardSnapshot?: (snapshot: ForwardInfo) => void;
   status: 'idle' | 'waiting' | 'connected';
 }
 
@@ -51,10 +53,14 @@ interface DirectChatProps {
   currentUserId: string | null;
   loading: boolean;
   isConnected?: boolean;
-  onSend: (text: string, replyTo?: ReplyInfo) => void;
+  onSend: (text: string, replyTo?: ReplyInfo, forwardFrom?: ForwardInfo) => void;
   onSendMedia: (file: File, caption?: string) => Promise<void>;
   onEditMessage: (messageId: string, text: string) => void;
   onDeleteMessage: (messageId: string) => void;
+  onForwardSnapshot?: (snapshot: ForwardInfo) => void;
+  /** Черновик пересылки над полем ввода (после выбора чата в модалке) */
+  pendingForward?: ForwardInfo | null;
+  onCancelPendingForward?: () => void;
   onHeaderClick?: () => void;
   /** Trigger a direct audio call to this friend */
   onStartCall?: () => void;
@@ -69,10 +75,13 @@ interface GroupChatProps {
   currentUserId: string | null;
   loading: boolean;
   isConnected?: boolean;
-  onSend: (text: string, replyTo?: ReplyInfo) => void;
+  onSend: (text: string, replyTo?: ReplyInfo, forwardFrom?: ForwardInfo) => void;
   onSendMedia: (file: File, caption?: string) => Promise<void>;
   onEditMessage: (messageId: string, text: string) => void;
   onDeleteMessage: (messageId: string) => void;
+  onForwardSnapshot?: (snapshot: ForwardInfo) => void;
+  pendingForward?: ForwardInfo | null;
+  onCancelPendingForward?: () => void;
 }
 
 type Props = RoomChatProps | DirectChatProps | GroupChatProps;
@@ -123,6 +132,78 @@ function QuotedBlock({
   );
 }
 
+/** Telegram-style «Переслано от …» block with nested text/media snapshot. */
+function ForwardedBlock({
+  forwardFromName,
+  innerText,
+  mediaUrl,
+  mediaType,
+  isMine,
+  renderMediaFn,
+}: {
+  forwardFromName: string;
+  innerText?: string | null;
+  mediaUrl?: string | null;
+  mediaType?: string | null;
+  isMine: boolean;
+  renderMediaFn: (mediaUrl?: string | null, mediaType?: string | null) => ReactNode;
+}) {
+  return (
+    <div
+      className={`mb-1 overflow-hidden rounded-lg text-left ${
+        isMine ? 'bg-white/15' : 'bg-gray-200/80'
+      }`}
+    >
+      <div className={`flex items-center gap-1.5 px-2.5 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide ${isMine ? 'text-white/70' : 'text-gray-500'}`}>
+        <Forward className="h-3 w-3 shrink-0 opacity-80" aria-hidden />
+        <span>Переслано от</span>
+        <span className={`truncate ${isMine ? 'text-white' : 'text-purple'}`}>{forwardFromName}</span>
+      </div>
+      <div className={`px-2.5 pb-2 ${isMine ? 'text-white/95' : 'text-gray-800'}`}>
+        {innerText?.trim() ? (
+          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{innerText}</p>
+        ) : null}
+        {renderMediaFn(mediaUrl, mediaType)}
+      </div>
+    </div>
+  );
+}
+
+function buildForwardSnapshotFromMsg(
+  item: {
+    rawMsg: ChatMessage | DirectMessage | GroupMessage;
+    senderLabel?: string;
+    isMine: boolean;
+  },
+  resolvedSender: string,
+): ForwardInfo {
+  const msg = item.rawMsg;
+  const author =
+    ('forward_from_name' in msg && msg.forward_from_name) ||
+    resolvedSender ||
+    'Неизвестно';
+  const textLines = [msg.text?.trim(), msg.forward_original_text?.trim()].filter(Boolean) as string[];
+  const combinedText = textLines.join('\n\n');
+  let mediaUrl: string | null | undefined;
+  let mediaType: string | null | undefined;
+  if ('forward_media_url' in msg && msg.forward_media_url) {
+    mediaUrl = msg.forward_media_url;
+    mediaType = msg.forward_media_type ?? undefined;
+  } else if ('media_url' in msg && msg.media_url) {
+    mediaUrl = msg.media_url;
+    mediaType = msg.media_type ?? undefined;
+  } else if ('mediaUrl' in msg && msg.mediaUrl) {
+    mediaUrl = msg.mediaUrl;
+    mediaType = msg.mediaType ?? undefined;
+  }
+  return {
+    senderName: author,
+    text: combinedText || '',
+    mediaUrl: mediaUrl ?? null,
+    mediaType: mediaType === 'image' || mediaType === 'video' ? mediaType : undefined,
+  };
+}
+
 export default function ChatArea(props: Props) {
   const [inputText, setInputText] = useState('');
   const [linkCopied, setLinkCopied] = useState(false);
@@ -133,7 +214,7 @@ export default function ChatArea(props: Props) {
   const [highlightedId, setHighlightedId] = useState<string | null>(null);
   const [showGallery, setShowGallery] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  type CtxMenu = { x: number; y: number; msgId: string; isMine: boolean; text: string; senderName: string };
+  type CtxMenu = { x: number; y: number; msgId: string; isMine: boolean; text: string; senderName: string; snapshot: ForwardInfo };
   const [contextMenu, setContextMenu] = useState<CtxMenu | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -173,10 +254,20 @@ export default function ChatArea(props: Props) {
     setTimeout(() => setHighlightedId(null), 1500);
   }, []);
 
+  const forwardSnapshotValid = (f: ForwardInfo | null) =>
+    Boolean(
+      f?.senderName &&
+        (f.text?.trim() || (f.mediaUrl && f.mediaType)),
+    );
+
+  const pendingForwardCompose =
+    'pendingForward' in props ? props.pendingForward ?? null : null;
+  const fwdComposeOk = forwardSnapshotValid(pendingForwardCompose);
+
   // ─── Send ─────────────────────────────────────────────────────────────────
   const handleSend = async () => {
     const text = inputText.trim();
-    if (!text && !pendingMediaFile) return;
+    if (!text && !pendingMediaFile && !fwdComposeOk) return;
 
     if (editingMessageId) {
       if (text) {
@@ -195,10 +286,17 @@ export default function ChatArea(props: Props) {
       setPendingMediaPreviewUrl(null);
       setInputText('');
       setReplyingTo(null);
+      if ('onCancelPendingForward' in props && props.onCancelPendingForward) {
+        props.onCancelPendingForward();
+      }
       return;
     }
 
-    props.onSend(text, replyingTo ?? undefined);
+    props.onSend(
+      text,
+      replyingTo ?? undefined,
+      pendingForwardCompose ?? undefined,
+    );
     setInputText('');
     setReplyingTo(null);
   };
@@ -211,6 +309,10 @@ export default function ChatArea(props: Props) {
     if (e.key === 'Escape') {
       if (contextMenu) { setContextMenu(null); return; }
       if (selectedIds.size > 0) { setSelectedIds(new Set()); return; }
+      if (pendingForwardCompose && 'onCancelPendingForward' in props && props.onCancelPendingForward) {
+        props.onCancelPendingForward();
+        return;
+      }
       if (replyingTo) { setReplyingTo(null); return; }
       if (editingMessageId) { setEditingMessageId(null); setInputText(''); }
     }
@@ -223,6 +325,9 @@ export default function ChatArea(props: Props) {
     event.currentTarget.value = '';
     if (!selectedFile) return;
     if (!selectedFile.type.startsWith('image/')) return;
+    if ('onCancelPendingForward' in props && props.onCancelPendingForward) {
+      props.onCancelPendingForward();
+    }
     setPendingMediaFile(selectedFile);
   };
 
@@ -234,6 +339,9 @@ export default function ChatArea(props: Props) {
     const pastedFile = mediaItem.getAsFile();
     if (!pastedFile) return;
     event.preventDefault();
+    if ('onCancelPendingForward' in props && props.onCancelPendingForward) {
+      props.onCancelPendingForward();
+    }
     setPendingMediaFile(pastedFile);
   };
 
@@ -290,7 +398,7 @@ export default function ChatArea(props: Props) {
   const composeBox = (
     <div className="border-t border-gray-100 px-4 py-3">
       {/* Reply indicator */}
-      {replyingTo && !editingMessageId && (
+      {replyingTo && !editingMessageId && !pendingForwardCompose && (
         <div className="mb-2 flex items-center gap-2 rounded-xl border-l-2 border-purple bg-purple/5 px-3 py-2">
           <Reply className="h-3.5 w-3.5 shrink-0 text-purple" />
           <div className="min-w-0 flex-1">
@@ -298,7 +406,31 @@ export default function ChatArea(props: Props) {
             <p className="truncate text-xs text-gray-500">{replyingTo.text}</p>
           </div>
           <button
+            type="button"
             onClick={() => setReplyingTo(null)}
+            className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
+      {pendingForwardCompose && !editingMessageId && (
+        <div className="mb-2 flex items-center gap-2 rounded-xl border-l-2 border-sky-500 bg-sky-50 px-3 py-2">
+          <Forward className="h-3.5 w-3.5 shrink-0 text-sky-600" />
+          <div className="min-w-0 flex-1">
+            <p className="text-[10px] font-semibold text-sky-800">Переслано от {pendingForwardCompose.senderName}</p>
+            <p className="truncate text-xs text-gray-600">
+              {pendingForwardCompose.text?.trim() || (pendingForwardCompose.mediaUrl ? 'Медиа' : '')}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if ('onCancelPendingForward' in props && props.onCancelPendingForward) {
+                props.onCancelPendingForward();
+              }
+            }}
             className="ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-600"
           >
             <X className="h-3.5 w-3.5" />
@@ -356,12 +488,23 @@ export default function ChatArea(props: Props) {
           onChange={(e) => setInputText(e.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={(e) => { void handleInputPaste(e); }}
-          placeholder={editingMessageId ? 'Изменить сообщение…' : replyingTo ? 'Ответить…' : 'Сообщение…'}
+          placeholder={
+            editingMessageId
+              ? 'Изменить сообщение…'
+              : pendingForwardCompose
+                ? 'Комментарий к пересылке…'
+                : replyingTo
+                  ? 'Ответить…'
+                  : 'Сообщение…'
+          }
           className="flex-1 rounded-xl bg-gray-50 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple/20"
         />
         <button
           onClick={() => { void handleSend(); }}
-          disabled={(!inputText.trim() && !pendingMediaFile) || (Boolean(editingMessageId) && !inputText.trim())}
+          disabled={
+            (!inputText.trim() && !pendingMediaFile && !fwdComposeOk)
+            || (Boolean(editingMessageId) && !inputText.trim())
+          }
           className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple text-white transition-colors hover:bg-purple/90 disabled:opacity-40"
         >
           <Send className="h-4 w-4" />
@@ -404,12 +547,34 @@ export default function ChatArea(props: Props) {
       <button
         className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50"
         onClick={() => {
+          if ('onCancelPendingForward' in props && props.onCancelPendingForward) {
+            props.onCancelPendingForward();
+          }
           setReplyingTo({ id: contextMenu.msgId, text: contextMenu.text || '(медиафайл)', senderName: contextMenu.senderName });
           setContextMenu(null);
         }}
       >
         <Reply className="h-4 w-4 text-gray-400" />
         Ответить
+      </button>
+      <button
+        type="button"
+        className="flex w-full items-center gap-3 px-4 py-2.5 text-sm text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-40"
+        disabled={
+          !forwardSnapshotValid(contextMenu.snapshot)
+          || !('onForwardSnapshot' in props && props.onForwardSnapshot)
+        }
+        onClick={() => {
+          if (!forwardSnapshotValid(contextMenu.snapshot)) return;
+          if ('onForwardSnapshot' in props && props.onForwardSnapshot) {
+            props.onForwardSnapshot(contextMenu.snapshot);
+          }
+          setReplyingTo(null);
+          setContextMenu(null);
+        }}
+      >
+        <Forward className="h-4 w-4 text-gray-400" />
+        Переслать в другой чат…
       </button>
       {contextMenu.isMine && (
         <button
@@ -473,6 +638,10 @@ export default function ChatArea(props: Props) {
     replyToId?: string | null;
     replyToText?: string | null;
     replyToSender?: string | null;
+    forwardFromName?: string | null;
+    forwardOriginalText?: string | null;
+    forwardMediaUrl?: string | null;
+    forwardMediaType?: string | null;
     /** DM only — undefined means no status indicator */
     isRead?: boolean;
     rawMsg: ChatMessage | DirectMessage | GroupMessage;
@@ -482,7 +651,8 @@ export default function ChatArea(props: Props) {
     const isMultiSelected = selectedIds.has(item.id);
     const isHighlighted = highlightedId === item.id;
     const inSelectionMode = selectedIds.size > 0;
-    const senderName = item.senderLabel ?? (item.isMine ? 'Вы' : '');
+    const friendLabel = props.mode === 'direct' ? props.friendName : undefined;
+    const resolvedSender = item.senderLabel ?? (item.isMine ? 'Вы' : (friendLabel ?? ''));
 
     const handleBubbleClick = (e: React.MouseEvent) => {
       e.stopPropagation();
@@ -496,7 +666,16 @@ export default function ChatArea(props: Props) {
       // Position menu so it doesn't overflow viewport
       const menuX = Math.min(e.clientX, window.innerWidth - 195);
       const menuY = e.clientY + 145 > window.innerHeight ? e.clientY - 130 : e.clientY + 6;
-      setContextMenu({ x: menuX, y: menuY, msgId: item.id, isMine: item.isMine, text: item.text || '', senderName });
+      const snapshot = buildForwardSnapshotFromMsg(item, resolvedSender);
+      setContextMenu({
+        x: menuX,
+        y: menuY,
+        msgId: item.id,
+        isMine: item.isMine,
+        text: item.text || '',
+        senderName: resolvedSender,
+        snapshot,
+      });
     };
 
     // Checkbox indicator (appears in selection mode)
@@ -546,8 +725,25 @@ export default function ChatArea(props: Props) {
             />
           )}
 
-          <p className="break-words text-sm leading-relaxed">{item.text}</p>
-          {renderMedia(item.mediaUrl, item.mediaType)}
+          {item.forwardFromName && item.text?.trim() ? (
+            <p className="mb-2 break-words text-sm leading-relaxed">{item.text}</p>
+          ) : null}
+
+          {item.forwardFromName ? (
+            <ForwardedBlock
+              forwardFromName={item.forwardFromName}
+              innerText={item.forwardOriginalText}
+              mediaUrl={item.forwardMediaUrl}
+              mediaType={item.forwardMediaType}
+              isMine={item.isMine}
+              renderMediaFn={renderMedia}
+            />
+          ) : (
+            <>
+              <p className="break-words text-sm leading-relaxed">{item.text}</p>
+              {renderMedia(item.mediaUrl, item.mediaType)}
+            </>
+          )}
 
           <div className={`mt-1 flex items-center justify-end gap-1 text-[10px] ${item.isMine ? 'text-white/50' : 'text-gray-400'}`}>
             <span>{item.time}</span>
@@ -578,6 +774,10 @@ export default function ChatArea(props: Props) {
       replyToId: msg.reply_to_id,
       replyToText: msg.reply_to_text,
       replyToSender: msg.reply_to_sender,
+      forwardFromName: msg.forward_from_name,
+      forwardOriginalText: msg.forward_original_text,
+      forwardMediaUrl: msg.forward_media_url,
+      forwardMediaType: msg.forward_media_type,
       rawMsg: msg,
     }));
 
@@ -669,6 +869,10 @@ export default function ChatArea(props: Props) {
       replyToId: msg.reply_to_id,
       replyToText: msg.reply_to_text,
       replyToSender: msg.reply_to_sender,
+      forwardFromName: msg.forward_from_name,
+      forwardOriginalText: msg.forward_original_text,
+      forwardMediaUrl: msg.forward_media_url,
+      forwardMediaType: msg.forward_media_type,
       // Status indicator only for own messages
       isRead: msg.sender_id === props.currentUserId ? msg.is_read : undefined,
       rawMsg: msg,
@@ -774,6 +978,10 @@ export default function ChatArea(props: Props) {
     replyToId: msg.reply_to_id,
     replyToText: msg.reply_to_text,
     replyToSender: msg.reply_to_sender,
+    forwardFromName: msg.forward_from_name,
+    forwardOriginalText: msg.forward_original_text,
+    forwardMediaUrl: msg.forward_media_url,
+    forwardMediaType: msg.forward_media_type,
     rawMsg: msg,
   }));
 

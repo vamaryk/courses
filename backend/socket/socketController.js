@@ -97,6 +97,10 @@ function normalizeMongoMessage(doc) {
     is_read: Boolean(doc.is_read),
     media_url: doc.media_id || null,
     media_type: doc.media_type || null,
+    forward_from_name: doc.forward_from_name ?? null,
+    forward_original_text: doc.forward_original_text ?? null,
+    forward_media_url: doc.forward_media_url ?? null,
+    forward_media_type: doc.forward_media_type ?? null,
   };
 }
 
@@ -200,13 +204,21 @@ export function setupSocketController(io) {
     });
 
     // ─── Chat: Send a message ───────────────────────────────────────────────
-    socket.on('chat:message', ({ roomId, text, replyToId, replyToText, replyToSender }) => {
-      if (!text || !roomId) return;
+    socket.on('chat:message', ({ roomId, text, replyToId, replyToText, replyToSender, forwardFromName, forwardOriginalText, forwardMediaUrl, forwardMediaType }) => {
+      if (!roomId) return;
+
+      const trimmed = String(text || '').trim();
+      const fname = forwardFromName ? String(forwardFromName).slice(0, 100) : null;
+      const ftext = forwardOriginalText ? String(forwardOriginalText).slice(0, 2000) : '';
+      const fmediaUrl = forwardMediaUrl ? String(forwardMediaUrl).slice(0, 500) : null;
+      const fmediaType = forwardMediaType === 'image' || forwardMediaType === 'video' ? forwardMediaType : null;
+      const hasForward = Boolean(fname && (ftext || (fmediaUrl && fmediaType)));
+      if (!trimmed && !hasForward) return;
 
       const message = {
         id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
         fromUserId: userId,
-        text: String(text).slice(0, 2000),
+        text: trimmed ? String(text).slice(0, 2000) : '',
         timestamp: new Date().toISOString(),
         isRead: false,
         mediaUrl: null,
@@ -214,12 +226,16 @@ export function setupSocketController(io) {
         reply_to_id: replyToId ?? null,
         reply_to_text: replyToText ? String(replyToText).slice(0, 300) : null,
         reply_to_sender: replyToSender ? String(replyToSender).slice(0, 100) : null,
+        forward_from_name: hasForward ? fname : null,
+        forward_original_text: hasForward ? (ftext || null) : null,
+        forward_media_url: hasForward ? fmediaUrl : null,
+        forward_media_type: hasForward ? fmediaType : null,
       };
 
       roomMessageMeta.set(message.id, { roomId, fromUserId: userId });
 
       io.to(roomId).emit('chat:message', message);
-      console.log(`💬 [SOCKET] [${roomId}] ${userId}: ${text.slice(0, 60)}`);
+      console.log(`💬 [SOCKET] [${roomId}] ${userId}: ${String(text || '').slice(0, 60)}`);
     });
 
     socket.on('chat:media-upload', async ({ roomId, fileName, mimeType, base64Data, caption }) => {
@@ -280,7 +296,7 @@ export function setupSocketController(io) {
     });
 
     // ─── DM: Send a direct message (persisted) ─────────────────────────────
-    socket.on('dm:send', async ({ receiverId, text, fileName, mimeType, base64Data, caption, replyToId, replyToText, replyToSender }) => {
+    socket.on('dm:send', async ({ receiverId, text, fileName, mimeType, base64Data, caption, replyToId, replyToText, replyToSender, forwardFromName, forwardOriginalText, forwardMediaUrl, forwardMediaType }) => {
       const senderId = socketToAuthUser.get(socket.id);
       if (!senderId) {
         socket.emit('dm:error', { message: 'Требуется авторизация для отправки личных сообщений' });
@@ -292,7 +308,14 @@ export function setupSocketController(io) {
       const mediaType = normalizeMimeType(mimeType);
       const hasMedia = Boolean(mediaType && base64Data);
       const messageText = hasMedia ? String(caption || '').slice(0, 2000) : trimmedText.slice(0, 2000);
-      if (!hasMedia && !messageText) return;
+
+      const fname = forwardFromName ? String(forwardFromName).slice(0, 100) : null;
+      const ftext = forwardOriginalText ? String(forwardOriginalText).slice(0, 2000) : '';
+      const fmediaUrl = forwardMediaUrl ? String(forwardMediaUrl).slice(0, 500) : null;
+      const fmediaType = forwardMediaType === 'image' || forwardMediaType === 'video' ? forwardMediaType : null;
+      const hasForward = Boolean(fname && (ftext || (fmediaUrl && fmediaType)));
+
+      if (!hasMedia && !messageText && !hasForward) return;
 
       try {
         let mediaUrl = null;
@@ -314,6 +337,10 @@ export function setupSocketController(io) {
           reply_to_id: replyToId ?? null,
           reply_to_text: replyToText ? String(replyToText).slice(0, 300) : null,
           reply_to_sender: replyToSender ? String(replyToSender).slice(0, 100) : null,
+          forward_from_name: hasForward ? fname : null,
+          forward_original_text: hasForward ? (ftext || null) : null,
+          forward_media_url: hasForward ? fmediaUrl : null,
+          forward_media_type: hasForward ? fmediaType : null,
         });
         const insertedDoc = await chats.findOne({ _id: insertResult.insertedId });
         if (!insertedDoc) return;
@@ -451,7 +478,7 @@ export function setupSocketController(io) {
     });
 
     // ─── Group: Send a message ──────────────────────────────────────────────
-    socket.on('group:send', async ({ groupId, text, fileName, mimeType, base64Data, caption, replyToId, replyToText, replyToSender }) => {
+    socket.on('group:send', async ({ groupId, text, fileName, mimeType, base64Data, caption, replyToId, replyToText, replyToSender, forwardFromName, forwardOriginalText, forwardMediaUrl, forwardMediaType }) => {
       const uid = socketToAuthUser.get(socket.id);
       if (!uid || !groupId) return;
 
@@ -459,7 +486,14 @@ export function setupSocketController(io) {
       const mediaType = normalizeMimeType(mimeType);
       const hasMedia = Boolean(mediaType && base64Data);
       const messageText = hasMedia ? String(caption || '').slice(0, 2000) : trimmedText.slice(0, 2000);
-      if (!hasMedia && !messageText) return;
+
+      const gfname = forwardFromName ? String(forwardFromName).slice(0, 100) : null;
+      const gftext = forwardOriginalText ? String(forwardOriginalText).slice(0, 2000) : '';
+      const gfmediaUrl = forwardMediaUrl ? String(forwardMediaUrl).slice(0, 500) : null;
+      const gfmediaType = forwardMediaType === 'image' || forwardMediaType === 'video' ? forwardMediaType : null;
+      const hasForward = Boolean(gfname && (gftext || (gfmediaUrl && gfmediaType)));
+
+      if (!hasMedia && !messageText && !hasForward) return;
 
       try {
         const check = await pool.query(
@@ -486,6 +520,10 @@ export function setupSocketController(io) {
           reply_to_id: replyToId ?? null,
           reply_to_text: replyToText ? String(replyToText).slice(0, 300) : null,
           reply_to_sender: replyToSender ? String(replyToSender).slice(0, 100) : null,
+          forward_from_name: hasForward ? gfname : null,
+          forward_original_text: hasForward ? (gftext || null) : null,
+          forward_media_url: hasForward ? gfmediaUrl : null,
+          forward_media_type: hasForward ? gfmediaType : null,
         });
         const insertedDoc = await groupchats.findOne({ _id: insertResult.insertedId });
         if (!insertedDoc) return;
@@ -510,6 +548,10 @@ export function setupSocketController(io) {
           reply_to_id: insertedDoc.reply_to_id ?? null,
           reply_to_text: insertedDoc.reply_to_text ?? null,
           reply_to_sender: insertedDoc.reply_to_sender ?? null,
+          forward_from_name: insertedDoc.forward_from_name ?? null,
+          forward_original_text: insertedDoc.forward_original_text ?? null,
+          forward_media_url: insertedDoc.forward_media_url ?? null,
+          forward_media_type: insertedDoc.forward_media_type ?? null,
         };
 
         io.to(`group:${groupId}`).emit('group:message', fullMsg);
@@ -547,6 +589,13 @@ export function setupSocketController(io) {
           sender_first_name: sender.first_name,
           sender_last_name: sender.last_name,
           sender_avatar: sender.avatar_url,
+          reply_to_id: updated.reply_to_id ?? null,
+          reply_to_text: updated.reply_to_text ?? null,
+          reply_to_sender: updated.reply_to_sender ?? null,
+          forward_from_name: updated.forward_from_name ?? null,
+          forward_original_text: updated.forward_original_text ?? null,
+          forward_media_url: updated.forward_media_url ?? null,
+          forward_media_type: updated.forward_media_type ?? null,
         });
       } catch (err) {
         console.error('[GROUP SOCKET] Edit error:', err.message);

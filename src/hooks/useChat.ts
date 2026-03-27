@@ -19,6 +19,14 @@ export interface ReplyInfo {
   senderName: string;
 }
 
+/** Snapshot of a message being forwarded (Telegram-style attribution). */
+export interface ForwardInfo {
+  senderName: string;
+  text: string;
+  mediaUrl?: string | null;
+  mediaType?: 'image' | 'video' | null;
+}
+
 export interface ChatMessage {
   id: string;
   fromUserId: string;
@@ -31,6 +39,10 @@ export interface ChatMessage {
   reply_to_id?: string | null;
   reply_to_text?: string | null;
   reply_to_sender?: string | null;
+  forward_from_name?: string | null;
+  forward_original_text?: string | null;
+  forward_media_url?: string | null;
+  forward_media_type?: 'image' | 'video' | null;
 }
 
 export type ChatStatus = 'idle' | 'waiting' | 'connected';
@@ -41,7 +53,9 @@ export interface UseChatReturn {
   error: string | null;
   status: ChatStatus;
   joinRoom: (targetUserId: string) => void;
-  sendMessage: (text: string, replyTo?: ReplyInfo) => void;
+  sendMessage: (text: string, replyTo?: ReplyInfo, forwardFrom?: ForwardInfo) => void;
+  /** Отправить в другую комнату по ID (без смены текущей), в т.ч. пересылку */
+  sendMessageToRoom: (targetRoomId: string, text: string, replyTo?: ReplyInfo, forwardFrom?: ForwardInfo) => void;
   sendMedia: (file: File, caption?: string) => Promise<void>;
   editMessage: (messageId: string, text: string) => void;
   deleteMessage: (messageId: string) => void;
@@ -129,20 +143,46 @@ export function useChat(socket: Socket | null): UseChatReturn {
     [socket],
   );
 
-  const sendMessage = useCallback(
-    (text: string, replyTo?: ReplyInfo) => {
-      if (!socket || !roomId || !text.trim()) return;
+  const emitRoom = useCallback(
+    (targetRoomId: string, trimmed: string, replyTo?: ReplyInfo, forwardFrom?: ForwardInfo) => {
+      if (!socket || !targetRoomId) return;
+      const hasForward = Boolean(
+        forwardFrom?.senderName && (forwardFrom.text?.trim() || (forwardFrom.mediaUrl && forwardFrom.mediaType)),
+      );
+      if (!trimmed && !hasForward) return;
+
       socket.emit('chat:message', {
-        roomId,
-        text,
+        roomId: targetRoomId,
+        text: trimmed,
         ...(replyTo && {
           replyToId: replyTo.id,
           replyToText: replyTo.text,
           replyToSender: replyTo.senderName,
         }),
+        ...(hasForward && forwardFrom && {
+          forwardFromName: forwardFrom.senderName,
+          forwardOriginalText: forwardFrom.text || '',
+          forwardMediaUrl: forwardFrom.mediaUrl ?? null,
+          forwardMediaType: forwardFrom.mediaType ?? null,
+        }),
       });
     },
-    [socket, roomId],
+    [socket],
+  );
+
+  const sendMessage = useCallback(
+    (text: string, replyTo?: ReplyInfo, forwardFrom?: ForwardInfo) => {
+      if (!roomId) return;
+      emitRoom(roomId, text.trim(), replyTo, forwardFrom);
+    },
+    [emitRoom, roomId],
+  );
+
+  const sendMessageToRoom = useCallback(
+    (targetRoomId: string, text: string, replyTo?: ReplyInfo, forwardFrom?: ForwardInfo) => {
+      emitRoom(targetRoomId, text.trim(), replyTo, forwardFrom);
+    },
+    [emitRoom],
   );
 
   const sendMedia = useCallback(
@@ -183,5 +223,5 @@ export function useChat(socket: Socket | null): UseChatReturn {
     [socket, roomId],
   );
 
-  return { roomId, messages, error, status, joinRoom, sendMessage, sendMedia, editMessage, deleteMessage };
+  return { roomId, messages, error, status, joinRoom, sendMessage, sendMessageToRoom, sendMedia, editMessage, deleteMessage };
 }
