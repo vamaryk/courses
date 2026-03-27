@@ -13,6 +13,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 
+export interface ReplyInfo {
+  id: string;
+  text: string;
+  senderName: string;
+}
+
 export interface ChatMessage {
   id: string;
   fromUserId: string;
@@ -22,6 +28,9 @@ export interface ChatMessage {
   mediaUrl?: string | null;
   mediaType?: 'image' | 'video' | null;
   editedAt?: string | null;
+  reply_to_id?: string | null;
+  reply_to_text?: string | null;
+  reply_to_sender?: string | null;
 }
 
 export type ChatStatus = 'idle' | 'waiting' | 'connected';
@@ -32,7 +41,7 @@ export interface UseChatReturn {
   error: string | null;
   status: ChatStatus;
   joinRoom: (targetUserId: string) => void;
-  sendMessage: (text: string) => void;
+  sendMessage: (text: string, replyTo?: ReplyInfo) => void;
   sendMedia: (file: File, caption?: string) => Promise<void>;
   editMessage: (messageId: string, text: string) => void;
   deleteMessage: (messageId: string) => void;
@@ -121,9 +130,17 @@ export function useChat(socket: Socket | null): UseChatReturn {
   );
 
   const sendMessage = useCallback(
-    (text: string) => {
+    (text: string, replyTo?: ReplyInfo) => {
       if (!socket || !roomId || !text.trim()) return;
-      socket.emit('chat:message', { roomId, text });
+      socket.emit('chat:message', {
+        roomId,
+        text,
+        ...(replyTo && {
+          replyToId: replyTo.id,
+          replyToText: replyTo.text,
+          replyToSender: replyTo.senderName,
+        }),
+      });
     },
     [socket, roomId],
   );

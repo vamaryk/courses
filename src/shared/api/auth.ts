@@ -27,6 +27,9 @@ export interface User {
   avatar_url?: string;
   role?: string;
   name: string;
+  email_changed_at?: string | null;
+  profile_details_public?: boolean;
+  learning_progress_public?: boolean;
 }
 
 export interface ResetPasswordData {
@@ -79,6 +82,26 @@ export const authApi = {
 
   async resetPassword(data: ResetPasswordData): Promise<{ message: string }> {
     const response = await axios.post(`${API_URL}/api/auth/reset-password`, data);
+    return response.data;
+  },
+
+  async changePassword(data: {
+    currentPassword: string;
+    newPassword: string;
+  }): Promise<{ message: string }> {
+    const response = await axios.post(`${API_URL}/api/auth/change-password`, data, {
+      withCredentials: true,
+    });
+    return response.data;
+  },
+
+  async changeEmail(data: {
+    newEmail: string;
+    password: string;
+  }): Promise<{ message: string; email: string; email_changed_at: string }> {
+    const response = await axios.post(`${API_URL}/api/auth/change-email`, data, {
+      withCredentials: true,
+    });
     return response.data;
   },
 };

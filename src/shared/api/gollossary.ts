@@ -38,7 +38,7 @@ export interface MindMapFull {
 }
 
 export async function fetchMindmaps(): Promise<MindMapSummary[]> {
-  const res = await fetch(`${GOLLOSSARY_API_URL}/api/v1/mindmaps`);
+  const res = await fetch(`${GOLLOSSARY_API_URL}/api/v1/mindmaps?limit=500`);
   if (!res.ok) {
     throw new Error(`Failed to load mindmaps: ${res.status}`);
   }

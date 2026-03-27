@@ -47,7 +47,7 @@ router = APIRouter(prefix="/api/v1", tags=["Concepts"])
 async def list_mindmaps(
     db: Annotated[AsyncIOMotorDatabase, Depends(get_db)],
     skip: int = Query(0, ge=0),
-    limit: int = Query(50, ge=1, le=500),
+    limit: int = Query(500, ge=1, le=500),
 ) -> list[MindMapSummary]:
     repo = MindMapRepository(db)
     return await repo.list_mindmaps(skip=skip, limit=limit)

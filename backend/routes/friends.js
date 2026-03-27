@@ -461,6 +461,9 @@ router.get('/messages/:friendId', authenticateSession, async (req, res) => {
       is_read: Boolean(doc.is_read),
       media_url: doc.media_id || null,
       media_type: doc.media_type || null,
+      reply_to_id: doc.reply_to_id ?? null,
+      reply_to_text: doc.reply_to_text ?? null,
+      reply_to_sender: doc.reply_to_sender ?? null,
     }));
 
     // Mark unread messages as read

@@ -19,7 +19,7 @@ export default defineConfig(function (_a) {
         server: {
             port: 5173,
             host: true,
-            allowedHosts: 'all',
+            allowedHosts: true,
             proxy: {
                 '/api': {
                     target: backendTarget,

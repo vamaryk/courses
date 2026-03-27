@@ -2,6 +2,12 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import { groupsApi, type GroupChat, type GroupMessage } from '@/shared/api/groups';
 
+export interface ReplyInfo {
+  id: string;
+  text: string;
+  senderName: string;
+}
+
 export interface UseGroupChatReturn {
   groups: GroupChat[];
   messages: GroupMessage[];
@@ -9,7 +15,7 @@ export interface UseGroupChatReturn {
   loading: boolean;
   setActiveGroupId: (id: number | null) => void;
   loadHistory: (groupId: number) => Promise<void>;
-  sendMessage: (text: string) => void;
+  sendMessage: (text: string, replyTo?: ReplyInfo) => void;
   sendMedia: (file: File, caption?: string) => Promise<void>;
   editMessage: (messageId: string, text: string) => void;
   deleteMessage: (messageId: string) => void;
@@ -55,6 +61,20 @@ export function useGroupChat(socket: Socket | null): UseGroupChatReturn {
     };
     socket.on('dm:authenticated', onAuthenticated);
     return () => { socket.off('dm:authenticated', onAuthenticated); };
+  }, [socket]);
+
+  // On socket reconnect: reload active group history to catch missed messages
+  useEffect(() => {
+    if (!socket) return;
+    const onReconnect = () => {
+      const groupId = activeGroupRef.current;
+      if (!groupId) return;
+      void groupsApi.getMessages(groupId).then((history) => {
+        setMessages(history);
+      }).catch(() => {/* silent */});
+    };
+    socket.on('connect', onReconnect);
+    return () => { socket.off('connect', onReconnect); };
   }, [socket]);
 
   useEffect(() => {
@@ -124,9 +144,17 @@ export function useGroupChat(socket: Socket | null): UseGroupChatReturn {
   }, [socket]);
 
   const sendMessage = useCallback(
-    (text: string) => {
+    (text: string, replyTo?: ReplyInfo) => {
       if (!socket || !activeGroupRef.current || !text.trim()) return;
-      socket.emit('group:send', { groupId: activeGroupRef.current, text: text.trim() });
+      socket.emit('group:send', {
+        groupId: activeGroupRef.current,
+        text: text.trim(),
+        ...(replyTo && {
+          replyToId: replyTo.id,
+          replyToText: replyTo.text,
+          replyToSender: replyTo.senderName,
+        }),
+      });
     },
     [socket],
   );

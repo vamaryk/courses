@@ -187,6 +187,9 @@ router.get('/:groupId/messages', authenticateSession, async (req, res) => {
         sender_first_name: sender.first_name || '',
         sender_last_name: sender.last_name || '',
         sender_avatar: sender.avatar_url || null,
+        reply_to_id: doc.reply_to_id ?? null,
+        reply_to_text: doc.reply_to_text ?? null,
+        reply_to_sender: doc.reply_to_sender ?? null,
       };
     });
 

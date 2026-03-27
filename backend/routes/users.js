@@ -8,6 +8,51 @@ import multer from 'multer';
 
 const router = express.Router();
 
+/** UUID: 8-4-4-4-12 hex — используется для валидации :id в профилях */
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+async function getProfilePrivacyRow(profileId) {
+  const r = await pool.query(
+    'SELECT profile_details_public, learning_progress_public FROM profiles WHERE id = $1',
+    [profileId]
+  );
+  return r.rows[0] || null;
+}
+
+async function assertProfileDetailsVisible(req, res, profileId) {
+  const viewerId = req.user?.profile?.id;
+  if (viewerId === profileId) return true;
+  const row = await getProfilePrivacyRow(profileId);
+  if (!row) {
+    res.status(404).json({ error: 'Profile not found' });
+    return false;
+  }
+  if (row.profile_details_public === false) {
+    res.status(403).json({ error: 'Profile is private' });
+    return false;
+  }
+  return true;
+}
+
+async function assertLearningProgressVisible(req, res, profileId) {
+  const viewerId = req.user?.profile?.id;
+  if (viewerId === profileId) return true;
+  const row = await getProfilePrivacyRow(profileId);
+  if (!row) {
+    res.status(404).json({ error: 'Profile not found' });
+    return false;
+  }
+  if (row.profile_details_public === false) {
+    res.status(403).json({ error: 'Profile is private' });
+    return false;
+  }
+  if (row.learning_progress_public === false) {
+    res.status(403).json({ error: 'Learning progress is hidden' });
+    return false;
+  }
+  return true;
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const profilesMediaRoot = path.join(__dirname, '..', 'data', 'profiles');
@@ -169,9 +214,11 @@ async function buildUserStats(userId) {
   const [coursesCount, achievementsCount, subscriptionsCount, studyTimeResult, friendsCountResult] = await Promise.all([
     pool.query(
       `SELECT 
-          COUNT(DISTINCT CASE WHEN completion_status = 'completed' THEN course_id END) as completed,
-          COUNT(DISTINCT CASE WHEN completion_status = 'in_progress' THEN course_id END) as in_progress
-        FROM user_enrollments WHERE user_id = $1`,
+          COUNT(DISTINCT CASE WHEN ue.completion_status = 'completed' THEN ue.course_id END) as completed,
+          COUNT(DISTINCT CASE WHEN ue.completion_status = 'in_progress' THEN ue.course_id END) as in_progress
+        FROM user_enrollments ue
+        INNER JOIN courses c ON c.id = ue.course_id
+        WHERE ue.user_id = $1::uuid AND c.author_id IS DISTINCT FROM $1::uuid`,
       [userId]
     ),
     pool.query(
@@ -272,7 +319,9 @@ router.put('/profile', authenticateSession, async (req, res) => {
     date_of_birth,
     phone_number,
     address,
-    occupation
+    occupation,
+    profile_details_public,
+    learning_progress_public,
   } = req.body; // Role cannot be changed here
 
   const updateFields = [];
@@ -321,6 +370,14 @@ router.put('/profile', authenticateSession, async (req, res) => {
   if (occupation !== undefined) {
     updateFields.push(`occupation = $${paramIndex++}`);
     updateValues.push(occupation);
+  }
+  if (profile_details_public !== undefined) {
+    updateFields.push(`profile_details_public = $${paramIndex++}`);
+    updateValues.push(!!profile_details_public);
+  }
+  if (learning_progress_public !== undefined) {
+    updateFields.push(`learning_progress_public = $${paramIndex++}`);
+    updateValues.push(!!learning_progress_public);
   }
 
   if (updateFields.length === 0) {
@@ -454,12 +511,15 @@ router.get('/achievements', authenticateSession, async (req, res) => {
 });
 
 // Get achievements for any profile by ID (public view)
-router.get('/:id/achievements', async (req, res) => {
+router.get('/:id/achievements', optionalAuthenticateSession, async (req, res) => {
   const { id } = req.params;
 
   if (!UUID_REGEX.test(id)) {
     return res.status(400).json({ error: 'Invalid user ID format' });
   }
+
+  const allowed = await assertProfileDetailsVisible(req, res, id);
+  if (!allowed) return;
 
   try {
     const result = await pool.query(
@@ -507,8 +567,8 @@ router.get('/profile/courses', authenticateSession, async (req, res) => {
       JOIN courses c ON c.id = ue.course_id
       LEFT JOIN chapters ch ON ch.course_id = c.id
       LEFT JOIN subchapters sc ON sc.chapter_id = ch.id
-      LEFT JOIN user_lesson_progress ulp ON ulp.lesson_id = sc.id AND ulp.user_id = $1 AND ulp.is_completed = true
-      WHERE ue.user_id = $1
+      LEFT JOIN user_lesson_progress ulp ON ulp.lesson_id = sc.id AND ulp.user_id = $1::uuid AND ulp.is_completed = true
+      WHERE ue.user_id = $1::uuid AND c.author_id IS DISTINCT FROM $1::uuid
       GROUP BY c.id, c.title, c.description, c.cover_image, ue.completion_status, ue.enrolled_at
       ORDER BY ue.enrolled_at DESC
       LIMIT 10`,
@@ -531,11 +591,14 @@ router.get('/profile/courses', authenticateSession, async (req, res) => {
 });
 
 // Public: get courses in progress/completed for any user by profile id
-router.get('/:id/courses', async (req, res) => {
+router.get('/:id/courses', optionalAuthenticateSession, async (req, res) => {
   const { id } = req.params;
   if (!UUID_REGEX.test(id)) {
     return res.status(400).json({ error: 'Invalid user ID format' });
   }
+
+  const allowed = await assertLearningProgressVisible(req, res, id);
+  if (!allowed) return;
 
   try {
     const result = await pool.query(
@@ -557,8 +620,8 @@ router.get('/:id/courses', async (req, res) => {
       JOIN courses c ON c.id = ue.course_id
       LEFT JOIN chapters ch ON ch.course_id = c.id
       LEFT JOIN subchapters sc ON sc.chapter_id = ch.id
-      LEFT JOIN user_lesson_progress ulp ON ulp.lesson_id = sc.id AND ulp.user_id = $1 AND ulp.is_completed = true
-      WHERE ue.user_id = $1
+      LEFT JOIN user_lesson_progress ulp ON ulp.lesson_id = sc.id AND ulp.user_id = $1::uuid AND ulp.is_completed = true
+      WHERE ue.user_id = $1::uuid AND c.author_id IS DISTINCT FROM $1::uuid
       GROUP BY c.id, c.title, c.description, c.cover_image, ue.completion_status, ue.enrolled_at
       ORDER BY ue.enrolled_at DESC
       LIMIT 10`,
@@ -600,8 +663,8 @@ router.get('/profile/courses/progress', authenticateSession, async (req, res) =>
       JOIN courses c ON c.id = ue.course_id
       LEFT JOIN chapters ch ON ch.course_id = c.id
       LEFT JOIN subchapters sc ON sc.chapter_id = ch.id
-      LEFT JOIN user_lesson_progress ulp ON ulp.lesson_id = sc.id AND ulp.user_id = $1 AND ulp.is_completed = true
-      WHERE ue.user_id = $1 AND ue.completion_status != 'completed'
+      LEFT JOIN user_lesson_progress ulp ON ulp.lesson_id = sc.id AND ulp.user_id = $1::uuid AND ulp.is_completed = true
+      WHERE ue.user_id = $1::uuid AND ue.completion_status != 'completed' AND c.author_id IS DISTINCT FROM $1::uuid
       GROUP BY c.id, c.title, ue.completion_status
       ORDER BY progress DESC
       LIMIT 3`,
@@ -628,12 +691,15 @@ router.get('/profile/courses/progress', authenticateSession, async (req, res) =>
 });
 
 // Public stats for any profile by ID
-router.get('/:id/stats', async (req, res) => {
+router.get('/:id/stats', optionalAuthenticateSession, async (req, res) => {
   const { id } = req.params;
 
   if (!UUID_REGEX.test(id)) {
     return res.status(400).json({ error: 'Invalid user ID format' });
   }
+
+  const allowed = await assertLearningProgressVisible(req, res, id);
+  if (!allowed) return;
 
   try {
     const stats = await buildUserStats(id);
@@ -645,12 +711,15 @@ router.get('/:id/stats', async (req, res) => {
 });
 
 // Public list of friends for a profile (id, first_name, last_name, avatar_url)
-router.get('/:id/friends', async (req, res) => {
+router.get('/:id/friends', optionalAuthenticateSession, async (req, res) => {
   const { id } = req.params;
 
   if (!UUID_REGEX.test(id)) {
     return res.status(400).json({ error: 'Invalid user ID format' });
   }
+
+  const allowed = await assertProfileDetailsVisible(req, res, id);
+  if (!allowed) return;
 
   try {
     const result = await pool.query(
@@ -691,8 +760,8 @@ router.get('/profile/statistics/chart', authenticateSession, async (req, res) =>
       JOIN courses c ON c.id = ue.course_id
       LEFT JOIN chapters ch ON ch.course_id = c.id
       LEFT JOIN subchapters sc ON sc.chapter_id = ch.id
-      LEFT JOIN user_lesson_progress ulp ON ulp.lesson_id = sc.id AND ulp.user_id = $1 AND ulp.is_completed = true
-      WHERE ue.user_id = $1
+      LEFT JOIN user_lesson_progress ulp ON ulp.lesson_id = sc.id AND ulp.user_id = $1::uuid AND ulp.is_completed = true
+      WHERE ue.user_id = $1::uuid AND c.author_id IS DISTINCT FROM $1::uuid
       GROUP BY c.id, c.title, ue.completion_status
       ORDER BY progress DESC
       LIMIT 5`,
@@ -762,13 +831,59 @@ router.get('/top-courses', async (req, res) => {
   }
 });
 
-// Public list of authored courses for a profile
-router.get('/:id/courses/authored', async (req, res) => {
+// Aggregate stats for all courses authored by a profile (public)
+router.get('/:id/courses/authored-stats', optionalAuthenticateSession, async (req, res) => {
   const { id } = req.params;
 
   if (!UUID_REGEX.test(id)) {
     return res.status(400).json({ error: 'Invalid user ID format' });
   }
+
+  const allowed = await assertProfileDetailsVisible(req, res, id);
+  if (!allowed) return;
+
+  try {
+    const result = await pool.query(
+      `SELECT
+        COALESCE(
+          (SELECT SUM(cnt)::bigint FROM (
+            SELECT COUNT(DISTINCT ue.user_id)::int AS cnt
+            FROM courses c
+            LEFT JOIN user_enrollments ue ON ue.course_id = c.id
+            WHERE c.author_id = $1
+            GROUP BY c.id
+          ) t),
+          0
+        ) AS total_students,
+        (SELECT ROUND(AVG(cr.rating)::numeric, 2)
+         FROM course_ratings cr
+         INNER JOIN courses c2 ON c2.id = cr.course_id
+         WHERE c2.author_id = $1) AS average_rating`,
+      [id]
+    );
+
+    const row = result.rows[0];
+    res.status(200).json({
+      total_students: Number(row?.total_students ?? 0),
+      average_rating:
+        row?.average_rating != null ? parseFloat(row.average_rating) : null,
+    });
+  } catch (error) {
+    console.error(`Error fetching authored stats for profile ${id}:`, error.message);
+    res.status(500).json({ error: 'Failed to fetch authored stats' });
+  }
+});
+
+// Public list of authored courses for a profile (топ-5 по числу студентов)
+router.get('/:id/courses/authored', optionalAuthenticateSession, async (req, res) => {
+  const { id } = req.params;
+
+  if (!UUID_REGEX.test(id)) {
+    return res.status(400).json({ error: 'Invalid user ID format' });
+  }
+
+  const allowed = await assertProfileDetailsVisible(req, res, id);
+  if (!allowed) return;
 
   try {
     const result = await pool.query(
@@ -779,13 +894,17 @@ router.get('/:id/courses/authored', async (req, res) => {
         c.cover_image,
         c.is_public,
         c.created_at,
-        COUNT(DISTINCT ue.user_id) as students_count
+        COUNT(DISTINCT ue.user_id) as students_count,
+        COALESCE(
+          (SELECT ROUND(AVG(rating)::numeric, 2) FROM course_ratings WHERE course_id = c.id),
+          0
+        ) AS rating
       FROM courses c
       LEFT JOIN user_enrollments ue ON ue.course_id = c.id
       WHERE c.author_id = $1
       GROUP BY c.id, c.title, c.description, c.cover_image, c.is_public, c.created_at
-      ORDER BY c.created_at DESC
-      LIMIT 12`,
+      ORDER BY COUNT(DISTINCT ue.user_id) DESC, c.created_at DESC
+      LIMIT 5`,
       [id]
     );
 
@@ -797,6 +916,7 @@ router.get('/:id/courses/authored', async (req, res) => {
       is_public: row.is_public,
       students_count: parseInt(row.students_count) || 0,
       created_at: row.created_at,
+      rating: parseFloat(row.rating) || 0,
     }));
 
     res.status(200).json(courses);
@@ -806,22 +926,22 @@ router.get('/:id/courses/authored', async (req, res) => {
   }
 });
 
-// Get a single profile by ID (can be public or protected)
-// Let's make it public for now, but only return basic info
-// UUID validation regex: 8-4-4-4-12 hexadecimal characters
-const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-router.get('/:id', async (req, res) => {
+// Get a single profile by ID — respects profile_details_public for non-owners
+router.get('/:id', optionalAuthenticateSession, async (req, res) => {
   const { id } = req.params;
-  
-  // Validate UUID format to prevent conflicts with other routes like /achievements
+
   if (!UUID_REGEX.test(id)) {
     return res.status(400).json({ error: 'Invalid user ID format' });
   }
-  
+
+  const viewerId = req.user?.profile?.id || null;
+  const isOwner = viewerId === id;
+
   try {
     const result = await pool.query(
-      'SELECT id, first_name, last_name, patronymic, avatar_url, role, bio, date_of_birth, phone_number, address, occupation FROM profiles WHERE id = $1',
+      `SELECT id, first_name, last_name, patronymic, avatar_url, role, bio, date_of_birth, phone_number, address, occupation,
+              profile_details_public, learning_progress_public
+       FROM profiles WHERE id = $1`,
       [id]
     );
     const profile = result.rows[0];
@@ -829,6 +949,28 @@ router.get('/:id', async (req, res) => {
     if (!profile) {
       return res.status(404).json({ message: 'Profile not found' });
     }
+
+    if (isOwner) {
+      const emailRow = await pool.query('SELECT email, email_changed_at FROM users WHERE id = $1', [id]);
+      return res.status(200).json({
+        ...profile,
+        email: emailRow.rows[0]?.email,
+        email_changed_at: emailRow.rows[0]?.email_changed_at,
+      });
+    }
+
+    if (profile.profile_details_public === false) {
+      return res.status(200).json({
+        id: profile.id,
+        first_name: profile.first_name,
+        last_name: profile.last_name,
+        avatar_url: profile.avatar_url,
+        role: profile.role,
+        profile_details_public: false,
+        learning_progress_public: profile.learning_progress_public,
+      });
+    }
+
     res.status(200).json(profile);
   } catch (error) {
     console.error(`Error fetching profile ${id}:`, error.message);

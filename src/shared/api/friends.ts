@@ -35,6 +35,9 @@ export interface DirectMessage {
   is_read: boolean;
   media_url?: string | null;
   media_type?: 'image' | 'video' | null;
+  reply_to_id?: string | null;
+  reply_to_text?: string | null;
+  reply_to_sender?: string | null;
 }
 
 export interface RecentChat {

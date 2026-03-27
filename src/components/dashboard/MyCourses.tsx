@@ -84,8 +84,8 @@ const MyCourses = ({ profileId }: MyCoursesProps) => {
         className="w-full"
       >
         <CarouselContent className="-ml-1 md:-ml-2">
-          {courses.map((course, index) => (
-            <CarouselItem key={index} className="pl-1 md:pl-2 basis-1/2 md:basis-1/3 lg:basis-1/5">
+          {courses.map((course) => (
+            <CarouselItem key={course.id ?? course.title} className="pl-1 md:pl-2 basis-1/2 md:basis-1/3 lg:basis-1/5">
               <CourseCard
                 title={course.title}
                 image={getCoverImageUrl(course.image) || defaultCourseImage}

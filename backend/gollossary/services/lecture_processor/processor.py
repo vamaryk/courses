@@ -245,6 +245,19 @@ class LectureProcessor:
                 self.max_concepts, len(unique_concepts),
             )
 
+        # 4b. Если ни одного понятия — не сохраняем, чтобы не затереть старый рабочий mindmap
+        if not final_concepts:
+            logger.warning(
+                "[processor] ⚠ Нет понятий для source_id=%s — mindmap НЕ сохраняется в MongoDB.\n"
+                "  Возможные причины: LLM вернула пустой ответ, ошибки парсинга JSON,\n"
+                "  слишком короткий текст лекции или прерванная генерация.",
+                source_id,
+            )
+            raise RuntimeError(
+                f"Генерация завершена без понятий (source_id={source_id!r}). "
+                "Mindmap не сохранён — проверьте логи LLM выше."
+            )
+
         # Определяем имя модели
         if backend == "gemini":
             model_used = f"gemini:{settings.gemini_model}"
@@ -265,12 +278,48 @@ class LectureProcessor:
         )
 
         # 6. Сохраняем в MongoDB
+        # Если source_id задан — заменяем существующий документ (upsert),
+        # чтобы не накапливать дубли. Старые дубли с тем же source_lecture_id удаляем.
         collection = settings.collection_name
         doc = mindmap.to_mongo()
         t_save = time.perf_counter()
-        result = await self.db[collection].insert_one(doc)
+
+        if source_id:
+            # replace_one сохраняет оригинальный _id при замене (MongoDB не меняет _id)
+            replace_result = await self.db[collection].replace_one(
+                {"source_lecture_id": source_id},
+                doc,
+                upsert=True,
+            )
+            if replace_result.upserted_id is not None:
+                # Нового документа раньше не было — получаем свежий _id
+                inserted_id = replace_result.upserted_id
+                logger.info("[processor] Новый MindMap создан (upsert) id=%s", inserted_id)
+            else:
+                # Заменили существующий документ — находим его _id
+                existing = await self.db[collection].find_one(
+                    {"source_lecture_id": source_id},
+                    {"_id": 1},
+                )
+                inserted_id = existing["_id"]
+                logger.info("[processor] Существующий MindMap заменён id=%s", inserted_id)
+
+            # Удаляем все остальные дубли для этого source_id
+            del_result = await self.db[collection].delete_many({
+                "source_lecture_id": source_id,
+                "_id": {"$ne": inserted_id},
+            })
+            if del_result.deleted_count:
+                logger.info(
+                    "[processor] Удалено старых дублей: %d (source_id=%s)",
+                    del_result.deleted_count, source_id,
+                )
+        else:
+            result = await self.db[collection].insert_one(doc)
+            inserted_id = result.inserted_id
+
         save_elapsed = time.perf_counter() - t_save
-        mindmap = mindmap.model_copy(update={"id": str(result.inserted_id)})
+        mindmap = mindmap.model_copy(update={"id": str(inserted_id)})
 
         total_elapsed = time.perf_counter() - total_t0
         logger.info(
@@ -283,7 +332,7 @@ class LectureProcessor:
             "  MongoDB save: %.3f с\n"
             "  Итого       : %.1f с",
             source_id,
-            str(result.inserted_id),
+            str(inserted_id),
             mindmap.topic,
             len(final_concepts),
             len(chunks),

@@ -186,8 +186,8 @@ const CategorizationCard = ({
       {/* About Course Textarea */}
       <textarea
         placeholder="О чём Ваш курс?..."
-        className="input-field min-h-[100px] resize-none"
-        rows={4}
+        className="input-field min-h-[180px] resize-y"
+        rows={8}
         value={aboutCourse || ""}
         onChange={(e) => onAboutCourseChange(e.target.value)}
       />

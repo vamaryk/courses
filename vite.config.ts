@@ -21,7 +21,8 @@ export default defineConfig(({ mode }) => {
     server: {
       port: 5173,
       host: true,
-      allowedHosts: 'all',
+      // `true` = any Host header (localhost, LAN, ngrok, etc.). String `'all'` is invalid in Vite 6.
+      allowedHosts: true,
       proxy: {
         '/api': {
           target: backendTarget,

@@ -7,18 +7,24 @@
  *  Right  — RecentChats: appears when user is in a DM conversation
  */
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Check,
   Copy,
+  Mic,
+  MicOff,
+  Phone,
+  PhoneOff,
   Users,
   Wifi,
   WifiOff,
 } from 'lucide-react';
+import { useAuth } from '@/app/providers/AuthProvider';
 import { useSharedSocket } from '@/app/providers/SocketProvider';
 import { useChat } from '@/hooks/useChat';
 import { useWebRTC } from '@/hooks/useWebRTC';
+import { useDmCall } from '@/hooks/useDmCall';
 import { useFriends } from '@/hooks/useFriends';
 import { useDirectMessages } from '@/hooks/useDirectMessages';
 import { useGroupChat } from '@/hooks/useGroupChat';
@@ -28,19 +34,20 @@ import RecentChats from '@/components/virtual-class/RecentChats';
 import AddFriendModal from '@/components/virtual-class/AddFriendModal';
 import CreateGroupModal from '@/components/virtual-class/CreateGroupModal';
 
-function RemoteAudio({ stream }: { stream: MediaStream }) {
+const RemoteAudio = memo(function RemoteAudio({ stream }: { stream: MediaStream }) {
   const ref = useRef<HTMLAudioElement>(null);
   useEffect(() => {
     if (ref.current) ref.current.srcObject = stream;
   }, [stream]);
   return <audio ref={ref} autoPlay />;
-}
+});
 
 type ViewMode = 'room' | 'dm' | 'group';
 
 export default function VirtualClassPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { user: currentUser } = useAuth();
   const { socket, userId, isConnected } = useSharedSocket();
   const {
     roomId,
@@ -53,7 +60,20 @@ export default function VirtualClassPage() {
     editMessage: editRoomMessage,
     deleteMessage: deleteRoomMessage,
   } = useChat(socket);
-  const { remoteStream, isVoiceActive, startVoice, stopVoice } = useWebRTC(socket, roomId);
+  const { remoteStream, isVoiceActive, networkStatus, isMuted, startVoice, stopVoice, toggleMute } = useWebRTC(socket, roomId);
+  const {
+    callState,
+    incomingCall,
+    remoteStream: callRemoteStream,
+    isMuted: callIsMuted,
+    callDuration,
+    isUnavailable,
+    startCall,
+    acceptCall,
+    declineCall,
+    hangUp,
+    toggleMute: callToggleMute,
+  } = useDmCall(socket);
   const { friends, pending, recentChats, refresh, acceptRequest, rejectRequest, updateRecentChat, clearUnread } = useFriends(socket);
 
   // Stable refs so the DM onMessage callback never reads stale values
@@ -94,6 +114,12 @@ export default function VirtualClassPage() {
   const [showAddFriend, setShowAddFriend] = useState(false);
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>('room');
+
+  const formatCallDuration = (secs: number) => {
+    const m = Math.floor(secs / 60).toString().padStart(2, '0');
+    const s = (secs % 60).toString().padStart(2, '0');
+    return `${m}:${s}`;
+  };
 
   // Keep refs in sync so socket callbacks always see current values
   useEffect(() => { activeFriendStableRef.current = activeFriendId; }, [activeFriendId]);
@@ -257,7 +283,9 @@ export default function VirtualClassPage() {
               {error && <p className="rounded-xl bg-red-50 px-4 py-2 text-xs font-medium text-red-500">{error}</p>}
               <div className="min-h-0 flex-1">
                 <ChatArea mode="room" roomId={roomId} messages={roomMessages} currentUserId={userId}
-                  isVoiceActive={isVoiceActive} onStartVoice={startVoice} onStopVoice={stopVoice}
+                  isVoiceActive={isVoiceActive} networkStatus={networkStatus}
+                  isMuted={isMuted} onStartVoice={startVoice} onStopVoice={stopVoice}
+                  onToggleMute={toggleMute}
                   onSend={sendRoomMessage} onSendMedia={sendRoomMedia}
                   onEditMessage={editRoomMessage} onDeleteMessage={deleteRoomMessage}
                   status={status} />
@@ -273,6 +301,7 @@ export default function VirtualClassPage() {
               messages={dmMessages}
               currentUserId={dbUserId}
               loading={dmLoading}
+              isConnected={isConnected}
               onSend={sendDm}
               onSendMedia={sendDmMedia}
               onEditMessage={editDmMessage}
@@ -282,13 +311,23 @@ export default function VirtualClassPage() {
                   navigate(`/profile/${activeFriendId}`);
                 }
               }}
+              onStartCall={
+                activeFriendId
+                  ? () => {
+                      const callerName = currentUser
+                        ? `${currentUser.first_name ?? ''} ${currentUser.last_name ?? ''}`.trim() || 'Пользователь'
+                        : 'Пользователь';
+                      void startCall(activeFriendId, callerName);
+                    }
+                  : undefined
+              }
             />
           )}
 
           {viewMode === 'group' && activeGroup && (
             <ChatArea mode="group" groupName={activeGroup.name} memberCount={activeGroup.member_count}
               inviteToken={activeGroup.invite_token} messages={groupMessages} currentUserId={dbUserId}
-              loading={groupLoading} onSend={sendGroupMsg} onSendMedia={sendGroupMedia}
+              loading={groupLoading} isConnected={isConnected} onSend={sendGroupMsg} onSendMedia={sendGroupMedia}
               onEditMessage={editGroupMessage} onDeleteMessage={deleteGroupMessage} />
           )}
         </div>
@@ -301,7 +340,116 @@ export default function VirtualClassPage() {
         )}
       </div>
 
+      {/* Room WebRTC remote audio */}
       {remoteStream && <RemoteAudio stream={remoteStream} />}
+
+      {/* DM call remote audio */}
+      {callRemoteStream && <RemoteAudio stream={callRemoteStream} />}
+
+      {/* ── Incoming call overlay ────────────────────────────────────────── */}
+      {callState === 'incoming' && incomingCall && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="w-80 overflow-hidden rounded-3xl bg-white shadow-2xl">
+            {/* Pulsing ring */}
+            <div className="flex flex-col items-center gap-4 bg-gradient-to-b from-emerald-500 to-emerald-600 px-8 py-10">
+              <div className="relative">
+                <span className="absolute inset-0 animate-ping rounded-full bg-white/30" />
+                <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-white/20 text-2xl font-bold text-white">
+                  {incomingCall.fromName.slice(0, 2).toUpperCase()}
+                </div>
+              </div>
+              <div className="text-center">
+                <p className="text-lg font-bold text-white">{incomingCall.fromName}</p>
+                <p className="text-sm text-white/70">Входящий аудиозвонок…</p>
+              </div>
+            </div>
+            <div className="flex gap-4 px-8 py-6">
+              <button
+                onClick={declineCall}
+                className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-red-50 py-3 text-sm font-semibold text-red-500 transition-colors hover:bg-red-100"
+              >
+                <PhoneOff className="h-5 w-5" />
+                Отклонить
+              </button>
+              <button
+                onClick={() => void acceptCall()}
+                className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-3 text-sm font-semibold text-white transition-colors hover:bg-emerald-600"
+              >
+                <Phone className="h-5 w-5" />
+                Принять
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Outgoing call overlay (caller waiting) ──────────────────────── */}
+      {callState === 'calling' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="w-72 overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="flex flex-col items-center gap-4 bg-gradient-to-b from-purple to-purple/80 px-8 py-10">
+              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white/20 text-2xl font-bold text-white">
+                {activeFriendName.slice(0, 2).toUpperCase() || '??'}
+              </div>
+              <div className="text-center">
+                <p className="text-lg font-bold text-white">{activeFriendName}</p>
+                <p className="flex items-center gap-1.5 text-sm text-white/70">
+                  <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-white/60 [animation-delay:0ms]" />
+                  <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-white/60 [animation-delay:150ms]" />
+                  <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-white/60 [animation-delay:300ms]" />
+                  Вызов…
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-center px-8 py-6">
+              <button
+                onClick={hangUp}
+                className="flex items-center gap-2 rounded-2xl bg-red-50 px-8 py-3 text-sm font-semibold text-red-500 transition-colors hover:bg-red-100"
+              >
+                <PhoneOff className="h-5 w-5" />
+                Отменить
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Active call floating bar ─────────────────────────────────────── */}
+      {callState === 'active' && (
+        <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-2xl bg-gray-900/95 px-5 py-3 shadow-2xl backdrop-blur">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-xs font-bold text-white">
+            {activeFriendName.slice(0, 2).toUpperCase() || '??'}
+          </div>
+          <div className="text-left">
+            <p className="text-xs font-semibold text-white">{activeFriendName || 'Звонок'}</p>
+            <p className="text-[10px] tabular-nums text-emerald-400">{formatCallDuration(callDuration)}</p>
+          </div>
+          <div className="mx-2 h-6 w-px bg-white/10" />
+          <button
+            onClick={callToggleMute}
+            title={callIsMuted ? 'Включить микрофон' : 'Выключить микрофон'}
+            className={`flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
+              callIsMuted ? 'bg-amber-500 text-white' : 'bg-white/10 text-white hover:bg-white/20'
+            }`}
+          >
+            {callIsMuted ? <MicOff className="h-4 w-4" /> : <Mic className="h-4 w-4" />}
+          </button>
+          <button
+            onClick={hangUp}
+            title="Завершить звонок"
+            className="flex h-9 w-9 items-center justify-center rounded-full bg-red-500 text-white transition-colors hover:bg-red-600"
+          >
+            <PhoneOff className="h-4 w-4" />
+          </button>
+        </div>
+      )}
+
+      {/* ── "User unavailable" toast ─────────────────────────────────────── */}
+      {isUnavailable && (
+        <div className="fixed bottom-6 left-1/2 z-50 -translate-x-1/2 rounded-xl bg-gray-800 px-5 py-3 text-sm font-medium text-white shadow-xl">
+          Пользователь недоступен для звонка
+        </div>
+      )}
 
       <AddFriendModal
         open={showAddFriend}

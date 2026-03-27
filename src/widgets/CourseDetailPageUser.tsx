@@ -194,6 +194,7 @@ export default function CourseDetailPageUser({ onEnrolled }: CourseDetailPageUse
     firstSubchapterId: chapter.subchapters?.[0]?.id,
     modules: chapter.subchapters?.map((subchapter, subIndex) => ({
       id: `${chapter.id}-${subchapter.id}`,
+      subchapterId: subchapter.id,
       title: subchapter.title,
       duration: subchapter.content_blocks 
         ? `${Math.ceil((subchapter.content_blocks.length * 15) / 60)} : ${(subchapter.content_blocks.length * 15) % 60}`
@@ -256,6 +257,7 @@ export default function CourseDetailPageUser({ onEnrolled }: CourseDetailPageUse
                 <h2 className="text-lg font-semibold text-foreground mb-2">Программа курса</h2>      
                 <CourseModulesUser
                   sections={sections}
+                  canViewSubitems={Boolean(course.is_enrolled) || Boolean(isAuthor)}
                   onStartChapter={(chapterId, subchapterId) =>
                     navigate(`/courses/${id}/learn/${chapterId}/${subchapterId}`)
                   }

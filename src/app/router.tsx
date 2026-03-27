@@ -73,7 +73,16 @@ export const Router = () => {
       <Route path="/courses/:courseId/learn/:chapterId/:subchapterId" element={<AppLayout><LecturePage /></AppLayout>} />
       <Route path="/profile" element={<AppLayout><ProfilePage /></AppLayout>} />
       <Route path="/profile/:id" element={<AppLayout><ProfilePage /></AppLayout>} />
-      <Route path="/settings" element={<AppLayout><SettingsPage /></AppLayout>} />
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <SettingsPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
       <Route path="/glossary" element={<AppLayout><GlossaryPage /></AppLayout>} />
       <Route
         path="/virtual-class"

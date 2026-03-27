@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo, useEffect, useRef } from "react";
+import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import {
   ReactFlow,
   Background,
@@ -32,7 +32,6 @@ import {
   createCanvasEdge,
   deleteCanvasEdge,
   type MindMapSummary,
-  type MindMapFull,
   type CanvasEdgeData,
 } from "@/shared/api/gollossary";
 import { coursesApi } from "@/shared/api/courses";
@@ -61,13 +60,99 @@ const defaultEdgeOptions = {
 const COL_COUNT = 4;
 const BASE_X = 80;
 const BASE_Y = 80;
-const DX = 300;
-const DY = 220;
+const NODE_WIDTH = 240; // Must match .concept-node width in glossary-flow.css
+const COLUMN_GAP = 120;
+const ROW_GAP = 64;
+const DX = NODE_WIDTH + COLUMN_GAP;
 
-function autoLayoutPosition(index: number) {
-  const row = Math.floor(index / COL_COUNT);
-  const col = index % COL_COUNT;
-  return { x: BASE_X + col * DX, y: BASE_Y + row * DY };
+function estimateWrappedLines(text: string, charsPerLine: number) {
+  if (!text.trim()) return 0;
+  return text
+    .split("\n")
+    .reduce((sum, chunk) => sum + Math.max(1, Math.ceil(chunk.length / charsPerLine)), 0);
+}
+
+function estimateNodeHeight(concept: import("@/shared/api/gollossary").GollossaryConcept) {
+  // Base card body: badge/title/description/actions/paddings.
+  let height = 120;
+
+  if (concept.example?.trim()) {
+    const codeLines = estimateWrappedLines(concept.example, 34);
+    height += 22 + codeLines * 11;
+  }
+
+  if (concept.image_description?.trim()) {
+    const imageLines = estimateWrappedLines(concept.image_description, 36);
+    height += 28 + imageLines * 11;
+  }
+
+  return Math.max(height, 140);
+}
+
+function autoLayoutPositions(concepts: import("@/shared/api/gollossary").GollossaryConcept[]) {
+  const rowMaxHeights: number[] = [];
+
+  concepts.forEach((concept, index) => {
+    const row = Math.floor(index / COL_COUNT);
+    const h = estimateNodeHeight(concept);
+    rowMaxHeights[row] = Math.max(rowMaxHeights[row] || 0, h);
+  });
+
+  const rowOffsets: number[] = [];
+  let accY = BASE_Y;
+  rowMaxHeights.forEach((h, row) => {
+    rowOffsets[row] = accY;
+    accY += h + ROW_GAP;
+  });
+
+  return concepts.map((_, index) => {
+    const row = Math.floor(index / COL_COUNT);
+    const col = index % COL_COUNT;
+    return { x: BASE_X + col * DX, y: rowOffsets[row] ?? BASE_Y };
+  });
+}
+
+function estimateConceptNodeHeight(node: Pick<ConceptNode, "example" | "image_description">) {
+  // Slightly conservative estimate; real DOM measurement refines this later.
+  let height = 140;
+  if (node.example?.trim()) {
+    const codeLines = estimateWrappedLines(node.example, 30);
+    height += 26 + codeLines * 12;
+  }
+  if (node.image_description?.trim()) {
+    const imageLines = estimateWrappedLines(node.image_description, 32);
+    height += 30 + imageLines * 12;
+  }
+  return height;
+}
+
+function relayoutConceptNodes(
+  nodes: ConceptNode[],
+  getHeight: (node: ConceptNode) => number,
+) {
+  const sorted = [...nodes].sort(
+    (a, b) => (a.conceptIndex ?? 0) - (b.conceptIndex ?? 0),
+  );
+  const rowMaxHeights: number[] = [];
+
+  sorted.forEach((node, index) => {
+    const row = Math.floor(index / COL_COUNT);
+    rowMaxHeights[row] = Math.max(rowMaxHeights[row] || 0, getHeight(node));
+  });
+
+  const rowOffsets: number[] = [];
+  let accY = BASE_Y;
+  rowMaxHeights.forEach((h, row) => {
+    rowOffsets[row] = accY;
+    accY += h + ROW_GAP;
+  });
+
+  return sorted.map((node, index) => {
+    const row = Math.floor(index / COL_COUNT);
+    const col = index % COL_COUNT;
+    const nextPos = { x: BASE_X + col * DX, y: rowOffsets[row] ?? BASE_Y };
+    return { ...node, x: nextPos.x, y: nextPos.y };
+  });
 }
 
 /** Строит ConceptNode[] и ConceptEdge[] из массива понятий MindMap. */
@@ -77,8 +162,9 @@ function buildGraphFromConcepts(
   stage: number,
   course: string,
 ): { nodes: ConceptNode[]; edges: ConceptEdge[] } {
+  const positions = autoLayoutPositions(concepts);
   const nodes: ConceptNode[] = concepts.map((c, index) => {
-    const pos = autoLayoutPosition(index);
+    const pos = positions[index];
     return {
       id: c._id || `${mindmapId}-${index}`,
       title: c.term,
@@ -295,8 +381,13 @@ const GlossaryPage = () => {
         // source_lecture_id теперь включён в MindMapSummary — не нужно делать N лишних запросов.
         const data = await fetchMindmaps();
         if (cancelled) return;
-        // Дедупликация по source_lecture_id: при повторной генерации оставляем только последний mindmap.
+        // Дедупликация по source_lecture_id: при повторной генерации оставляем лучший mindmap.
+        // Приоритет: сначала те у кого есть понятия (concept_count > 0), затем по дате (новейший).
         const sorted = [...data].sort((a, b) => {
+          const ca = a.concept_count ?? 0;
+          const cb = b.concept_count ?? 0;
+          if (ca > 0 && cb === 0) return -1;
+          if (ca === 0 && cb > 0) return 1;
           const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
           const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
           return tb - ta;
@@ -495,6 +586,43 @@ const GlossaryPage = () => {
       cancelled = true;
     };
   }, [activeMindmapId, activeStage, currentCourse]);
+
+  // After first render, measure real node heights and recalculate row spacing.
+  // This prevents collisions for very long cards where text expansion beats heuristics.
+  useEffect(() => {
+    if (!activeMindmapId || rawNodes.length === 0) return;
+
+    const rafId = window.requestAnimationFrame(() => {
+      const measuredHeights = new Map<string, number>();
+
+      rawNodes.forEach((node) => {
+        const el = document.querySelector<HTMLElement>(
+          `.react-flow__node[data-id="${node.id}"]`,
+        );
+        if (!el) return;
+        measuredHeights.set(node.id, Math.ceil(el.getBoundingClientRect().height));
+      });
+
+      // Wait for a fuller render if not enough nodes are measurable yet.
+      if (measuredHeights.size < Math.max(1, Math.floor(rawNodes.length * 0.8))) return;
+
+      const relayouted = relayoutConceptNodes(
+        rawNodes,
+        (node) => measuredHeights.get(node.id) ?? estimateConceptNodeHeight(node),
+      );
+
+      const hasPositionChanges = relayouted.some((nextNode) => {
+        const prevNode = rawNodes.find((n) => n.id === nextNode.id);
+        return !prevNode || prevNode.x !== nextNode.x || prevNode.y !== nextNode.y;
+      });
+
+      if (hasPositionChanges) {
+        setRawNodes(relayouted);
+      }
+    });
+
+    return () => window.cancelAnimationFrame(rafId);
+  }, [activeMindmapId, rawNodes, setRawNodes]);
 
   /* ─── CRUD callbacks (stable refs) ─── */
   const handleEdit = useCallback((node: ConceptNode) => {
@@ -712,6 +840,26 @@ const GlossaryPage = () => {
     );
   }
 
+  if (error) {
+    return (
+      <div className="flex items-center justify-center h-[70vh]">
+        <div className="max-w-md text-center space-y-3">
+          <p className="text-sm font-medium text-destructive">{error}</p>
+          <p className="text-xs text-muted-foreground">
+            Убедитесь, что Python-сервисы запущены:{" "}
+            <code className="bg-muted px-1 py-0.5 rounded text-xs">python run_services.py</code>
+          </p>
+          <button
+            onClick={() => setMindmapsReloadTick((t) => t + 1)}
+            className="text-xs px-3 py-1.5 rounded-md border border-border hover:bg-accent transition-colors"
+          >
+            Повторить
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col lg:flex-row bg-background overflow-hidden min-h-[calc(100vh-5rem)]">
       {/* ── Main area ── */}
@@ -769,7 +917,7 @@ const GlossaryPage = () => {
                 />
                 <Controls
                   showInteractive={false}
-                  position="bottom-left"
+                  position="top-right"
                 />
                 <MiniMap
                   nodeStrokeWidth={3}

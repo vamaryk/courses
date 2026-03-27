@@ -103,29 +103,21 @@ export function useFriends(socket: Socket | null): UseFriendsReturn {
       setRecentChats((prev) => {
         const existing = prev.find((c) => c.friend_id === friendId);
 
+        // Only update existing entries — never auto-add new contacts to "Недавние"
+        if (!existing) return prev;
+
         // Increment unread only for messages from the friend, and only when that chat is NOT open
         const shouldIncUnread = msg.sender_id !== myId && activeFriendId !== friendId;
 
-        const updated: RecentChat = existing
-          ? {
-            ...existing,
-            last_message: previewText,
-            last_message_at: msg.created_at,
-            last_sender_id: msg.sender_id,
-            unread_count: shouldIncUnread
-              ? (existing.unread_count ?? 0) + 1
-              : existing.unread_count ?? 0,
-          }
-          : {
-            friend_id: friendId,
-            first_name: '',
-            last_name: '',
-            avatar_url: null,
-            last_message: previewText,
-            last_message_at: msg.created_at,
-            last_sender_id: msg.sender_id,
-            unread_count: shouldIncUnread ? 1 : 0,
-          };
+        const updated: RecentChat = {
+          ...existing,
+          last_message: previewText,
+          last_message_at: msg.created_at,
+          last_sender_id: msg.sender_id,
+          unread_count: shouldIncUnread
+            ? (existing.unread_count ?? 0) + 1
+            : existing.unread_count ?? 0,
+        };
 
         // Move to top of list
         return [updated, ...prev.filter((c) => c.friend_id !== friendId)];

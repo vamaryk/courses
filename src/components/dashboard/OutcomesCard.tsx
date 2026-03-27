@@ -43,6 +43,7 @@ const OutcomesCard = ({
   const [isDragging, setIsDragging] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
   const [skillInput, setSkillInput] = useState("");
+  const [toolInput, setToolInput] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
   const toolsDropdownRef = useRef<HTMLDivElement>(null);
 
@@ -107,6 +108,40 @@ const OutcomesCard = ({
     onChange(current.filter(item => item !== value));
   };
 
+  const commitSkillsFromInput = () => {
+    if (!skillInput.trim()) return;
+    const chunks = skillInput
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    if (chunks.length === 0) return;
+    let next = [...skills];
+    chunks.forEach((item) => {
+      if (!next.some((value) => value.toLowerCase() === item.toLowerCase())) {
+        next = [...next, item];
+      }
+    });
+    onSkillsChange(next);
+    setSkillInput("");
+  };
+
+  const commitToolsFromInput = () => {
+    if (!toolInput.trim()) return;
+    const chunks = toolInput
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+    if (chunks.length === 0) return;
+    let next = [...tools];
+    chunks.forEach((item) => {
+      if (!next.some((value) => value.toLowerCase() === item.toLowerCase())) {
+        next = [...next, item];
+      }
+    });
+    onToolsChange(next);
+    setToolInput("");
+  };
+
   return (
     <div className="border rounded-xl p-4 bg-white animate-fade-in" style={{ animationDelay: "0.25s" }}>
       <h3 className="text-foreground font-semibold mb-4">Резюме после обучения</h3>
@@ -129,20 +164,19 @@ const OutcomesCard = ({
           value={skillInput}
           onChange={(e) => setSkillInput(e.target.value)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") {
+            if (e.key === "Enter" || e.key === ",") {
               e.preventDefault();
-              addValue(skillInput, skills, onSkillsChange);
-              setSkillInput("");
+              commitSkillsFromInput();
             }
           }}
-          placeholder="Навыки после обучения"
+          onBlur={commitSkillsFromInput}
+          placeholder="Навыки после обучения (через запятую)"
           className="input-field pr-10"
         />
         <button
           type="button"
           onClick={() => {
-            addValue(skillInput, skills, onSkillsChange);
-            setSkillInput("");
+            commitSkillsFromInput();
           }}
           className="absolute right-3 top-1/2 -translate-y-1/2 text-primary hover:scale-110 transition-transform"
         >
@@ -164,6 +198,30 @@ const OutcomesCard = ({
 
       {/* Software/Tools — выбор из списка (теперь с input-field классом) */}
       <div className="mb-4 relative" ref={toolsDropdownRef}>
+        <div className="mb-2 flex gap-2">
+          <input
+            type="text"
+            value={toolInput}
+            onChange={(e) => setToolInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === ",") {
+                e.preventDefault();
+                commitToolsFromInput();
+              }
+            }}
+            onBlur={commitToolsFromInput}
+            placeholder="Добавить свой инструмент (через запятую)"
+            className="input-field"
+          />
+          <button
+            type="button"
+            onClick={commitToolsFromInput}
+            className="px-3 rounded-md border hover:bg-muted transition-colors cursor-pointer"
+            aria-label="Добавить инструмент"
+          >
+            <Plus className="w-4 h-4" />
+          </button>
+        </div>
         <button
           type="button"
           onClick={() => setToolsOpen((v) => !v)}

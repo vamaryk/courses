@@ -6,6 +6,34 @@ export interface HeadingItem {
   text: string;
   level: number;
 }
+
+/**
+ * Parses HTML string, injects stable `id` attributes into h1/h2/h3 elements,
+ * and returns the modified HTML + headings list.
+ * This avoids race conditions with dangerouslySetInnerHTML + DOM queries.
+ */
+function injectHeadingIds(
+  html: string,
+  blockId: number,
+): { processedHtml: string; headings: HeadingItem[] } {
+  if (!html) return { processedHtml: html, headings: [] };
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const tags = doc.querySelectorAll('h1, h2, h3');
+  const headings: HeadingItem[] = [];
+  tags.forEach((el, index) => {
+    const id = `heading-${blockId}-${index}`;
+    el.id = id;
+    headings.push({
+      id,
+      text: (el.textContent || '').trim(),
+      level: parseInt(el.tagName.charAt(1), 10),
+    });
+  });
+  return {
+    processedHtml: doc.body.innerHTML,
+    headings,
+  };
+}
 import { Button } from '@/components/ui/button';
 import {
   parseCodeTaskConfig,
@@ -153,8 +181,8 @@ export default function LectureBlocks({
   const [codeTaskResults, setCodeTaskResults] = useState<CodeTaskTestResult[] | null>(null);
   const [codeTaskIsRunning, setCodeTaskIsRunning] = useState(false);
   const [codeTaskError, setCodeTaskError] = useState<string | null>(null);
-  const [headingsList, setHeadingsList] = useState<HeadingItem[]>([]);
-  const contentContainerRef = useRef<HTMLDivElement>(null);
+  const highlightTimeoutRef = useRef<number | null>(null);
+  const highlightedHeadingRef = useRef<HTMLElement | null>(null);
 
   const meaningfulBlocks = useMemo(() => blocks.filter(isMeaningfulBlock), [blocks]);
   const viewBlocks = meaningfulBlocks.length > 0 ? meaningfulBlocks : blocks;
@@ -183,23 +211,12 @@ export default function LectureBlocks({
   const isLastBlock = safeIndex === viewBlocks.length - 1;
   const blockHtmlText = stripHtml(block.content);
 
-  // Собираем заголовки из контента блока и присваиваем им id для навигации
-  useEffect(() => {
+  // Parse headings and inject IDs into the HTML string directly (no DOM queries needed)
+  const { processedHtml, headings: headingsList } = useMemo(() => {
     if (block.type === 'test' || !block.content) {
-      setHeadingsList([]);
-      return;
+      return { processedHtml: block.content || '', headings: [] };
     }
-    const container = contentContainerRef.current;
-    if (!container) return;
-    const headingTags = container.querySelectorAll('h1, h2, h3');
-    const list: HeadingItem[] = [];
-    headingTags.forEach((el, index) => {
-      const id = `heading-${block.id}-${index}`;
-      el.id = id;
-      const level = parseInt(el.tagName.charAt(1), 10);
-      list.push({ id, text: (el.textContent || '').trim(), level });
-    });
-    setHeadingsList(list);
+    return injectHeadingIds(block.content, block.id);
   }, [block.id, block.content, block.type]);
 
   useEffect(() => {
@@ -345,33 +362,66 @@ export default function LectureBlocks({
   const buttonOutlineClasses = `${buttonBaseClasses} border-2 border-purple text-darkgrey hover:bg-purple-50`;
   const buttonDisabledClasses = "opacity-50 cursor-not-allowed";
 
+  useEffect(() => {
+    return () => {
+      if (highlightTimeoutRef.current) {
+        window.clearTimeout(highlightTimeoutRef.current);
+      }
+    };
+  }, []);
+
+  const clearHeadingHighlight = (el: HTMLElement) => {
+    el.style.transition = '';
+    el.style.backgroundColor = '';
+    el.style.boxShadow = '';
+    el.style.borderRadius = '';
+    el.style.padding = '';
+    el.style.width = '';
+  };
+
   const scrollToHeading = (id: string) => {
     const el = document.getElementById(id);
     if (!el) return;
-    const start = window.scrollY;
-    const target = el.getBoundingClientRect().top + start;
-    const offset = 24;
-    const to = Math.max(0, target - offset);
-    const duration = 900;
-    const startTime = performance.now();
 
-    const step = (now: number) => {
-      const elapsed = now - startTime;
-      const t = Math.min(elapsed / duration, 1);
-      const ease = 1 - (1 - t) * (1 - t);
-      window.scrollTo(0, start + (to - start) * ease);
-      if (t < 1) requestAnimationFrame(step);
-    };
+    if (highlightedHeadingRef.current && highlightedHeadingRef.current !== el) {
+      clearHeadingHighlight(highlightedHeadingRef.current);
+      highlightedHeadingRef.current = null;
+    }
+    if (highlightTimeoutRef.current) {
+      window.clearTimeout(highlightTimeoutRef.current);
+      highlightTimeoutRef.current = null;
+    }
 
-    requestAnimationFrame(step);
+    const offset = 96; // account for sticky header height
+    const top = el.getBoundingClientRect().top + window.scrollY - offset;
+    window.scrollTo({ top, behavior: 'smooth' });
+    el.style.transition = 'background-color 220ms ease, box-shadow 220ms ease';
+    el.style.backgroundColor = 'rgba(143, 107, 244, 0.18)';
+    el.style.boxShadow = '4px 0 0 rgba(143, 107, 244, 0.18), -4px 0 0 rgba(143, 107, 244, 0.18)';
+    el.style.borderRadius = '6px';
+    el.style.padding = '2px 4px';
+    el.style.width = 'fit-content';
+    highlightedHeadingRef.current = el;
+
+    highlightTimeoutRef.current = window.setTimeout(() => {
+      clearHeadingHighlight(el);
+      if (highlightedHeadingRef.current === el) {
+        highlightedHeadingRef.current = null;
+      }
+      highlightTimeoutRef.current = null;
+    }, 1200);
+
+    if (window.history?.replaceState) {
+      window.history.replaceState(null, '', `#${id}`);
+    }
   };
 
   return (
-    <div className="flex gap-6 w-full min-w-0">
+    <div className="flex flex-col lg:flex-row gap-6 w-full min-w-0">
       <div className="flex-1 min-w-0 space-y-8 text-[#31323f]">
       <section key={block.id} className="w-full min-w-0">
         {block.type !== 'test' && block.content && (
-          <div ref={contentContainerRef} className="w-full max-w-full overflow-x-hidden px-4">
+          <div className="w-full max-w-full overflow-x-hidden px-4">
             <div
               className={`
                 prose break-words whitespace-pre-wrap overflow-x-hidden
@@ -384,7 +434,7 @@ export default function LectureBlocks({
                 overflowWrap: 'break-word',
                 hyphens: 'auto',
               }}
-              dangerouslySetInnerHTML={{ __html: block.content }}
+              dangerouslySetInnerHTML={{ __html: processedHtml }}
             />
           </div>
         )}
@@ -719,9 +769,9 @@ export default function LectureBlocks({
 
       {/* Меню «Содержание» показываем только если в блоке есть заголовки (h1–h3) */}
       {headingsList.length > 0 ? (
-        <div className="hidden lg:block w-56 flex-shrink-0">
-          <div className="sticky top-24 rounded-xl border border-[#e7e7f2] bg-white p-3 shadow-sm">
-            <h3 className="text-sm font-semibold text-[#35364a] mb-2">Содержание</h3>
+        <div className="w-full lg:w-56 flex-shrink-0">
+          <div className="lg:sticky lg:top-24 rounded-xl border border-[#e7e7f2] bg-white p-3 shadow-sm">
+            <h3 className="text-sm font-semibold text-[#35364a] mb-2">Заголовки</h3>
             <nav className="space-y-1 max-h-[60vh] overflow-y-auto">
               {headingsList.map((h) => (
                 <button

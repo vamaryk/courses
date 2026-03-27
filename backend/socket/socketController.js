@@ -200,7 +200,7 @@ export function setupSocketController(io) {
     });
 
     // ─── Chat: Send a message ───────────────────────────────────────────────
-    socket.on('chat:message', ({ roomId, text }) => {
+    socket.on('chat:message', ({ roomId, text, replyToId, replyToText, replyToSender }) => {
       if (!text || !roomId) return;
 
       const message = {
@@ -211,6 +211,9 @@ export function setupSocketController(io) {
         isRead: false,
         mediaUrl: null,
         mediaType: null,
+        reply_to_id: replyToId ?? null,
+        reply_to_text: replyToText ? String(replyToText).slice(0, 300) : null,
+        reply_to_sender: replyToSender ? String(replyToSender).slice(0, 100) : null,
       };
 
       roomMessageMeta.set(message.id, { roomId, fromUserId: userId });
@@ -277,7 +280,7 @@ export function setupSocketController(io) {
     });
 
     // ─── DM: Send a direct message (persisted) ─────────────────────────────
-    socket.on('dm:send', async ({ receiverId, text, fileName, mimeType, base64Data, caption }) => {
+    socket.on('dm:send', async ({ receiverId, text, fileName, mimeType, base64Data, caption, replyToId, replyToText, replyToSender }) => {
       const senderId = socketToAuthUser.get(socket.id);
       if (!senderId) {
         socket.emit('dm:error', { message: 'Требуется авторизация для отправки личных сообщений' });
@@ -308,10 +311,18 @@ export function setupSocketController(io) {
           media_id: mediaUrl,
           media_type: mediaType,
           is_read: false,
+          reply_to_id: replyToId ?? null,
+          reply_to_text: replyToText ? String(replyToText).slice(0, 300) : null,
+          reply_to_sender: replyToSender ? String(replyToSender).slice(0, 100) : null,
         });
         const insertedDoc = await chats.findOne({ _id: insertResult.insertedId });
         if (!insertedDoc) return;
-        const msg = normalizeMongoMessage(insertedDoc);
+        const msg = {
+          ...normalizeMongoMessage(insertedDoc),
+          reply_to_id: insertedDoc.reply_to_id ?? null,
+          reply_to_text: insertedDoc.reply_to_text ?? null,
+          reply_to_sender: insertedDoc.reply_to_sender ?? null,
+        };
 
         // Send to both sender and receiver if they are connected
         socket.emit('dm:message', msg);
@@ -440,7 +451,7 @@ export function setupSocketController(io) {
     });
 
     // ─── Group: Send a message ──────────────────────────────────────────────
-    socket.on('group:send', async ({ groupId, text, fileName, mimeType, base64Data, caption }) => {
+    socket.on('group:send', async ({ groupId, text, fileName, mimeType, base64Data, caption, replyToId, replyToText, replyToSender }) => {
       const uid = socketToAuthUser.get(socket.id);
       if (!uid || !groupId) return;
 
@@ -472,6 +483,9 @@ export function setupSocketController(io) {
           sended_time: new Date(),
           media_id: mediaUrl,
           media_type: mediaType,
+          reply_to_id: replyToId ?? null,
+          reply_to_text: replyToText ? String(replyToText).slice(0, 300) : null,
+          reply_to_sender: replyToSender ? String(replyToSender).slice(0, 100) : null,
         });
         const insertedDoc = await groupchats.findOne({ _id: insertResult.insertedId });
         if (!insertedDoc) return;
@@ -493,6 +507,9 @@ export function setupSocketController(io) {
           sender_first_name: sender.first_name,
           sender_last_name: sender.last_name,
           sender_avatar: sender.avatar_url,
+          reply_to_id: insertedDoc.reply_to_id ?? null,
+          reply_to_text: insertedDoc.reply_to_text ?? null,
+          reply_to_sender: insertedDoc.reply_to_sender ?? null,
         };
 
         io.to(`group:${groupId}`).emit('group:message', fullMsg);
@@ -587,6 +604,72 @@ export function setupSocketController(io) {
     // ─── WebRTC: ICE Candidate ─────────────────────────────────────────────
     socket.on('webrtc:ice-candidate', ({ roomId, candidate }) => {
       socket.to(roomId).emit('webrtc:ice-candidate', { fromUserId: userId, candidate });
+    });
+
+    // ─── WebRTC: Force-mute (teacher → participant) ────────────────────────
+    socket.on('webrtc:force-mute', ({ roomId, targetUserId }) => {
+      if (!roomId) return;
+      const targetSocketId = users.get(targetUserId);
+      if (targetSocketId) {
+        io.to(targetSocketId).emit('webrtc:force-mute', { fromUserId: userId });
+        console.log(`🔇 [WebRTC] Force-mute: ${userId} → ${targetUserId} in room ${roomId}`);
+      }
+    });
+
+    // ─── Direct P2P Call Signaling ─────────────────────────────────────────
+    // Route WebRTC signaling messages directly between two authenticated users.
+    // authUsers maps dbUserId → socketId for authenticated sessions.
+
+    socket.on('call:offer', ({ targetUserId, offer, callerName }) => {
+      if (!targetUserId || !offer) return;
+      const targetSocketId = authUsers.get(targetUserId);
+      if (targetSocketId) {
+        const callerId = socketToAuthUser.get(socket.id);
+        io.to(targetSocketId).emit('call:incoming', {
+          fromUserId: callerId || userId,
+          fromName: callerName || 'Пользователь',
+          offer,
+        });
+        console.log(`📞 [Call] Offer: ${userId} → ${targetUserId}`);
+      } else {
+        socket.emit('call:unavailable', { targetUserId });
+        console.log(`📵 [Call] Target unavailable: ${targetUserId}`);
+      }
+    });
+
+    socket.on('call:answer', ({ targetUserId, answer }) => {
+      if (!targetUserId || !answer) return;
+      const targetSocketId = authUsers.get(targetUserId);
+      if (targetSocketId) {
+        io.to(targetSocketId).emit('call:accepted', { answer });
+        console.log(`✅ [Call] Answered: ${userId} → ${targetUserId}`);
+      }
+    });
+
+    socket.on('call:ice-candidate', ({ targetUserId, candidate }) => {
+      if (!targetUserId || !candidate) return;
+      const targetSocketId = authUsers.get(targetUserId);
+      if (targetSocketId) {
+        io.to(targetSocketId).emit('call:ice-candidate', { candidate });
+      }
+    });
+
+    socket.on('call:decline', ({ targetUserId }) => {
+      if (!targetUserId) return;
+      const targetSocketId = authUsers.get(targetUserId);
+      if (targetSocketId) {
+        io.to(targetSocketId).emit('call:declined', {});
+        console.log(`❌ [Call] Declined: ${userId} → ${targetUserId}`);
+      }
+    });
+
+    socket.on('call:end', ({ targetUserId }) => {
+      if (!targetUserId) return;
+      const targetSocketId = authUsers.get(targetUserId);
+      if (targetSocketId) {
+        io.to(targetSocketId).emit('call:ended', {});
+        console.log(`📴 [Call] Ended: ${userId} → ${targetUserId}`);
+      }
     });
 
     // ─── Disconnect ────────────────────────────────────────────────────────

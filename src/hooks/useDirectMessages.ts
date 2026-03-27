@@ -2,10 +2,16 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import { friendsApi, type DirectMessage } from '@/shared/api/friends';
 
+export interface ReplyInfo {
+  id: string;
+  text: string;
+  senderName: string;
+}
+
 export interface UseDirectMessagesReturn {
   messages: DirectMessage[];
   loading: boolean;
-  sendMessage: (text: string) => void;
+  sendMessage: (text: string, replyTo?: ReplyInfo) => void;
   sendMedia: (file: File, caption?: string) => Promise<void>;
   editMessage: (messageId: string, text: string) => void;
   deleteMessage: (messageId: string) => void;
@@ -62,18 +68,13 @@ export function useDirectMessages(
           return [...prev, msg];
         });
 
-        // Mark as read immediately if the chat is open
         if (msg.sender_id === friendId) {
           socket.emit('dm:read', { senderId: friendId });
         }
       }
 
-      // Always notify the sidebar preview (even for chats not currently open)
       onMessageRef.current?.(msg);
     };
-
-    socket.on('dm:authenticated', onAuthenticated);
-    socket.on('dm:message', onMessage);
 
     const onUpdated = (updated: DirectMessage) => {
       setMessages((prev) => prev.map((msg) => (msg.id === updated.id ? { ...msg, ...updated } : msg)));
@@ -84,14 +85,40 @@ export function useDirectMessages(
       setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
     };
 
+    // Server notifies sender that recipient read their messages
+    const onRead = ({ readBy }: { readBy: string }) => {
+      const friendId = activeFriendRef.current;
+      if (!friendId || readBy !== friendId) return;
+      setMessages((prev) =>
+        prev.map((msg) => (msg.is_read ? msg : { ...msg, is_read: true })),
+      );
+    };
+
+    // On reconnect: reload the active chat history to catch messages missed during disconnect
+    const onConnect = () => {
+      const friendId = activeFriendRef.current;
+      if (!friendId) return;
+      // Clear deduplication guard so loadHistory runs again
+      lastLoadedFriendIdRef.current = null;
+      void friendsApi.getMessages(friendId).then((history) => {
+        setMessages(history);
+      }).catch(() => {/* silent – user can refresh manually */});
+    };
+
+    socket.on('connect', onConnect);
+    socket.on('dm:authenticated', onAuthenticated);
+    socket.on('dm:message', onMessage);
     socket.on('dm:updated', onUpdated);
     socket.on('dm:deleted', onDeleted);
+    socket.on('dm:read', onRead);
 
     return () => {
+      socket.off('connect', onConnect);
       socket.off('dm:authenticated', onAuthenticated);
       socket.off('dm:message', onMessage);
       socket.off('dm:updated', onUpdated);
       socket.off('dm:deleted', onDeleted);
+      socket.off('dm:read', onRead);
     };
   }, [socket]);
 
@@ -135,9 +162,17 @@ export function useDirectMessages(
   }, [loading]);
 
   const sendMessage = useCallback(
-    (text: string) => {
+    (text: string, replyTo?: ReplyInfo) => {
       if (!socket || !activeFriendRef.current || !text.trim()) return;
-      socket.emit('dm:send', { receiverId: activeFriendRef.current, text: text.trim() });
+      socket.emit('dm:send', {
+        receiverId: activeFriendRef.current,
+        text: text.trim(),
+        ...(replyTo && {
+          replyToId: replyTo.id,
+          replyToText: replyTo.text,
+          replyToSender: replyTo.senderName,
+        }),
+      });
     },
     [socket],
   );

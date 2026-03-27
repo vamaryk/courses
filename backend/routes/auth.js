@@ -268,6 +268,7 @@ router.get('/me', authenticateSession, async (req, res) => {
       const userProfile = {
         id: req.user.profile.id,
         email: req.user.email || req.user.profile.email,
+        email_changed_at: req.user.profile.email_changed_at ?? null,
         first_name: req.user.profile.first_name,
         last_name: req.user.profile.last_name,
         patronymic: req.user.profile.patronymic,
@@ -278,6 +279,8 @@ router.get('/me', authenticateSession, async (req, res) => {
         bio: req.user.profile.bio,
         address: req.user.profile.address,
         occupation: req.user.profile.occupation,
+        profile_details_public: req.user.profile.profile_details_public !== false,
+        learning_progress_public: req.user.profile.learning_progress_public !== false,
       };
       console.log('✅ [AUTH ME] User profile requested successfully.', { userId: req.user.profile.id });
       res.status(200).json(userProfile);
@@ -651,7 +654,7 @@ router.patch('/profile', authenticateSession, async (req, res) => {
 
 // Change password (authenticated user)
 router.post('/change-password', authenticateSession, async (req, res) => {
-  const userId = req.user.id;
+  const userId = req.user.profile?.id || req.user.userId;
   const { currentPassword, newPassword } = req.body;
 
   if (!currentPassword || !newPassword) {
@@ -692,6 +695,77 @@ router.post('/change-password', authenticateSession, async (req, res) => {
     res.json({ message: 'Password updated successfully' });
   } catch (error) {
     console.error('Error changing password:', error);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+const EMAIL_CHANGE_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
+
+// Change email (authenticated; at most once per 30 days after first change)
+router.post('/change-email', authenticateSession, async (req, res) => {
+  const userId = req.user.profile?.id || req.user.userId;
+  const { newEmail, password } = req.body;
+
+  if (!newEmail || !password) {
+    return res.status(400).json({ error: 'New email and current password are required' });
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(newEmail)) {
+    return res.status(400).json({ error: 'Invalid email format' });
+  }
+
+  try {
+    const userRes = await pool.query(
+      'SELECT id, email, password, email_changed_at FROM users WHERE id = $1',
+      [userId]
+    );
+    const row = userRes.rows[0];
+    if (!row) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    if (String(row.email).toLowerCase() === String(newEmail).toLowerCase()) {
+      return res.status(400).json({ error: 'This is already your email address' });
+    }
+
+    const now = Date.now();
+    if (row.email_changed_at) {
+      const last = new Date(row.email_changed_at).getTime();
+      if (now - last < EMAIL_CHANGE_COOLDOWN_MS) {
+        const nextChangeAt = new Date(last + EMAIL_CHANGE_COOLDOWN_MS);
+        return res.status(429).json({
+          error: 'Email can only be changed once per month',
+          nextChangeAt: nextChangeAt.toISOString(),
+        });
+      }
+    }
+
+    const taken = await pool.query(
+      'SELECT id FROM users WHERE LOWER(TRIM(email)) = LOWER(TRIM($1)) AND id <> $2',
+      [newEmail, userId]
+    );
+    if (taken.rows.length > 0) {
+      return res.status(400).json({ error: 'This email is already in use' });
+    }
+
+    const passwordOk = await bcrypt.compare(password, row.password);
+    if (!passwordOk) {
+      return res.status(401).json({ error: 'Current password is incorrect' });
+    }
+
+    await pool.query(
+      'UPDATE users SET email = $1, email_changed_at = NOW() WHERE id = $2',
+      [newEmail.trim(), userId]
+    );
+
+    res.status(200).json({
+      message: 'Email updated successfully',
+      email: newEmail.trim(),
+      email_changed_at: new Date().toISOString(),
+    });
+  } catch (error) {
+    console.error('Error changing email:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });

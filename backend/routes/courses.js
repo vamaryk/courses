@@ -498,11 +498,106 @@ router.get('/', optionalAuthenticateSession, async (req, res) => {
   }
 });
 
+// GET /api/courses/my/dashboard — топ-5 авторских курсов по популярности + сводная статистика
+router.get('/my/dashboard', authenticateSession, async (req, res) => {
+  const authorId = req.user.userId;
+  try {
+    const [aggRow, topResult] = await Promise.all([
+      pool.query(
+        `SELECT
+          COALESCE(
+            (SELECT SUM(cnt)::bigint FROM (
+              SELECT COUNT(DISTINCT ue.user_id)::int AS cnt
+              FROM courses c
+              LEFT JOIN user_enrollments ue ON ue.course_id = c.id
+              WHERE c.author_id = $1
+              GROUP BY c.id
+            ) t),
+            0
+          ) AS total_students,
+          (SELECT ROUND(AVG(cr.rating)::numeric, 2)
+           FROM course_ratings cr
+           INNER JOIN courses c2 ON c2.id = cr.course_id
+           WHERE c2.author_id = $1) AS average_rating`,
+        [authorId]
+      ),
+      pool.query(
+        `SELECT
+          c.*,
+          COALESCE(enr.students_count, 0)::int AS students_count,
+          COALESCE(rat.avg_rating, 0)::numeric AS rating,
+          COALESCE(fav.favorites_count, 0)::int AS favorites_count
+        FROM courses c
+        LEFT JOIN (
+          SELECT course_id, COUNT(DISTINCT user_id)::int AS students_count
+          FROM user_enrollments
+          GROUP BY course_id
+        ) enr ON enr.course_id = c.id
+        LEFT JOIN (
+          SELECT course_id, ROUND(AVG(rating)::numeric, 2) AS avg_rating
+          FROM course_ratings
+          GROUP BY course_id
+        ) rat ON rat.course_id = c.id
+        LEFT JOIN (
+          SELECT course_id, COUNT(*)::int AS favorites_count
+          FROM favorites
+          GROUP BY course_id
+        ) fav ON fav.course_id = c.id
+        WHERE c.author_id = $1
+        ORDER BY COALESCE(enr.students_count, 0) DESC, c.created_at DESC
+        LIMIT 5`,
+        [authorId]
+      ),
+    ]);
+
+    const totalStudents = Number(aggRow.rows[0]?.total_students ?? 0);
+    const averageRating =
+      aggRow.rows[0]?.average_rating != null
+        ? parseFloat(aggRow.rows[0].average_rating)
+        : null;
+
+    const courses = topResult.rows;
+    const maxStudents =
+      courses.length === 0
+        ? 0
+        : Math.max(...courses.map((r) => parseInt(r.students_count, 10) || 0));
+
+    const chart_bars = courses.map((course) => ({
+      name: course.title,
+      students: parseInt(course.students_count, 10) || 0,
+      percentage:
+        maxStudents > 0
+          ? Math.round(((parseInt(course.students_count, 10) || 0) / maxStudents) * 100)
+          : 0,
+    }));
+
+    res.status(200).json({
+      total_students: totalStudents,
+      average_rating: averageRating,
+      courses,
+      chart_bars,
+    });
+  } catch (error) {
+    console.error('Error fetching author dashboard:', error.message);
+    res.status(500).json({ error: 'Failed to fetch author dashboard' });
+  }
+});
+
 // GET /api/courses/my - Get all courses created by the logged-in user
 router.get('/my', authenticateSession, async (req, res) => {
   const authorId = req.user.userId;
   try {
-    const result = await pool.query('SELECT * FROM courses WHERE author_id = $1 ORDER BY created_at DESC', [authorId]);
+    const result = await pool.query(
+      `SELECT
+        c.*,
+        COALESCE((SELECT COUNT(DISTINCT ue.user_id)::int FROM user_enrollments ue WHERE ue.course_id = c.id), 0) AS students_count,
+        COALESCE((SELECT ROUND(AVG(rating)::numeric, 2) FROM course_ratings WHERE course_id = c.id), 0) AS rating,
+        COALESCE((SELECT COUNT(*)::int FROM favorites WHERE course_id = c.id), 0) AS favorites_count
+      FROM courses c
+      WHERE c.author_id = $1
+      ORDER BY c.created_at DESC`,
+      [authorId]
+    );
     res.status(200).json(result.rows);
   } catch (error) {
     console.error('Error fetching user courses:', error.message);
@@ -669,6 +764,16 @@ router.get('/:id(\\d+)', optionalAuthenticateSession, async (req, res) => {
 
     if (!course.is_public && !isAuthor && !isEnrolled && !hasAccess) {
       return res.status(403).json({ error: 'You are not authorized to view this course' });
+    }
+
+    // If user can view course but is not enrolled/author/hasAccess:
+    // omit subchapter/content details to avoid leaking curriculum contents.
+    if (course.is_public && !isAuthor && !isEnrolled && !hasAccess) {
+      const chapters = Array.isArray(course.chapters) ? course.chapters : [];
+      course.chapters = chapters.map((ch) => ({
+        ...ch,
+        subchapters: [],
+      }));
     }
 
     res.status(200).json(course);
@@ -1361,10 +1466,6 @@ router.post('/:subchapterId/contentblocks', authenticateSession, async (req, res
     );
     const createdBlock = result.rows[0];
 
-    // Асинхронно отправляем обновлённый текст лекции (подраздела) в gollossary
-    // для генерации/обновления MindMap в MongoDB.
-    void sendSubchapterToGollossary(subchapterId);
-
     res.status(201).json(createdBlock);
   } catch (error) {
     console.error('Error creating content block:', error.message);
@@ -1438,13 +1539,6 @@ router.put('/:id', ensureBaseUrl('/api/contentblocks'), authenticateSession, asy
     );
 
     console.log(`✅ [API] Content block ${id} updated successfully`);
-
-    // После обновления блока повторно отправляем всю лекцию в gollossary
-    // на переработку mindmap (идемпотентная операция).
-    const subchapterId = contentBlockData.subchapter_id;
-    if (subchapterId) {
-      void sendSubchapterToGollossary(subchapterId);
-    }
 
     res.status(200).json(result.rows[0]);
   } catch (error) {

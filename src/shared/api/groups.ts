@@ -40,6 +40,9 @@ export interface GroupMessage {
   sender_first_name: string;
   sender_last_name: string;
   sender_avatar: string | null;
+  reply_to_id?: string | null;
+  reply_to_text?: string | null;
+  reply_to_sender?: string | null;
 }
 
 export const groupsApi = {

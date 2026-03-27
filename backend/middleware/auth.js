@@ -31,7 +31,9 @@ export const authenticateSession = async (req, res, next) => {
 
     console.log('🔍 [AUTH] Ищу пользователя в базе данных...');
     const userResult = await pool.query(
-      'SELECT u.email, p.id, p.first_name, p.last_name, p.patronymic, p.avatar_url, p.role, p.bio, p.date_of_birth, p.phone_number, p.address, p.occupation FROM profiles p JOIN users u ON p.id = u.id WHERE p.id = $1',
+      `SELECT u.email, u.email_changed_at, p.id, p.first_name, p.last_name, p.patronymic, p.avatar_url, p.role, p.bio, p.date_of_birth, p.phone_number, p.address, p.occupation,
+              p.profile_details_public, p.learning_progress_public
+       FROM profiles p JOIN users u ON p.id = u.id WHERE p.id = $1`,
       [session.user_id]
     );
 
@@ -84,7 +86,9 @@ export const optionalAuthenticateSession = async (req, res, next) => {
     }
 
     const userResult = await pool.query(
-      'SELECT u.email, p.id, p.first_name, p.last_name, p.patronymic, p.avatar_url, p.role, p.bio, p.date_of_birth, p.phone_number, p.address, p.occupation FROM profiles p JOIN users u ON p.id = u.id WHERE p.id = $1',
+      `SELECT u.email, u.email_changed_at, p.id, p.first_name, p.last_name, p.patronymic, p.avatar_url, p.role, p.bio, p.date_of_birth, p.phone_number, p.address, p.occupation,
+              p.profile_details_public, p.learning_progress_public
+       FROM profiles p JOIN users u ON p.id = u.id WHERE p.id = $1`,
       [session.user_id]
     );
 

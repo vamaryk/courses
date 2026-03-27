@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ChevronDown, CheckCircle2, PlayCircle, FileText, Flame, Clock } from "lucide-react";
+import { ChevronDown, PlayCircle, Flame, Clock } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface Module {
@@ -24,6 +24,7 @@ interface Section {
 interface CourseModulesProps {
   sections?: Section[];
   onStartChapter?: (chapterId: number, subchapterId: number) => void;
+  canViewSubitems?: boolean;
 }
 
 const defaultSections: Section[] = [
@@ -82,9 +83,16 @@ const defaultSections: Section[] = [
   },
 ];
 
-const CourseModules = ({ sections = defaultSections }: CourseModulesProps) => {
+const CourseModules = ({
+  sections = defaultSections,
+  onStartChapter,
+  canViewSubitems = true,
+}: CourseModulesProps) => {
   const [expandedModules, setExpandedModules] = useState<string[]>(["2-1"]);
   const [showMore, setShowMore] = useState(false);
+  const [expandedSections, setExpandedSections] = useState<string[]>(() =>
+    canViewSubitems ? (sections[0]?.id ? [sections[0].id] : []) : []
+  );
 
   const toggleModule = (moduleId: string) => {
     setExpandedModules(prev => 
@@ -95,91 +103,122 @@ const CourseModules = ({ sections = defaultSections }: CourseModulesProps) => {
   };
 
   const visibleSections = showMore ? sections : sections.slice(0, 3);
+  const isSectionOpen = (sectionId: string) => expandedSections.includes(sectionId);
+  const toggleSection = (sectionId: string) => {
+    if (!canViewSubitems) return;
+    setExpandedSections((prev) =>
+      prev.includes(sectionId) ? prev.filter((id) => id !== sectionId) : [...prev, sectionId]
+    );
+  };
 
   return (
     <div>
       <div className="border rounded-lg p-4 space-y-4">
         {visibleSections.map((section) => (
           <div key={section.id}>
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-medium text-muted-foreground">
-                {section.title}
-              </h3>
-            </div>
-            
-            <div className="space-y-2">
-              {section.modules.map((module) => {
-                const isExpanded = expandedModules.includes(module.id);
-                
-                return (
-                  <div 
-                    key={module.id}
-                    className={cn(
-                      "rounded-xl border border-border/50 overflow-hidden transition-all duration-200",
-                      isExpanded && "bg-muted/30"
-                    )}
-                  >
-                    <button
-                      onClick={() => toggleModule(module.id)}
-                      className="w-full flex items-center gap-3 p-4 hover:bg-muted/50 transition-colors"
-                    >
-                      {/* Status icon */}
-                      <div className="flex-shrink-0">
-                        {module.isCompleted ? (
-                          <CheckCircle2 className="w-5 h-5 text-primary" />
-                        ) : module.isPlaying ? (
-                          <PlayCircle className="w-5 h-5 text-muted-foreground" />
-                        ) : (
-                          <FileText className="w-5 h-5 text-muted-foreground" />
+            <button
+              type="button"
+              onClick={() => toggleSection(section.id)}
+              className={cn(
+                "w-full flex items-center justify-between rounded-xl border border-border/50 px-4 py-3 transition-colors",
+                canViewSubitems ? "cursor-pointer hover:bg-muted/30" : "cursor-default"
+              )}
+            >
+              <h3 className="text-sm font-medium text-muted-foreground">{section.title}</h3>
+              {canViewSubitems ? (
+                <ChevronDown
+                  className={cn(
+                    "w-4 h-4 text-muted-foreground transition-transform duration-200",
+                    isSectionOpen(section.id) && "rotate-180"
+                  )}
+                />
+              ) : null}
+            </button>
+
+            {canViewSubitems && (
+              <div
+                className={cn(
+                  "overflow-hidden transition-[max-height] duration-300 ease-in-out",
+                  isSectionOpen(section.id) ? "max-h-[2000px]" : "max-h-0"
+                )}
+              >
+                <div className="pt-3 space-y-2">
+                  {section.modules.map((module) => {
+                    const isExpanded = expandedModules.includes(module.id);
+
+                    return (
+                      <div
+                        key={module.id}
+                        className={cn(
+                          "rounded-xl border border-border/50 overflow-hidden transition-all duration-200",
+                          isExpanded && "bg-muted/30"
+                        )}
+                      >
+                        <div
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => toggleModule(module.id)}
+                          onKeyDown={(e) => e.key === 'Enter' && toggleModule(module.id)}
+                          className="w-full flex items-center gap-3 p-4 hover:bg-muted/50 transition-colors cursor-pointer"
+                        >
+                          {section.chapterId && module.subchapterId && onStartChapter && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onStartChapter(section.chapterId!, module.subchapterId!);
+                              }}
+                              className="h-7 w-7 rounded-full bg-[#efe9ff] hover:bg-[#e1d5ff] text-[#8f6bf4] cursor-pointer inline-flex items-center justify-center shrink-0"
+                              title="Пуск"
+                            >
+                              <PlayCircle className="w-4 h-4" />
+                            </button>
+                          )}
+                          <span className="flex-1 text-left text-sm font-medium text-foreground">
+                            {module.title}
+                          </span>
+
+                          <ChevronDown
+                            className={cn(
+                              "w-4 h-4 text-muted-foreground transition-transform duration-200",
+                              isExpanded && "rotate-180"
+                            )}
+                          />
+                        </div>
+
+                        {isExpanded && (
+                          <div className="px-4 pb-4 pt-0 animate-in fade-in slide-in-from-top-1 duration-200">
+                            <div className="pl-8 border-l-2 border-muted ml-3 py-2">
+                              <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+                                Краткая информация
+                              </h4>
+                              <p className="text-sm text-muted-foreground leading-relaxed mb-4">
+                                {module.description || "Описание отсутствует"}
+                              </p>
+
+                              <div className="flex items-center gap-4">
+                                {module.duration && (
+                                  <div className="flex items-center gap-1.5 text-xs font-medium text-foreground bg-background border rounded-md px-2 py-1 shadow-sm">
+                                    <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+                                    {module.duration}
+                                  </div>
+                                )}
+                                {module.hasFireIcon && (
+                                  <div className="flex items-center gap-1.5 text-xs font-medium text-orange-600 bg-orange-50 border border-orange-100 rounded-md px-2 py-1">
+                                    <Flame className="w-3.5 h-3.5 fill-orange-500" />
+                                    Популярное
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
                         )}
                       </div>
-                      
-                      {/* Title */}
-                      <span className="flex-1 text-left text-sm font-medium text-foreground">
-                        {module.title}
-                      </span>
-                      
-                      {/* Expand icon */}
-                      <ChevronDown 
-                        className={cn(
-                          "w-4 h-4 text-muted-foreground transition-transform duration-200",
-                          isExpanded && "rotate-180"
-                        )} 
-                      />
-                    </button>
-                    
-                    {/* Expanded content */}
-                    {isExpanded && (
-                      <div className="px-4 pb-4 pt-0 animate-in fade-in slide-in-from-top-1 duration-200">
-                        <div className="pl-8 border-l-2 border-muted ml-3 py-2">
-                          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-                            Краткая информация
-                          </h4>
-                          <p className="text-sm text-muted-foreground leading-relaxed mb-4">
-                            {module.description || "Описание отсутствует"}
-                          </p>
-                          
-                          <div className="flex items-center gap-4">
-                            {module.duration && (
-                              <div className="flex items-center gap-1.5 text-xs font-medium text-foreground bg-background border rounded-md px-2 py-1 shadow-sm">
-                                <Clock className="w-3.5 h-3.5 text-muted-foreground" />
-                                {module.duration}
-                              </div>
-                            )}
-                            {module.hasFireIcon && (
-                              <div className="flex items-center gap-1.5 text-xs font-medium text-orange-600 bg-orange-50 border border-orange-100 rounded-md px-2 py-1">
-                                <Flame className="w-3.5 h-3.5 fill-orange-500" />
-                                Популярное
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>

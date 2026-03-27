@@ -16,6 +16,7 @@ import { calendarApi } from '@/shared/api/calendar';
 import { friendsApi, type FriendStatus, type FriendProfile } from '@/shared/api/friends';
 import { Path } from '@/shared/routing/path';
 import { getCoverImageUrl } from '@/shared/utils/courseTransform';
+import type { AuthorDashboard } from '@/shared/api/authorDashboard';
 
 interface UserProfile {
   id: string;
@@ -30,6 +31,8 @@ interface UserProfile {
   bio?: string | null;
   address?: string | null;
   occupation?: string | null;
+  profile_details_public?: boolean;
+  learning_progress_public?: boolean;
 }
 
 interface ProfileMedia {
@@ -62,6 +65,12 @@ interface AuthoredCourse {
   is_public: boolean;
   students_count: number;
   created_at: string;
+  rating?: number;
+}
+
+interface AuthoredStats {
+  total_students: number;
+  average_rating: number | null;
 }
 
 interface PublicAchievement {
@@ -96,6 +105,9 @@ export default function ProfilePage() {
   const [publicStats, setPublicStats] = useState<PublicStats | null>(null);
   const [publicCourses, setPublicCourses] = useState<PublicCourse[]>([]);
   const [authoredCourses, setAuthoredCourses] = useState<AuthoredCourse[]>([]);
+  const [authoredStats, setAuthoredStats] = useState<AuthoredStats | null>(null);
+  const [authorDashboard, setAuthorDashboard] = useState<AuthorDashboard | null>(null);
+  const [authorDashboardLoading, setAuthorDashboardLoading] = useState(true);
   const [publicAchievements, setPublicAchievements] = useState<PublicAchievement[]>([]);
   const [profileFriends, setProfileFriends] = useState<FriendProfile[] | null>(null);
   const [profileFriendsLoading, setProfileFriendsLoading] = useState(false);
@@ -245,16 +257,38 @@ export default function ProfilePage() {
         setPublicStats(null);
         setPublicCourses([]);
         setAuthoredCourses([]);
+        setAuthoredStats(null);
+        setPublicAchievements([]);
+        return;
+      }
+
+      const detailsOk = user.profile_details_public !== false;
+      const progressOk = detailsOk && user.learning_progress_public !== false;
+
+      if (!detailsOk) {
+        setPublicStats(null);
+        setPublicCourses([]);
+        setAuthoredCourses([]);
+        setAuthoredStats(null);
         setPublicAchievements([]);
         return;
       }
 
       try {
         const apiUrl = import.meta.env.VITE_API_URL || '';
-        const [statsRes, coursesRes, authoredRes, achievementsRes] = await Promise.all([
-          fetch(`${apiUrl}/api/users/${user.id}/stats`),
-          fetch(`${apiUrl}/api/users/${user.id}/courses`),
+
+        let statsRes: Response = { ok: false } as Response;
+        let coursesRes: Response = { ok: false } as Response;
+        if (progressOk) {
+          [statsRes, coursesRes] = await Promise.all([
+            fetch(`${apiUrl}/api/users/${user.id}/stats`),
+            fetch(`${apiUrl}/api/users/${user.id}/courses`),
+          ]);
+        }
+
+        const [authoredRes, authoredStatsRes, achievementsRes] = await Promise.all([
           fetch(`${apiUrl}/api/users/${user.id}/courses/authored`),
+          fetch(`${apiUrl}/api/users/${user.id}/courses/authored-stats`),
           fetch(`${apiUrl}/api/users/${user.id}/achievements`),
         ]);
 
@@ -276,6 +310,12 @@ export default function ProfilePage() {
           setAuthoredCourses([]);
         }
 
+        if (authoredStatsRes.ok) {
+          setAuthoredStats(await authoredStatsRes.json());
+        } else {
+          setAuthoredStats(null);
+        }
+
         if (achievementsRes.ok) {
           setPublicAchievements(await achievementsRes.json());
         } else {
@@ -286,12 +326,45 @@ export default function ProfilePage() {
         setPublicStats(null);
         setPublicCourses([]);
         setAuthoredCourses([]);
+        setAuthoredStats(null);
         setPublicAchievements([]);
       }
     };
 
     void loadPublicData();
   }, [user, isOwnProfile]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadAuthorDashboard = async () => {
+      if (!isOwnProfile || !user) {
+        setAuthorDashboard(null);
+        setAuthorDashboardLoading(false);
+        return;
+      }
+      setAuthorDashboardLoading(true);
+      try {
+        const apiUrl = import.meta.env.VITE_API_URL || '';
+        const res = await fetch(`${apiUrl}/api/courses/my/dashboard`, {
+          credentials: 'include',
+        });
+        if (cancelled) return;
+        if (res.ok) {
+          setAuthorDashboard(await res.json());
+        } else {
+          setAuthorDashboard(null);
+        }
+      } catch {
+        if (!cancelled) setAuthorDashboard(null);
+      } finally {
+        if (!cancelled) setAuthorDashboardLoading(false);
+      }
+    };
+    void loadAuthorDashboard();
+    return () => {
+      cancelled = true;
+    };
+  }, [isOwnProfile, user?.id]);
 
   useEffect(() => {
     setProfileFriends(null);
@@ -454,6 +527,10 @@ export default function ProfilePage() {
   const userName = user
     ? `${user.first_name} ${user.last_name}`.trim() || 'Пользователь'
     : 'Пользователь';
+
+  const showPublicDetails = isOwnProfile || user?.profile_details_public !== false;
+  const showPublicProgress =
+    isOwnProfile || (showPublicDetails && user?.learning_progress_public !== false);
 
   const initials =
     user && (user.first_name || user.last_name)
@@ -622,7 +699,7 @@ export default function ProfilePage() {
             </div>
 
             {/* Краткое описание профиля под шапкой */}
-            {user?.bio && (
+            {showPublicDetails && user?.bio && (
               <div className="px-4 md:px-5 pb-4">
                 <p className="text-sm text-gray-700 break-words">
                   {user.bio}
@@ -635,17 +712,31 @@ export default function ProfilePage() {
                 <>
                   <StatsCards />
                   <MyCourses profileId={routeProfileId && !isOwnProfile ? routeProfileId : undefined} />
-                  <CrCourse profileId={routeProfileId && !isOwnProfile ? routeProfileId : undefined} />
+                  <CrCourse
+                    profileId={routeProfileId && !isOwnProfile ? routeProfileId : undefined}
+                    authorDashboard={authorDashboard}
+                    authorDashboardLoading={authorDashboardLoading}
+                  />
                   <Achievements />
                   <div className="flex flex-col md:flex-row gap-4 mb-8">
                     <StatisticsChart />
-                    <TopCourses />
+                    <TopCourses
+                      authorDashboard={authorDashboard}
+                      authorDashboardLoading={authorDashboardLoading}
+                    />
                   </div>
                   <ProgressRings />
                 </>
               ) : (
                 <>
-                  {publicStats && (
+                  {!showPublicDetails && (
+                    <div className="px-4 md:px-5 pb-4">
+                      <p className="text-sm text-gray-600">
+                        Пользователь ограничил отображение профиля. Для остальных видны только имя, фото и баннер.
+                      </p>
+                    </div>
+                  )}
+                  {showPublicDetails && showPublicProgress && publicStats && (
                 <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-1.5 mb-8">
                     <div className="stat-card rounded-xl flex flex-col gap-2">
                     <span className="text-xs text-white/60 font-medium min-h-[32px] line-clamp-2">
@@ -736,6 +827,7 @@ export default function ProfilePage() {
                 </div>
                 )}
 
+                  {showPublicDetails && showPublicProgress && (
                   <section className="mb-8">
                     <div className="flex items-center justify-between mb-4">
                       <h2 className="text-xl font-semibold text-foreground">
@@ -790,13 +882,30 @@ export default function ProfilePage() {
                       </div>
                     )}
                   </section>
+                  )}
 
+                  {showPublicDetails && (
+                  <>
                   <section className="mb-8">
                     <div className="flex items-center justify-between mb-4">
                       <h2 className="text-xl font-semibold text-foreground">
                         Созданные курсы
                       </h2>
                     </div>
+                    {authoredStats && (
+                      <div className="flex flex-wrap gap-4 mb-4 text-sm text-muted-foreground">
+                        <span>
+                          Всего студентов:{' '}
+                          <span className="font-semibold text-foreground">{authoredStats.total_students}</span>
+                        </span>
+                        <span>
+                          Средний рейтинг:{' '}
+                          <span className="font-semibold text-foreground">
+                            {authoredStats.average_rating != null ? authoredStats.average_rating.toFixed(2) : '—'}
+                          </span>
+                        </span>
+                      </div>
+                    )}
                     {authoredCourses.length === 0 ? (
                       <p className="text-sm text-muted-foreground">
                         Пользователь ещё не создавал курсы.
@@ -832,12 +941,15 @@ export default function ProfilePage() {
                                     {course.description}
                                   </p>
                                 )}
-                                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                <div className="flex items-center justify-between text-xs text-muted-foreground flex-wrap gap-2">
                                   <span>
                                     {course.is_public ? 'Публичный курс' : 'Приватный курс'}
                                   </span>
                                   <span>
                                     {course.students_count} ученик(ов)
+                                    {course.rating != null && Number(course.rating) > 0 && (
+                                      <> · рейтинг {Number(course.rating).toFixed(1)}</>
+                                    )}
                                   </span>
                                 </div>
                               </div>
@@ -894,6 +1006,8 @@ export default function ProfilePage() {
                       </div>
                     )}
                   </section>
+                </>
+              )}
                 </>
               )}
             </div>

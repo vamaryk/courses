@@ -43,6 +43,16 @@ const RightSidebar = ({
     [mindmaps],
   );
 
+  const progressPercent = useMemo(() => {
+    if (!jobsStatus || jobsStatus.total <= 0) return 0;
+    return Math.max(0, Math.min(100, Math.round((jobsStatus.done / jobsStatus.total) * 100)));
+  }, [jobsStatus]);
+
+  const pendingCount = useMemo(() => {
+    if (!jobsStatus) return 0;
+    return Math.max(0, jobsStatus.total - jobsStatus.done - jobsStatus.failed);
+  }, [jobsStatus]);
+
   return (
     <div className="pt-4 pr-4">
       <div className="bg-white text-foreground rounded-2xl shadow-sm border border-border p-5">
@@ -131,7 +141,16 @@ const RightSidebar = ({
 
               {/* Прогресс генерации */}
               {isCreatingMindmap && jobsStatus && (
-                <div className="rounded-lg border border-border bg-muted/40 px-3 py-2 text-xs space-y-1.5">
+                <div className="rounded-xl border border-primary/20 bg-gradient-to-br from-primary/5 via-background to-violet-50/40 px-3 py-3 text-xs space-y-2.5 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-medium text-muted-foreground tracking-wide uppercase">
+                      Генерация mindmap
+                    </span>
+                    <span className="inline-flex items-center rounded-full bg-primary/12 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                      {progressPercent}%
+                    </span>
+                  </div>
+
                   <div className="flex items-center justify-between text-muted-foreground">
                     <span>Обработано лекций</span>
                     <span className="font-medium text-foreground">
@@ -139,25 +158,35 @@ const RightSidebar = ({
                     </span>
                   </div>
 
-                  {/* Progress bar */}
-                  <div className="h-1.5 bg-secondary rounded-full overflow-hidden">
+                  <div className="h-2.5 rounded-full bg-primary/10 overflow-hidden relative">
                     <div
-                      className="h-full bg-primary rounded-full transition-all duration-500"
+                      className="h-full rounded-full transition-all duration-500 ease-out bg-gradient-to-r from-primary via-violet-500 to-primary"
                       style={{
-                        width: jobsStatus.total > 0
-                          ? `${Math.round((jobsStatus.done / jobsStatus.total) * 100)}%`
-                          : "0%",
+                        width: `${progressPercent}%`,
                       }}
                     />
+                    <div className="absolute inset-0 bg-[linear-gradient(110deg,transparent_25%,rgba(255,255,255,0.3)_50%,transparent_75%)] bg-[length:180%_100%] opacity-60 animate-pulse" />
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 text-[11px]">
+                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-2 py-1 text-emerald-700 text-center">
+                      done: {jobsStatus.done}
+                    </div>
+                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-2 py-1 text-amber-700 text-center">
+                      pending: {pendingCount}
+                    </div>
+                    <div className="rounded-lg border border-rose-200 bg-rose-50 px-2 py-1 text-rose-700 text-center">
+                      failed: {jobsStatus.failed}
+                    </div>
                   </div>
 
                   {jobsStatus.failed > 0 && (
-                    <p className="text-destructive">
-                      Ошибок: {jobsStatus.failed}
+                    <p className="text-destructive leading-tight">
+                      Есть ошибки при генерации. Можно повторить после завершения текущего процесса.
                     </p>
                   )}
                   <p className="text-muted-foreground leading-tight">
-                    Следите за логами в терминале lecture-processor (порт 8001)
+                    Карта генерируется по лекциям курса. Обновление статуса происходит автоматически.
                   </p>
                 </div>
               )}

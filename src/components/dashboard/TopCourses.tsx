@@ -1,40 +1,13 @@
-import { useState, useEffect } from "react";
+import type { AuthorDashboard } from "@/shared/api/authorDashboard";
 
-const API_URL = import.meta.env.VITE_API_URL || '';
-
-interface TopCourse {
-  name: string;
-  students: number;
-  percentage: number;
+interface TopCoursesProps {
+  authorDashboard?: AuthorDashboard | null;
+  authorDashboardLoading?: boolean;
 }
 
-const TopCourses = () => {
-  const [topCourses, setTopCourses] = useState<TopCourse[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    const fetchTopCourses = async () => {
-      try {
-        const response = await fetch(`${API_URL}/api/users/top-courses`, {
-          credentials: 'include',
-        });
-        if (response.ok) {
-          const data = await response.json();
-          setTopCourses(data);
-        } else {
-          console.error('Не удалось получить топ курсов:', response.statusText);
-          setTopCourses([]);
-        }
-      } catch (error) {
-        console.error('Ошибка при получении топ курсов:', error);
-        setTopCourses([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchTopCourses();
-  }, []);
+const TopCourses = ({ authorDashboard, authorDashboardLoading }: TopCoursesProps) => {
+  const loading = Boolean(authorDashboardLoading);
+  const chartBars = authorDashboard?.chart_bars ?? [];
 
   if (loading) {
     return (
@@ -46,12 +19,15 @@ const TopCourses = () => {
     );
   }
 
-  if (topCourses.length === 0) {
+  if (chartBars.length === 0) {
     return (
       <div className="rounded-xl p-6 border-1 border-muted-foreground/30 flex-1 min-w-0">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-foreground">Топ 5 курсов</h3>
+          <h3 className="font-semibold text-foreground">Топ 5 ваших курсов</h3>
         </div>
+        <p className="text-xs text-muted-foreground mb-2">
+          По числу студентов среди созданных вами курсов
+        </p>
         <div className="text-sm text-muted-foreground text-center py-8">
           Нет данных для отображения
         </div>
@@ -62,13 +38,16 @@ const TopCourses = () => {
   return (
     <div className="rounded-xl p-6 border-1 border-muted-foreground/30 flex-1 min-w-0">
       <div className="flex items-center justify-between mb-4">
-        <h3 className="font-semibold text-foreground">Топ 5 курсов</h3>
+        <h3 className="font-semibold text-foreground">Топ 5 ваших курсов</h3>
       </div>
+      <p className="text-xs text-muted-foreground mb-3">
+        По числу студентов среди созданных вами курсов
+      </p>
       <div className="space-y-3">
-        {topCourses.map((course, index) => (
-          <div key={index} className="flex items-center gap-3">
+        {chartBars.map((course, index) => (
+          <div key={`${course.name}-${index}`} className="flex items-center gap-3">
             <div className="flex-1 min-w-0">
-              <div 
+              <div
                 className="h-8 rounded-lg bg-primary/40 flex items-center px-3"
                 style={{ width: `${Math.max(course.percentage, 30)}%` }}
               >

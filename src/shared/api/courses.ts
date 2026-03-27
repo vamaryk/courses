@@ -30,6 +30,9 @@ export interface Course {
   has_access?: boolean;
   rating?: number;
   my_rating?: number | null;
+  /** из GET /api/courses/my */
+  students_count?: number;
+  favorites_count?: number;
 }
 
 export interface CourseAccessStatus {

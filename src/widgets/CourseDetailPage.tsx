@@ -274,6 +274,7 @@ export default function CourseDetailPage() {
               <h2 className="text-lg font-semibold text-foreground mb-2">Программа курса</h2>
               <CourseModules
                 sections={sections}
+                canViewSubitems
                 onStartChapter={(chapterId, subchapterId) =>
                   navigate(`/courses/${id}/learn/${chapterId}/${subchapterId}`)
                 }

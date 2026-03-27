@@ -38,7 +38,7 @@ export default function LectureLayout({
   return (
     <div className="min-h-screen bg-[#f3f3f6]">
       <main className="px-4 sm:px-6 lg:px-[20px]">
-        <div className="max-w-[1920px]">
+        <div className="w-full max-w-[1400px] mx-auto">
           <div 
             className="w-full py-4 px-4 md:py-5 rounded-xl mb-1 md:mb-2 transition-all duration-300"
             style={{ background: gradientStyle }}

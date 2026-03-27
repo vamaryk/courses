@@ -62,20 +62,31 @@ class MindMapRepository:
     # MindMap operations
     # ------------------------------------------------------------------
 
-    async def list_mindmaps(self, skip: int = 0, limit: int = 50) -> list[MindMapSummary]:
+    async def list_mindmaps(self, skip: int = 0, limit: int = 500) -> list[MindMapSummary]:
         """Список всех MindMap с краткой информацией."""
-        cursor = self.col.find(
-            {},
-            {"lecture_number": 1, "topic": 1, "concepts": 1, "created_at": 1, "source_lecture_id": 1}
-        ).skip(skip).limit(limit).sort("created_at", -1)
+        pipeline = [
+            {"$sort": {"created_at": -1}},
+            {"$skip": skip},
+            {"$limit": limit},
+            {
+                "$project": {
+                    "lecture_number": 1,
+                    "topic": 1,
+                    "created_at": 1,
+                    "source_lecture_id": 1,
+                    # Считаем количество понятий без загрузки всего массива
+                    "concept_count": {"$size": {"$ifNull": ["$concepts", []]}},
+                }
+            },
+        ]
 
         result = []
-        async for doc in cursor:
+        async for doc in self.col.aggregate(pipeline):
             result.append(MindMapSummary(
                 _id=str(doc["_id"]),
                 lecture_number=doc.get("lecture_number", ""),
                 topic=doc.get("topic", ""),
-                concept_count=len(doc.get("concepts", [])),
+                concept_count=doc.get("concept_count", 0),
                 created_at=doc.get("created_at", datetime.now(timezone.utc)),
                 source_lecture_id=doc.get("source_lecture_id"),
             ))
