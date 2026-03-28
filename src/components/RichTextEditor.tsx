@@ -2,6 +2,7 @@ import React, { useRef, useCallback, useEffect, useMemo, useState } from 'react'
 import {
   Image,
   Video,
+  Heading1,
   Heading2,
   Heading3,
   AlignLeft,
@@ -11,7 +12,26 @@ import {
   Table2,
   Plus,
   X,
+  Scissors,
+  Copy,
+  Clipboard,
+  Trash2,
+  Bold,
+  Italic,
+  Underline,
+  Type,
 } from 'lucide-react';
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuShortcut,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
+  ContextMenuTrigger,
+} from '@/components/ui/context-menu';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -443,6 +463,110 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     }
   }, [execCommand]);
 
+  // ── Context menu ──────────────────────────────────────────────────────────
+  const savedRangeRef = useRef<Range | null>(null);
+  const [ctxMenuOnEmpty, setCtxMenuOnEmpty] = useState(false);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    if (disabled) return;
+    const sel = window.getSelection();
+    savedRangeRef.current =
+      sel && sel.rangeCount > 0 ? sel.getRangeAt(0).cloneRange() : null;
+
+    const target = e.target as HTMLElement;
+    const targetText = (target.innerText ?? target.textContent ?? '').trim();
+    const hasSelection = sel && !sel.isCollapsed && sel.toString().trim().length > 0;
+    setCtxMenuOnEmpty(!hasSelection && (!targetText || target === editorRef.current));
+  }, [disabled]);
+
+  const restoreSelectionForCmd = useCallback(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.focus();
+    const sel = window.getSelection();
+    if (sel && savedRangeRef.current) {
+      try {
+        sel.removeAllRanges();
+        sel.addRange(savedRangeRef.current);
+      } catch { /* ignore stale range */ }
+    }
+  }, []);
+
+  const ctxCut = useCallback(() => {
+    restoreSelectionForCmd();
+    document.execCommand('cut');
+    handleInput();
+  }, [restoreSelectionForCmd, handleInput]);
+
+  const ctxCopy = useCallback(() => {
+    restoreSelectionForCmd();
+    document.execCommand('copy');
+  }, [restoreSelectionForCmd]);
+
+  const ctxPaste = useCallback(async () => {
+    restoreSelectionForCmd();
+    try {
+      const text = await navigator.clipboard.readText();
+      document.execCommand('insertText', false, text);
+    } catch {
+      document.execCommand('paste');
+    }
+    handleInput();
+  }, [restoreSelectionForCmd, handleInput]);
+
+  const ctxDelete = useCallback(() => {
+    restoreSelectionForCmd();
+    document.execCommand('delete');
+    handleInput();
+  }, [restoreSelectionForCmd, handleInput]);
+
+  const ctxAlignLeft = useCallback(() => {
+    restoreSelectionForCmd();
+    execCommand('justifyLeft');
+  }, [restoreSelectionForCmd, execCommand]);
+
+  const ctxAlignCenter = useCallback(() => {
+    restoreSelectionForCmd();
+    execCommand('justifyCenter');
+  }, [restoreSelectionForCmd, execCommand]);
+
+  const ctxAlignRight = useCallback(() => {
+    restoreSelectionForCmd();
+    execCommand('justifyRight');
+  }, [restoreSelectionForCmd, execCommand]);
+
+  const ctxBold = useCallback(() => {
+    restoreSelectionForCmd();
+    execCommand('bold');
+  }, [restoreSelectionForCmd, execCommand]);
+
+  const ctxItalic = useCallback(() => {
+    restoreSelectionForCmd();
+    execCommand('italic');
+  }, [restoreSelectionForCmd, execCommand]);
+
+  const ctxUnderline = useCallback(() => {
+    restoreSelectionForCmd();
+    execCommand('underline');
+  }, [restoreSelectionForCmd, execCommand]);
+
+  const ctxH1 = useCallback(() => {
+    restoreSelectionForCmd();
+    document.execCommand('formatBlock', false, 'h1');
+    handleInput();
+  }, [restoreSelectionForCmd, handleInput]);
+
+  const ctxH2 = useCallback(() => {
+    restoreSelectionForCmd();
+    document.execCommand('formatBlock', false, 'h2');
+    handleInput();
+  }, [restoreSelectionForCmd, handleInput]);
+
+  const ctxInsertTable = useCallback(() => {
+    restoreSelectionForCmd();
+    handleInsertTableSized(3, 3);
+  }, [restoreSelectionForCmd, handleInsertTableSized]);
+
   return (
     <div className={`rich-text-editor ${className}`}>
       {/* Toolbar */}
@@ -639,30 +763,33 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       </div>
 
       {/* Editor */}
-      <div className="relative">
-        {isEmpty && (
-          <div className="absolute top-3 left-3 text-sm text-gray-400 pointer-events-none z-10">
-            {placeholder}
-          </div>
-        )}
-        <div ref={wrapperRef} className="relative">
-          <div
-            ref={editorRef}
-            contentEditable={!disabled}
-            suppressContentEditableWarning
-            onInput={() => {
-              handleInput();
-              syncActiveTableRect();
-            }}
-            onClick={onEditorClick}
-            onKeyDown={(e) => {
-              handleKeyDown(e);
-              // update table actions on navigation
-              requestAnimationFrame(() => syncActiveTableRect());
-            }}
-            onMouseUp={() => {
-              requestAnimationFrame(() => syncActiveTableRect());
-            }}
+      <ContextMenu>
+        <ContextMenuTrigger asChild disabled={disabled}>
+          <div className="relative">
+            {isEmpty && (
+              <div className="absolute top-3 left-3 text-sm text-gray-400 pointer-events-none z-10">
+                {placeholder}
+              </div>
+            )}
+            <div ref={wrapperRef} className="relative">
+              <div
+                ref={editorRef}
+                contentEditable={!disabled}
+                suppressContentEditableWarning
+                onContextMenu={handleContextMenu}
+                onInput={() => {
+                  handleInput();
+                  syncActiveTableRect();
+                }}
+                onClick={onEditorClick}
+                onKeyDown={(e) => {
+                  handleKeyDown(e);
+                  // update table actions on navigation
+                  requestAnimationFrame(() => syncActiveTableRect());
+                }}
+                onMouseUp={() => {
+                  requestAnimationFrame(() => syncActiveTableRect());
+                }}
             className={`
               min-h-[200px] p-3 border border-gray-300 border-t-0 rounded-b-md
               focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent
@@ -782,6 +909,98 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           )}
         </div>
       </div>
+        </ContextMenuTrigger>
+
+        {/* ── Context menu content ── */}
+        <ContextMenuContent className="w-52">
+          {/* Group 1: Edit actions */}
+          <ContextMenuItem onSelect={ctxCut} className="flex items-center gap-2">
+            <Scissors className="h-4 w-4 shrink-0" />
+            Вырезать
+            <ContextMenuShortcut>Ctrl+X</ContextMenuShortcut>
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={ctxCopy} className="flex items-center gap-2">
+            <Copy className="h-4 w-4 shrink-0" />
+            Копировать
+            <ContextMenuShortcut>Ctrl+C</ContextMenuShortcut>
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={ctxPaste} className="flex items-center gap-2">
+            <Clipboard className="h-4 w-4 shrink-0" />
+            Вставить
+            <ContextMenuShortcut>Ctrl+V</ContextMenuShortcut>
+          </ContextMenuItem>
+          <ContextMenuItem
+            onSelect={ctxDelete}
+            className="flex items-center gap-2 text-red-600 focus:text-red-600"
+          >
+            <Trash2 className="h-4 w-4 shrink-0" />
+            Удалить
+          </ContextMenuItem>
+
+          <ContextMenuSeparator />
+
+          {/* Group 2: Alignment */}
+          <ContextMenuItem onSelect={ctxAlignLeft} className="flex items-center gap-2">
+            <AlignLeft className="h-4 w-4 shrink-0" />
+            Слева
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={ctxAlignCenter} className="flex items-center gap-2">
+            <AlignCenter className="h-4 w-4 shrink-0" />
+            По центру
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={ctxAlignRight} className="flex items-center gap-2">
+            <AlignRight className="h-4 w-4 shrink-0" />
+            Справа
+          </ContextMenuItem>
+
+          <ContextMenuSeparator />
+
+          {/* Group 3: Format submenu */}
+          <ContextMenuSub>
+            <ContextMenuSubTrigger className="flex items-center gap-2">
+              <Type className="h-4 w-4 shrink-0" />
+              Форматировать
+            </ContextMenuSubTrigger>
+            <ContextMenuSubContent className="w-48">
+              <ContextMenuItem onSelect={ctxBold} className="flex items-center gap-2">
+                <Bold className="h-4 w-4 shrink-0" />
+                Жирный
+                <ContextMenuShortcut>Ctrl+B</ContextMenuShortcut>
+              </ContextMenuItem>
+              <ContextMenuItem onSelect={ctxItalic} className="flex items-center gap-2">
+                <Italic className="h-4 w-4 shrink-0" />
+                Курсив
+                <ContextMenuShortcut>Ctrl+I</ContextMenuShortcut>
+              </ContextMenuItem>
+              <ContextMenuItem onSelect={ctxUnderline} className="flex items-center gap-2">
+                <Underline className="h-4 w-4 shrink-0" />
+                Подчеркивание
+                <ContextMenuShortcut>Ctrl+U</ContextMenuShortcut>
+              </ContextMenuItem>
+              <ContextMenuSeparator />
+              <ContextMenuItem onSelect={ctxH1} className="flex items-center gap-2">
+                <Heading1 className="h-4 w-4 shrink-0" />
+                Заголовок H1
+              </ContextMenuItem>
+              <ContextMenuItem onSelect={ctxH2} className="flex items-center gap-2">
+                <Heading2 className="h-4 w-4 shrink-0" />
+                Заголовок H2
+              </ContextMenuItem>
+            </ContextMenuSubContent>
+          </ContextMenuSub>
+
+          {/* Conditional: empty area only */}
+          {ctxMenuOnEmpty && (
+            <>
+              <ContextMenuSeparator />
+              <ContextMenuItem onSelect={ctxInsertTable} className="flex items-center gap-2">
+                <Table2 className="h-4 w-4 shrink-0" />
+                Вставить таблицу
+              </ContextMenuItem>
+            </>
+          )}
+        </ContextMenuContent>
+      </ContextMenu>
     </div>
   );
 };

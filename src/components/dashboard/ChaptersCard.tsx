@@ -38,11 +38,13 @@ const ChaptersCard = ({ chapters, courseId, onChaptersChange, isCreatePage }: Ch
       setLocalChapters(updated);
       onChaptersChange(updated);
     } else {
-      // Если курс создан, создаем главу через API
+      // Если курс создан, создаем главу через API (бэкенд требует непустой title)
+      const nextOrder = localChapters.length + 1;
+      const defaultTitle = `Новая глава ${nextOrder}`;
       try {
         const newChapter = await coursesApi.createChapter(courseId, {
-          title: "",
-          order: localChapters.length + 1,
+          title: defaultTitle,
+          order: nextOrder,
         });
         const updated = [...localChapters, newChapter];
         setLocalChapters(updated);
@@ -134,6 +136,7 @@ const ChaptersCard = ({ chapters, courseId, onChaptersChange, isCreatePage }: Ch
 
       {/* Add Chapter Button */}
       <button
+        type="button"
         onClick={addChapter}
         className="flex items-center gap-2 px-4 py-2 rounded-xl cursor-pointer border-2 border-primary text-primary font-medium hover:bg-primary/10 transition-colors"
       >
