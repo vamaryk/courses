@@ -49,6 +49,8 @@ export interface Chapter {
   course_id: number;
   title: string;
   order: number;
+  shortDescription?: string | null;
+  studyMinutes?: number | null;
   subchapters?: Subchapter[];
 }
 
@@ -108,12 +110,16 @@ export interface UpdateCourseData {
 export interface CreateChapterData {
   title: string;
   order: number;
+  shortDescription?: string | null;
+  studyMinutes?: number | null;
 }
 
 export interface UpdateChapterData {
   title: string;
   order: number;
   canvasData?: any | null;
+  shortDescription?: string | null;
+  studyMinutes?: number | null;
 }
 
 export interface CreateSubchapterData {

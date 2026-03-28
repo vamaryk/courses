@@ -121,6 +121,8 @@ CREATE TABLE chapters (
     course_id INTEGER REFERENCES courses(id) ON DELETE CASCADE,
     title TEXT NOT NULL,
     "order" INTEGER NOT NULL,
+    short_description TEXT,
+    study_minutes INTEGER,
     UNIQUE (course_id, "order")
 );
 

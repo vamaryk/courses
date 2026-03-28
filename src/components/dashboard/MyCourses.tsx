@@ -13,7 +13,7 @@ const API_URL = import.meta.env.VITE_API_URL || '';
 const defaultCourseImage = 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=400&h=300&fit=crop';
 
 interface Course {
-  id?: number;
+  id?: number | string;
   title: string;
   image: string | null;
   progress: number;
@@ -87,6 +87,7 @@ const MyCourses = ({ profileId }: MyCoursesProps) => {
           {courses.map((course) => (
             <CarouselItem key={course.id ?? course.title} className="pl-1 md:pl-2 basis-1/2 md:basis-1/3 lg:basis-1/5">
               <CourseCard
+                courseId={course.id}
                 title={course.title}
                 image={getCoverImageUrl(course.image) || defaultCourseImage}
                 progress={course.progress}

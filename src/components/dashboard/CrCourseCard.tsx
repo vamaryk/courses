@@ -1,5 +1,5 @@
 import { Heart, Users, Pencil } from "lucide-react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 interface CrCourseCardProps {
   id: string | number;
@@ -10,8 +10,21 @@ interface CrCourseCardProps {
 }
 
 const CrCourseCard = ({ id, title, image, favoritesCount, studentsCount }: CrCourseCardProps) => {
+  const navigate = useNavigate();
+
   return (
-    <div className="w-full hover:-translate-y-0.5">
+    <div
+      className="w-full hover:-translate-y-0.5 cursor-pointer"
+      role="link"
+      tabIndex={0}
+      onClick={() => navigate(`/courses/${id}`)}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          navigate(`/courses/${id}`);
+        }
+      }}
+    >
       <div className="relative h-44 overflow-hidden rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300">
         <img
           src={image}
@@ -21,9 +34,10 @@ const CrCourseCard = ({ id, title, image, favoritesCount, studentsCount }: CrCou
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
         
         {/* Edit button */}
-        <Link 
+        <Link
           to={`/courses/${id}/manage`}
-          className="absolute top-2 right-2 p-2 bg-black/40 hover:bg-black/60 rounded-lg transition-colors"
+          onClick={(e) => e.stopPropagation()}
+          className="absolute top-2 right-2 p-2 bg-black/40 hover:bg-black/60 rounded-lg transition-colors z-10"
         >
           <Pencil className="h-4 w-4 text-white" />
         </Link>

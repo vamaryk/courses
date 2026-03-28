@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { Progress } from "@/components/ui/progress";
 
 interface CourseCardProps {
@@ -5,12 +6,12 @@ interface CourseCardProps {
   image: string;
   progress: number;
   isCompleted?: boolean;
+  courseId?: string | number;
 }
 
-const CourseCard = ({ title, image, progress, isCompleted = false }: CourseCardProps) => {
-  return (
-    <div className="w-full hover:-translate-y-0.5">
-      <div className="relative h-44 overflow-hidden rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300">
+const CourseCard = ({ title, image, progress, isCompleted = false, courseId }: CourseCardProps) => {
+  const inner = (
+    <div className="relative h-44 overflow-hidden rounded-xl shadow-md hover:shadow-lg transition-shadow duration-300">
         <img
           src={image}
           alt={title}
@@ -32,8 +33,17 @@ const CourseCard = ({ title, image, progress, isCompleted = false }: CourseCardP
           />
         </div>
       </div>
-    </div>
   );
+
+  if (courseId != null && courseId !== "") {
+    return (
+      <Link to={`/courses/${courseId}`} className="w-full hover:-translate-y-0.5 block">
+        {inner}
+      </Link>
+    );
+  }
+
+  return <div className="w-full hover:-translate-y-0.5">{inner}</div>;
 };
 
 export default CourseCard;

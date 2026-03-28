@@ -11,6 +11,17 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const coursesMediaRoot = path.join(__dirname, '..', 'data', 'courses');
 
+/** Строка chapters из PostgreSQL → поля для API (camelCase для новых колонок). */
+function chapterRowToApi(row) {
+  if (!row) return row;
+  const { short_description, study_minutes, ...rest } = row;
+  return {
+    ...rest,
+    shortDescription: short_description ?? null,
+    studyMinutes: study_minutes ?? null,
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Gollossary / lecture-processor integration
 // ---------------------------------------------------------------------------
@@ -704,6 +715,8 @@ router.get('/:id(\\d+)', optionalAuthenticateSession, async (req, res) => {
               ch.id,
               ch.title,
               ch.order,
+              COALESCE(ch.short_description, NULL) as "shortDescription",
+              ch.study_minutes as "studyMinutes",
               COALESCE(ch.canvas_data, NULL) as canvas_data,
               COALESCE(
                 (
@@ -1003,12 +1016,24 @@ router.delete('/:id/access', authenticateSession, async (req, res) => {
 // POST /api/courses/:courseId/chapters - Create a new chapter
 router.post('/:courseId/chapters', authenticateSession, async (req, res) => {
   const { courseId } = req.params;
-  const { title, order } = req.body;
+  const { title, order, shortDescription, studyMinutes } = req.body;
   const authorId = req.user.userId;
 
   if (!title || order === undefined) {
     return res.status(400).json({ error: 'Title and order are required' });
   }
+
+  let sm = null;
+  if (studyMinutes !== '' && studyMinutes !== null && studyMinutes !== undefined) {
+    const n = Number(studyMinutes);
+    if (Number.isFinite(n) && n >= 0) {
+      sm = Math.round(n);
+    }
+  }
+  const sd =
+    shortDescription === '' || shortDescription === null || shortDescription === undefined
+      ? null
+      : String(shortDescription);
 
   try {
     if (!(await isCourseAuthor(courseId, authorId))) {
@@ -1016,10 +1041,11 @@ router.post('/:courseId/chapters', authenticateSession, async (req, res) => {
     }
 
     const result = await pool.query(
-      'INSERT INTO chapters (course_id, title, "order") VALUES ($1, $2, $3) RETURNING *',
-      [courseId, title, order]
+      `INSERT INTO chapters (course_id, title, "order", short_description, study_minutes)
+       VALUES ($1, $2, $3, $4, $5) RETURNING *`,
+      [courseId, title, order, sd, sm]
     );
-    res.status(201).json(result.rows[0]);
+    res.status(201).json(chapterRowToApi(result.rows[0]));
   } catch (error) {
     console.error('Error creating chapter:', error.message);
     res.status(500).json({ error: 'Failed to create chapter' });
@@ -1030,8 +1056,12 @@ router.post('/:courseId/chapters', authenticateSession, async (req, res) => {
 // Note: This route is mounted at /api/chapters in server.js
 router.put('/:id', ensureBaseUrl('/api/chapters'), authenticateSession, async (req, res) => {
   const { id } = req.params;
-  const { title, order, canvasData } = req.body;
+  const { title, order, canvasData, shortDescription, studyMinutes } = req.body;
   const authorId = req.user.userId;
+
+  if (title === undefined || order === undefined) {
+    return res.status(400).json({ error: 'Title and order are required' });
+  }
 
   try {
     const chapterCheck = await pool.query('SELECT course_id FROM chapters WHERE id = $1', [id]);
@@ -1044,11 +1074,39 @@ router.put('/:id', ensureBaseUrl('/api/chapters'), authenticateSession, async (r
       return res.status(403).json({ error: 'You are not authorized to update this chapter' });
     }
 
+    const sets = ['title = $1', '"order" = $2'];
+    const params = [title, order];
+    let p = 3;
+
+    if (shortDescription !== undefined) {
+      sets.push(`short_description = $${p}`);
+      params.push(shortDescription === '' || shortDescription === null ? null : String(shortDescription));
+      p += 1;
+    }
+    if (studyMinutes !== undefined) {
+      let sm = null;
+      if (studyMinutes !== '' && studyMinutes !== null && studyMinutes !== undefined) {
+        const n = Number(studyMinutes);
+        if (Number.isFinite(n) && n >= 0) {
+          sm = Math.round(n);
+        }
+      }
+      sets.push(`study_minutes = $${p}`);
+      params.push(sm);
+      p += 1;
+    }
+    if (Object.prototype.hasOwnProperty.call(req.body, 'canvasData')) {
+      sets.push(`canvas_data = $${p}::jsonb`);
+      params.push(canvasData == null ? null : JSON.stringify(canvasData));
+      p += 1;
+    }
+
+    params.push(id);
     const result = await pool.query(
-      'UPDATE chapters SET title = $1, "order" = $2, canvas_data = $3 WHERE id = $4 RETURNING *',
-      [title, order, canvasData ? JSON.stringify(canvasData) : null, id]
+      `UPDATE chapters SET ${sets.join(', ')} WHERE id = $${p} RETURNING *`,
+      params
     );
-    res.status(200).json(result.rows[0]);
+    res.status(200).json(chapterRowToApi(result.rows[0]));
   } catch (error) {
     console.error(`Error updating chapter ${id}:`, error.message);
     res.status(500).json({ error: 'Failed to update chapter' });

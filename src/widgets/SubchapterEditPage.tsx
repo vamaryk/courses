@@ -1,9 +1,10 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { coursesApi, type Subchapter, type ContentBlock, type Course } from '@/shared/api/courses';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import RichTextEditor from '@/components/RichTextEditor';
 import { ChevronLeft, Plus, Trash2, Save, List, X, Check, BookOpen, HelpCircle, GripVertical } from 'lucide-react';
 import {
@@ -130,6 +131,10 @@ function SubchapterEditPage() {
   
   const [subchapters, setSubchapters] = useState<Subchapter[]>([]);
   const [chapterTitle, setChapterTitle] = useState<string>('Глава');
+  const [chapterOrder, setChapterOrder] = useState<number>(1);
+  const [chapterShortDescription, setChapterShortDescription] = useState('');
+  const [chapterStudyMinutes, setChapterStudyMinutes] = useState('');
+  const chapterMetaDirtyRef = useRef(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedSubchapterId, setSelectedSubchapterId] = useState<number | null>(null);
@@ -187,15 +192,53 @@ function SubchapterEditPage() {
       try {
         const course: Course = await coursesApi.getCourse(parseInt(courseId, 10));
         const foundChapter = course.chapters?.find((ch) => ch.id === parseInt(chapterId, 10));
-        if (foundChapter?.title) {
+        if (!foundChapter) return;
+
+        // Не затираем поля главы, если пользователь уже правит их (гонка с ответом API)
+        if (chapterMetaDirtyRef.current) return;
+
+        if (foundChapter.title) {
           setChapterTitle(foundChapter.title);
         }
+        setChapterOrder(Number.isFinite(foundChapter.order) ? foundChapter.order : 1);
+        const sd = foundChapter.shortDescription ?? '';
+        setChapterShortDescription(typeof sd === 'string' ? sd : '');
+        const sm = foundChapter.studyMinutes;
+        setChapterStudyMinutes(
+          sm != null && Number.isFinite(Number(sm)) ? String(Math.max(0, Math.round(Number(sm)))) : ''
+        );
+        chapterMetaDirtyRef.current = false;
       } catch {
         // Non-blocking
       }
     };
+    chapterMetaDirtyRef.current = false;
     fetchChapterMeta();
   }, [courseId, chapterId]);
+
+  const saveChapterMeta = async () => {
+    if (!chapterId) return;
+    const cid = parseInt(chapterId, 10);
+    const minutesRaw = chapterStudyMinutes.trim();
+    let studyMinutes: number | null = null;
+    if (minutesRaw !== '') {
+      const n = Math.round(Number(minutesRaw));
+      studyMinutes = Number.isFinite(n) && n >= 0 ? n : null;
+    }
+    try {
+      await coursesApi.updateChapter(cid, {
+        title: chapterTitle,
+        order: chapterOrder,
+        shortDescription: chapterShortDescription.trim() || null,
+        studyMinutes,
+      });
+      chapterMetaDirtyRef.current = false;
+      toast.success('Параметры главы сохранены');
+    } catch (err) {
+      console.error('Error updating chapter meta:', err);
+      toast.error('Ошибка при сохранении параметров главы');
+    }
+  };
 
   const handleAddSubchapter = async () => {
     try {
@@ -594,10 +637,79 @@ function SubchapterEditPage() {
               </h2>
               </div>
 
+              <section
+                aria-labelledby="chapter-meta-heading"
+                className="mb-6 rounded-xl border-2 border-purple-200/80 bg-purple-50/50 p-4 shadow-sm space-y-3"
+              >
+                <h3
+                  id="chapter-meta-heading"
+                  className="text-sm font-semibold text-purple-950 tracking-tight"
+                >
+                  Параметры главы
+                </h3>
+                <p className="text-xs text-muted-foreground -mt-1">
+                  Относятся ко всей главе; при переключении подглав не меняются.
+                </p>
+                <div>
+                  <Label className="text-sm mb-1 block" htmlFor="chapter-short-description">
+                    Краткое описание
+                  </Label>
+                  <Textarea
+                    id="chapter-short-description"
+                    value={chapterShortDescription}
+                    onChange={(e) => {
+                      chapterMetaDirtyRef.current = true;
+                      setChapterShortDescription(e.target.value);
+                    }}
+                    onBlur={() => {
+                      if (chapterMetaDirtyRef.current) {
+                        void saveChapterMeta();
+                      }
+                    }}
+                    placeholder="Кратко опишите содержание главы для учеников"
+                    className="bg-white min-h-[72px] border-purple-100"
+                    rows={3}
+                  />
+                </div>
+                <div className="w-full max-w-[200px]">
+                  <Label className="text-sm mb-1 block" htmlFor="chapter-study-minutes">
+                    Время на изучение (мин.)
+                  </Label>
+                  <Input
+                    id="chapter-study-minutes"
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={chapterStudyMinutes}
+                    onChange={(e) => {
+                      chapterMetaDirtyRef.current = true;
+                      setChapterStudyMinutes(e.target.value);
+                    }}
+                    onBlur={() => {
+                      if (chapterMetaDirtyRef.current) {
+                        void saveChapterMeta();
+                      }
+                    }}
+                    placeholder="—"
+                    className="bg-white border-purple-100"
+                  />
+                </div>
+              </section>
+
               {selectedSubchapter ? (
-                <div className="space-y-5">
+                <div key={selectedSubchapter.id} className="space-y-5">
+                  <section
+                    aria-labelledby="subchapter-heading"
+                    className="border rounded-lg p-4 bg-white"
+                  >
+                    <h3
+                      id="subchapter-heading"
+                      className="text-sm font-semibold text-gray-800 mb-3"
+                    >
+                      Текущая подглава
+                    </h3>
                   {/* Subchapter settings - Desktop: inline layout */}
-                  <div className="border rounded-lg p-4">
+                  <div>
                     {/* Desktop: all fields + buttons in one row */}
                     <div className="hidden md:flex items-end gap-3 flex-wrap">
                       <div className="flex-1 min-w-[200px]">
@@ -750,6 +862,7 @@ function SubchapterEditPage() {
                       </div>
                     </div>
                   </div>
+                  </section>
 
                   {/* Content blocks */}
                   <div className="space-y-4">

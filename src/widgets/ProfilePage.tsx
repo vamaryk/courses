@@ -845,7 +845,16 @@ export default function ProfilePage() {
                           return (
                             <div
                               key={course.id}
-                              className="group relative bg-card rounded-2xl overflow-hidden shadow-card hover:shadow-soft-xl transition-all duration-300 cursor-default"
+                              role="link"
+                              tabIndex={0}
+                              onClick={() => navigate(`/courses/${course.id}`)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  navigate(`/courses/${course.id}`);
+                                }
+                              }}
+                              className="group relative bg-card rounded-2xl overflow-hidden shadow-card hover:shadow-soft-xl transition-all duration-300 cursor-pointer"
                             >
                               <div className="relative h-44 overflow-hidden">
                                 {coverUrl ? (

@@ -108,6 +108,24 @@ BEGIN
     END IF;
 END $$;
 
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'chapters' AND column_name = 'short_description'
+    ) THEN
+        ALTER TABLE chapters ADD COLUMN short_description TEXT;
+        RAISE NOTICE '✅ Added short_description to chapters';
+    END IF;
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'chapters' AND column_name = 'study_minutes'
+    ) THEN
+        ALTER TABLE chapters ADD COLUMN study_minutes INTEGER;
+        RAISE NOTICE '✅ Added study_minutes to chapters';
+    END IF;
+END $$;
+
 -- ============================================
 -- Summary
 -- ============================================

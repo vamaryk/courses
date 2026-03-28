@@ -77,6 +77,26 @@ BEGIN
         RAISE NOTICE 'ℹ️  canvas_data column already exists in chapters';
     END IF;
 
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'chapters' AND column_name = 'short_description'
+    ) THEN
+        ALTER TABLE chapters ADD COLUMN short_description TEXT;
+        RAISE NOTICE '✅ Added short_description column to chapters';
+    ELSE
+        RAISE NOTICE 'ℹ️  short_description column already exists in chapters';
+    END IF;
+
+    IF NOT EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'public' AND table_name = 'chapters' AND column_name = 'study_minutes'
+    ) THEN
+        ALTER TABLE chapters ADD COLUMN study_minutes INTEGER;
+        RAISE NOTICE '✅ Added study_minutes column to chapters';
+    ELSE
+        RAISE NOTICE 'ℹ️  study_minutes column already exists in chapters';
+    END IF;
+
     -- ============================================
     -- 3. Добавляем недостающие поля в student_metrics
     -- ============================================
