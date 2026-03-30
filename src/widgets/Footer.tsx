@@ -41,7 +41,7 @@ export default function Footer() {
           </div>
         </div>
         <div className="border-t border-gray-800 mt-6 sm:mt-8 lg:mt-12 pt-4 sm:pt-6 lg:pt-8 text-center text-gray-400">
-          <p className="text-sm sm:text-base">&copy; 2025 MCourse. Все права защищены.</p>
+          <p className="text-sm sm:text-base">&copy; 2026 MCourse. Все права защищены.</p>
         </div>
       </div>
     </footer>

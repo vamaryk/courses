@@ -83,7 +83,7 @@ export default function Header() {
 
   return (
     <nav className="bg-header flex fixed top-0 left-0 w-full justify-between items-center h-[4em] px-4 z-[100]">
-      <div className="pl-[60px] min-[1200px]:pl-0">
+      <div className="pl-[60px] min-[1200px]:pl-6">
         <Link to={Path.Home}>
           <GraduationCap size={24} className="text-purple" />
         </Link>
@@ -238,7 +238,7 @@ export default function Header() {
                 </Link>
                 <button
                   onClick={() => { setProfileOpen(false); logout(); }}
-                  className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-red-500 hover:bg-red-50"
+                  className="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-sm text-red-500 hover:bg-red-50 cursor-pointer"
                 >
                   <LogOut className="h-4 w-4" /> Выйти
                 </button>
