@@ -6,8 +6,7 @@ import { useAuth } from '@/app/providers/AuthProvider';
 import { friendsApi, type PendingRequest } from '@/shared/api/friends';
 import { useNotificationCenter, useNotifications } from '@/hooks/useNotifications';
 import { useSharedSocket } from '@/app/providers/SocketProvider';
-
-const API_URL = import.meta.env.VITE_API_URL || '';
+import { resolveProfileMediaUrl } from '@/shared/utils/media';
 
 export default function Header() {
   const { user, isAuthenticated, isLoading, logout } = useAuth();
@@ -73,14 +72,6 @@ export default function Header() {
     ? `${(user.first_name?.[0] || '').toUpperCase()}${(user.last_name?.[0] || '').toUpperCase()}`
     : '';
 
-  const resolveAvatarUrl = (url?: string | null) => {
-    if (!url) return null;
-    if (url.startsWith('/profile-media/')) {
-      return `${API_URL}${url}`;
-    }
-    return url;
-  };
-
   return (
     <nav className="bg-header flex fixed top-0 left-0 w-full justify-between items-center h-[4em] px-4 z-[100]">
       <div className="pl-[60px] min-[1200px]:pl-6">
@@ -130,8 +121,8 @@ export default function Header() {
                     {pendingRequests.map((req) => (
                       <div key={req.friendship_id} className="flex items-center gap-2.5 rounded-xl p-2.5 hover:bg-gray-50">
                         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-purple/10 text-xs font-semibold text-purple">
-                          {req.avatar_url ? (
-                            <img src={req.avatar_url} alt="" className="h-full w-full rounded-full object-cover" />
+                          {resolveProfileMediaUrl(req.avatar_url) ? (
+                            <img src={resolveProfileMediaUrl(req.avatar_url) as string} alt="" className="h-full w-full rounded-full object-cover" />
                           ) : (
                             `${(req.first_name?.[0] || '').toUpperCase()}${(req.last_name?.[0] || '').toUpperCase()}`
                           )}
@@ -195,9 +186,9 @@ export default function Header() {
                 to={Path.Profile}
                 className="flex h-8 w-8 items-center justify-center rounded-full bg-purple/10 text-xs font-semibold text-purple overflow-hidden"
               >
-                {resolveAvatarUrl(user.avatar_url) ? (
+                {resolveProfileMediaUrl(user.avatar_url) ? (
                   <img
-                    src={resolveAvatarUrl(user.avatar_url) as string}
+                    src={resolveProfileMediaUrl(user.avatar_url) as string}
                     alt=""
                     className="h-full w-full object-cover"
                   />

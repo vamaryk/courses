@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Check, Users2, X } from 'lucide-react';
 import type { FriendProfile } from '@/shared/api/friends';
 import { groupsApi } from '@/shared/api/groups';
+import { resolveProfileMediaUrl } from '@/shared/utils/media';
 
 interface Props {
   open: boolean;
@@ -86,8 +87,8 @@ export default function CreateGroupModal({ open, onClose, friends, onCreated }: 
                       }`}
                     >
                       <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-purple/10 text-xs font-semibold text-purple">
-                        {f.avatar_url ? (
-                          <img src={f.avatar_url} alt="" className="h-full w-full rounded-full object-cover" />
+                        {resolveProfileMediaUrl(f.avatar_url) ? (
+                          <img src={resolveProfileMediaUrl(f.avatar_url) as string} alt="" className="h-full w-full rounded-full object-cover" />
                         ) : (
                           `${(f.first_name?.[0] || '').toUpperCase()}${(f.last_name?.[0] || '').toUpperCase()}`
                         )}

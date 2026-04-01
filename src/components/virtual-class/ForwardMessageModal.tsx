@@ -3,14 +3,7 @@ import { Forward, Search, Users2, X } from 'lucide-react';
 import type { ForwardInfo } from '@/hooks/useChat';
 import type { FriendProfile, RecentChat } from '@/shared/api/friends';
 import type { GroupChat } from '@/shared/api/groups';
-
-const API_URL = import.meta.env.VITE_API_URL || '';
-
-function resolveAvatarUrl(url?: string | null) {
-  if (!url) return null;
-  if (url.startsWith('/profile-media/')) return `${API_URL}${url}`;
-  return url;
-}
+import { resolveProfileMediaUrl } from '@/shared/utils/media';
 
 type FriendRow = { id: string; name: string; avatar: string | null };
 
@@ -159,8 +152,8 @@ export default function ForwardMessageModal({
                 }`}
               >
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-full bg-purple/10 text-xs font-semibold text-purple">
-                  {resolveAvatarUrl(row.avatar) ? (
-                    <img src={resolveAvatarUrl(row.avatar) as string} alt="" className="h-full w-full object-cover" />
+                  {resolveProfileMediaUrl(row.avatar) ? (
+                    <img src={resolveProfileMediaUrl(row.avatar) as string} alt="" className="h-full w-full object-cover" />
                   ) : (
                     row.name.slice(0, 2).toUpperCase()
                   )}

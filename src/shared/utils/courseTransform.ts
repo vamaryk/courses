@@ -74,6 +74,8 @@ function generateBadge(title: string): string {
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
+export { resolveProfileMediaUrl } from '@/shared/utils/media';
+
 function getImageUrl(courseId: number, coverImage?: string | null): string {
   if (coverImage) {
     if (coverImage.startsWith('/course-media/')) {
@@ -96,21 +98,6 @@ function getInstructorName(course: ApiCourse): string {
 // Helper function to get instructor avatar from course data
 function getInstructorAvatar(course: ApiCourse): string | undefined {
   return (course as any).instructor_avatar || undefined;
-}
-
-/**
- * Resolve profile media URL (e.g. avatar) to a full URL.
- * Paths like /profile-media/... are prefixed with API_URL.
- */
-export function resolveProfileMediaUrl(url?: string | null): string | null {
-  if (!url) return null;
-  if (url.startsWith('/profile-media/')) {
-    return `${API_URL}${url}`;
-  }
-  if (url.startsWith('http') || url.startsWith('data:')) {
-    return url;
-  }
-  return url;
 }
 
 /**

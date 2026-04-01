@@ -7,7 +7,7 @@
  *  Right  — RecentChats: appears when user is in a DM conversation
  */
 
-import { memo, useCallback, useEffect, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
   Check,
@@ -25,6 +25,7 @@ import { useSharedSocket } from '@/app/providers/SocketProvider';
 import { useChat } from '@/hooks/useChat';
 import { useWebRTC } from '@/hooks/useWebRTC';
 import { useDmCall } from '@/hooks/useDmCall';
+import { useVoiceSession } from '@/hooks/useVoiceSession';
 import { useFriends } from '@/hooks/useFriends';
 import { useDirectMessages } from '@/hooks/useDirectMessages';
 import { useGroupChat } from '@/hooks/useGroupChat';
@@ -34,6 +35,8 @@ import RecentChats from '@/components/virtual-class/RecentChats';
 import AddFriendModal from '@/components/virtual-class/AddFriendModal';
 import CreateGroupModal from '@/components/virtual-class/CreateGroupModal';
 import ForwardMessageModal, { type ForwardPickDestination } from '@/components/virtual-class/ForwardMessageModal';
+import { resolveProfileMediaUrl } from '@/shared/utils/media';
+import { getUserDisplayName, getUserInitials } from '@/shared/utils/userDisplay';
 import type { ForwardInfo } from '@/hooks/useChat';
 
 const RemoteAudio = memo(function RemoteAudio({ stream }: { stream: MediaStream }) {
@@ -43,6 +46,68 @@ const RemoteAudio = memo(function RemoteAudio({ stream }: { stream: MediaStream 
   }, [stream]);
   return <audio ref={ref} autoPlay />;
 });
+
+function CallIdentity({
+  name,
+  avatar,
+  size = 'lg',
+  ring = false,
+  className = '',
+}: {
+  name: string;
+  avatar?: string | null;
+  size?: 'sm' | 'lg';
+  ring?: boolean;
+  className?: string;
+}) {
+  const boxSize = size === 'lg' ? 'h-20 w-20 text-2xl' : 'h-8 w-8 text-xs';
+
+  return (
+    <div className={`relative ${className}`}>
+      {ring && <span className="absolute inset-0 animate-ping rounded-full bg-white/30" />}
+      <div className={`relative flex ${boxSize} items-center justify-center overflow-hidden rounded-full bg-white/20 font-bold text-white`}>
+        {avatar ? (
+          <img src={avatar} alt="" className="h-full w-full object-cover" />
+        ) : (
+          getUserInitials(name)
+        )}
+      </div>
+    </div>
+  );
+}
+
+function CallOverlay({
+  accentClassName,
+  name,
+  avatar,
+  subtitle,
+  actions,
+  pulsing = false,
+}: {
+  accentClassName: string;
+  name: string;
+  avatar?: string | null;
+  subtitle: ReactNode;
+  actions: ReactNode;
+  pulsing?: boolean;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+      <div className="w-80 overflow-hidden rounded-3xl bg-white shadow-2xl">
+        <div className={`flex flex-col items-center gap-4 px-8 py-10 ${accentClassName}`}>
+          <CallIdentity name={name} avatar={avatar} ring={pulsing} />
+          <div className="text-center">
+            <p className="text-lg font-bold text-white">{name}</p>
+            <div className="text-sm text-white/70">{subtitle}</div>
+          </div>
+        </div>
+        <div className="flex gap-4 px-8 py-6">
+          {actions}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 type ViewMode = 'room' | 'dm' | 'group';
 
@@ -72,6 +137,7 @@ export default function VirtualClassPage() {
     isMuted: callIsMuted,
     callDuration,
     isUnavailable,
+    remoteUserId,
     startCall,
     acceptCall,
     declineCall,
@@ -140,22 +206,55 @@ export default function VirtualClassPage() {
   const activeFriend = friends.find((f) => f.id === activeFriendId)
     || recentChats.find((c) => c.friend_id === activeFriendId);
   const activeFriendName = activeFriend
-    ? `${('first_name' in activeFriend ? activeFriend.first_name : '')} ${('last_name' in activeFriend ? activeFriend.last_name : '')}`.trim()
+    ? getUserDisplayName(
+        'first_name' in activeFriend ? activeFriend.first_name : '',
+        'last_name' in activeFriend ? activeFriend.last_name : '',
+      )
     : '';
-
-  const API_URL = import.meta.env.VITE_API_URL || '';
-  const resolveAvatarUrl = (url: string | null | undefined) => {
-    if (!url) return null;
-    if (url.startsWith('/profile-media/')) {
-      return `${API_URL}${url}`;
-    }
-    return url;
-  };
 
   const activeFriendAvatarRaw = activeFriend
     ? ('avatar_url' in activeFriend ? activeFriend.avatar_url : null)
     : null;
-  const activeFriendAvatar = resolveAvatarUrl(activeFriendAvatarRaw);
+  const activeFriendAvatar = resolveProfileMediaUrl(activeFriendAvatarRaw);
+  const currentUserName = getUserDisplayName(currentUser?.first_name, currentUser?.last_name);
+  const currentUserAvatar = resolveProfileMediaUrl(currentUser?.avatar_url ?? null);
+  const remoteCallPeer = remoteUserId
+    ? friends.find((friend) => friend.id === remoteUserId)
+      ?? recentChats.find((chat) => chat.friend_id === remoteUserId)
+    : null;
+  const callPeerName = remoteCallPeer
+    ? getUserDisplayName(
+        'first_name' in remoteCallPeer ? remoteCallPeer.first_name : '',
+        'last_name' in remoteCallPeer ? remoteCallPeer.last_name : '',
+      )
+    : incomingCall?.fromName || activeFriendName || 'Звонок';
+  const callPeerAvatar = resolveProfileMediaUrl(
+    remoteCallPeer
+      ? ('avatar_url' in remoteCallPeer ? remoteCallPeer.avatar_url : null)
+      : incomingCall?.fromAvatarUrl ?? activeFriendAvatarRaw,
+  );
+  const { session: voiceSession } = useVoiceSession({
+    currentUserId: dbUserId,
+    currentUserName,
+    currentUserAvatar,
+    dm: {
+      callState,
+      incomingCall,
+      remoteUserId,
+      remoteName: callPeerName,
+      remoteAvatar: callPeerAvatar,
+      isMuted: callIsMuted,
+    },
+    room: {
+      roomId,
+      isVoiceActive,
+      networkStatus,
+      isMuted,
+    },
+  });
+  const activeVoicePeer = voiceSession?.participants.find((participant) => !participant.isSelf);
+  const activeVoicePeerName = activeVoicePeer?.displayName ?? callPeerName;
+  const activeVoicePeerAvatar = resolveProfileMediaUrl(activeVoicePeer?.avatarUrl ?? callPeerAvatar ?? null);
 
   // Currently selected group info
   const activeGroup = groups.find((g) => g.id === activeGroupId);
@@ -389,9 +488,9 @@ export default function VirtualClassPage() {
                 activeFriendId
                   ? () => {
                       const callerName = currentUser
-                        ? `${currentUser.first_name ?? ''} ${currentUser.last_name ?? ''}`.trim() || 'Пользователь'
+                        ? currentUserName
                         : 'Пользователь';
-                      void startCall(activeFriendId, callerName);
+                      void startCall(activeFriendId, callerName, currentUserAvatar);
                     }
                   : undefined
               }
@@ -426,22 +525,14 @@ export default function VirtualClassPage() {
 
       {/* ── Incoming call overlay ────────────────────────────────────────── */}
       {callState === 'incoming' && incomingCall && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="w-80 overflow-hidden rounded-3xl bg-white shadow-2xl">
-            {/* Pulsing ring */}
-            <div className="flex flex-col items-center gap-4 bg-gradient-to-b from-emerald-500 to-emerald-600 px-8 py-10">
-              <div className="relative">
-                <span className="absolute inset-0 animate-ping rounded-full bg-white/30" />
-                <div className="relative flex h-20 w-20 items-center justify-center rounded-full bg-white/20 text-2xl font-bold text-white">
-                  {incomingCall.fromName.slice(0, 2).toUpperCase()}
-                </div>
-              </div>
-              <div className="text-center">
-                <p className="text-lg font-bold text-white">{incomingCall.fromName}</p>
-                <p className="text-sm text-white/70">Входящий аудиозвонок…</p>
-              </div>
-            </div>
-            <div className="flex gap-4 px-8 py-6">
+        <CallOverlay
+          accentClassName="bg-gradient-to-b from-emerald-500 to-emerald-600"
+          name={incomingCall.fromName}
+          avatar={resolveProfileMediaUrl(incomingCall.fromAvatarUrl ?? null)}
+          subtitle="Входящий аудиозвонок…"
+          pulsing
+          actions={(
+            <>
               <button
                 onClick={declineCall}
                 className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-red-50 py-3 text-sm font-semibold text-red-500 transition-colors hover:bg-red-100"
@@ -456,50 +547,48 @@ export default function VirtualClassPage() {
                 <Phone className="h-5 w-5" />
                 Принять
               </button>
-            </div>
-          </div>
-        </div>
+            </>
+          )}
+        />
       )}
 
       {/* ── Outgoing call overlay (caller waiting) ──────────────────────── */}
       {callState === 'calling' && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="w-72 overflow-hidden rounded-3xl bg-white shadow-2xl">
-            <div className="flex flex-col items-center gap-4 bg-gradient-to-b from-purple to-purple/80 px-8 py-10">
-              <div className="flex h-20 w-20 items-center justify-center rounded-full bg-white/20 text-2xl font-bold text-white">
-                {activeFriendName.slice(0, 2).toUpperCase() || '??'}
-              </div>
-              <div className="text-center">
-                <p className="text-lg font-bold text-white">{activeFriendName}</p>
-                <p className="flex items-center gap-1.5 text-sm text-white/70">
-                  <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-white/60 [animation-delay:0ms]" />
-                  <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-white/60 [animation-delay:150ms]" />
-                  <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-white/60 [animation-delay:300ms]" />
-                  Вызов…
-                </p>
-              </div>
-            </div>
-            <div className="flex justify-center px-8 py-6">
-              <button
-                onClick={hangUp}
-                className="flex items-center gap-2 rounded-2xl bg-red-50 px-8 py-3 text-sm font-semibold text-red-500 transition-colors hover:bg-red-100"
-              >
-                <PhoneOff className="h-5 w-5" />
-                Отменить
-              </button>
-            </div>
-          </div>
-        </div>
+        <CallOverlay
+          accentClassName="bg-gradient-to-b from-purple to-purple/80"
+          name={activeVoicePeerName}
+          avatar={activeVoicePeerAvatar}
+          subtitle={(
+            <p className="flex items-center gap-1.5">
+              <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-white/60 [animation-delay:0ms]" />
+              <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-white/60 [animation-delay:150ms]" />
+              <span className="inline-block h-1.5 w-1.5 animate-bounce rounded-full bg-white/60 [animation-delay:300ms]" />
+              Вызов…
+            </p>
+          )}
+          actions={(
+            <button
+              onClick={hangUp}
+              className="flex flex-1 items-center justify-center gap-2 rounded-2xl bg-red-50 py-3 text-sm font-semibold text-red-500 transition-colors hover:bg-red-100"
+            >
+              <PhoneOff className="h-5 w-5" />
+              Отменить
+            </button>
+          )}
+        />
       )}
 
       {/* ── Active call floating bar ─────────────────────────────────────── */}
       {callState === 'active' && (
         <div className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-3 rounded-2xl bg-gray-900/95 px-5 py-3 shadow-2xl backdrop-blur">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-emerald-500 text-xs font-bold text-white">
-            {activeFriendName.slice(0, 2).toUpperCase() || '??'}
-          </div>
+          <CallIdentity
+            name={activeVoicePeerName}
+            avatar={activeVoicePeerAvatar}
+            size="sm"
+            className="shrink-0"
+          />
           <div className="text-left">
-            <p className="text-xs font-semibold text-white">{activeFriendName || 'Звонок'}</p>
+            <p className="text-xs font-semibold text-white">{activeVoicePeerName}</p>
             <p className="text-[10px] tabular-nums text-emerald-400">{formatCallDuration(callDuration)}</p>
           </div>
           <div className="mx-2 h-6 w-px bg-white/10" />

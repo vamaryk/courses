@@ -50,6 +50,11 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           secure: false,
         },
+        '/profile-media': {
+          target: backendTarget,
+          changeOrigin: true,
+          secure: false,
+        },
       },
     }
   }

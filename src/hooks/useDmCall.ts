@@ -22,6 +22,7 @@ export type DmCallState = 'idle' | 'calling' | 'incoming' | 'active';
 export interface IncomingCallInfo {
   fromUserId: string;
   fromName: string;
+  fromAvatarUrl?: string | null;
   offer: RTCSessionDescriptionInit;
 }
 
@@ -33,7 +34,7 @@ export interface UseDmCallReturn {
   callDuration: number;
   remoteUserId: string | null;
   isUnavailable: boolean;
-  startCall: (targetUserId: string, callerName: string) => Promise<void>;
+  startCall: (targetUserId: string, callerName: string, callerAvatarUrl?: string | null) => Promise<void>;
   acceptCall: () => Promise<void>;
   declineCall: () => void;
   hangUp: () => void;
@@ -106,7 +107,7 @@ export function useDmCall(socket: Socket | null): UseDmCallReturn {
   }, [socket]);
 
   /** Caller: initiate a call to another user. */
-  const startCall = useCallback(async (targetUserId: string, callerName: string) => {
+  const startCall = useCallback(async (targetUserId: string, callerName: string, callerAvatarUrl?: string | null) => {
     if (!socket || callStateRef.current !== 'idle') return;
 
     setIsUnavailable(false);
@@ -124,7 +125,7 @@ export function useDmCall(socket: Socket | null): UseDmCallReturn {
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
-      socket.emit('call:offer', { targetUserId, offer, callerName });
+      socket.emit('call:offer', { targetUserId, offer, callerName, callerAvatarUrl });
     } catch (err) {
       console.error('[DmCall] startCall error:', err);
       cleanup();

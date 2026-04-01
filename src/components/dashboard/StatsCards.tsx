@@ -2,8 +2,7 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { ChevronDown, Clock, BookOpen, Trophy, Users, X } from "lucide-react";
 import { friendsApi, type FriendProfile } from "@/shared/api/friends";
-
-const API_URL = import.meta.env.VITE_API_URL || '';
+import { resolveProfileMediaUrl } from "@/shared/utils/media";
 
 interface StatsData {
   hoursOnPlatform: number;
@@ -26,12 +25,6 @@ const StatsCards = () => {
   const [loading, setLoading] = useState(true);
   const [loadingFriends, setLoadingFriends] = useState(false);
   const [showFriendsMenu, setShowFriendsMenu] = useState(false);
-
-  const resolveAvatarUrl = (url: string | null | undefined) => {
-    if (!url) return null;
-    if (url.startsWith('/profile-media/')) return `${API_URL}${url}`;
-    return url;
-  };
 
   useEffect(() => {
     const fetchStats = async () => {
@@ -159,7 +152,7 @@ const StatsCards = () => {
                 ) : (
                   <div className="space-y-2">
                     {friends.map((friend) => {
-                      const avatarSrc = resolveAvatarUrl(friend.avatar_url);
+                      const avatarSrc = resolveProfileMediaUrl(friend.avatar_url);
                       return (
                         <button
                           key={friend.id}

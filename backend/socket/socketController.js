@@ -960,7 +960,7 @@ export function setupSocketController(io) {
     // Route WebRTC signaling messages directly between two authenticated users.
     // authUsers maps dbUserId → socketId for authenticated sessions.
 
-    socket.on('call:offer', ({ targetUserId, offer, callerName }) => {
+    socket.on('call:offer', ({ targetUserId, offer, callerName, callerAvatarUrl }) => {
       if (!targetUserId || !offer) return;
       const targetSocketId = authUsers.get(targetUserId);
       if (targetSocketId) {
@@ -968,6 +968,7 @@ export function setupSocketController(io) {
         io.to(targetSocketId).emit('call:incoming', {
           fromUserId: callerId || userId,
           fromName: callerName || 'Пользователь',
+          fromAvatarUrl: callerAvatarUrl || null,
           offer,
         });
         console.log(`📞 [Call] Offer: ${userId} → ${targetUserId}`);

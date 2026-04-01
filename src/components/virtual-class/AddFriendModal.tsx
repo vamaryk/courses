@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Check, Copy, Link, Search, UserPlus, X, Clock, UserCheck } from 'lucide-react';
 import { friendsApi, type SearchResult } from '@/shared/api/friends';
 import type { PendingRequest } from '@/shared/api/friends';
+import { resolveProfileMediaUrl } from '@/shared/utils/media';
 
 interface Props {
   open: boolean;
@@ -150,8 +151,8 @@ export default function AddFriendModal({ open, onClose, pending, onAccept, onRej
                 {results.map((user) => (
                   <div key={user.id} className="flex items-center gap-3 rounded-xl p-2.5 hover:bg-gray-50">
                     <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-purple/10 text-sm font-semibold text-purple">
-                      {user.avatar_url ? (
-                        <img src={user.avatar_url} alt="" className="h-full w-full rounded-full object-cover" />
+                      {resolveProfileMediaUrl(user.avatar_url) ? (
+                        <img src={resolveProfileMediaUrl(user.avatar_url) as string} alt="" className="h-full w-full rounded-full object-cover" />
                       ) : (
                         `${(user.first_name?.[0] || '').toUpperCase()}${(user.last_name?.[0] || '').toUpperCase()}`
                       )}
@@ -192,8 +193,8 @@ export default function AddFriendModal({ open, onClose, pending, onAccept, onRej
               {pending.map((req) => (
                 <div key={req.friendship_id} className="flex items-center gap-3 rounded-xl p-2.5 hover:bg-gray-50">
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-purple/10 text-sm font-semibold text-purple">
-                    {req.avatar_url ? (
-                      <img src={req.avatar_url} alt="" className="h-full w-full rounded-full object-cover" />
+                    {resolveProfileMediaUrl(req.avatar_url) ? (
+                      <img src={resolveProfileMediaUrl(req.avatar_url) as string} alt="" className="h-full w-full rounded-full object-cover" />
                     ) : (
                       `${(req.first_name?.[0] || '').toUpperCase()}${(req.last_name?.[0] || '').toUpperCase()}`
                     )}

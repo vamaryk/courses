@@ -2,6 +2,7 @@ import React from "react";
 import { Plus, X, Pencil } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAuth } from "@/app/providers/AuthProvider";
+import { resolveProfileMediaUrl } from "@/shared/utils/media";
 
 interface CoverUploadProps {
   coverImage: string | null;
@@ -40,7 +41,7 @@ const CoverUpload = ({ coverImage, onCoverImageChange }: CoverUploadProps) => {
       {/* User Info - Top Left */}
       <div className="absolute top-4 left-4 flex items-center gap-3 z-10">
         <Avatar className="w-10 h-10 border-2 border-popover">
-          <AvatarImage src={user?.profile?.avatar_url} />
+          <AvatarImage src={resolveProfileMediaUrl(user?.profile?.avatar_url)} />
           <AvatarFallback className="bg-primary text-primary-foreground">
             {user?.profile?.first_name?.[0] || 'U'}
           </AvatarFallback>

@@ -48,6 +48,11 @@ export default defineConfig(function (_a) {
                     changeOrigin: true,
                     secure: false,
                 },
+                '/profile-media': {
+                    target: backendTarget,
+                    changeOrigin: true,
+                    secure: false,
+                },
             },
         }
     };

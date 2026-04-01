@@ -1,8 +1,7 @@
 import { MessageCircle, Plus, UserPlus, Users, Users2 } from 'lucide-react';
 import type { FriendProfile, RecentChat, PendingRequest } from '@/shared/api/friends';
 import type { GroupChat } from '@/shared/api/groups';
-
-const API_URL = import.meta.env.VITE_API_URL || '';
+import { resolveProfileMediaUrl } from '@/shared/utils/media';
 
 interface Props {
   friends: FriendProfile[];
@@ -18,14 +17,6 @@ interface Props {
   roomMode: boolean;
   onRoomModeClick: () => void;
 }
-
-const resolveAvatarUrl = (url?: string | null) => {
-  if (!url) return null;
-  if (url.startsWith('/profile-media/')) {
-    return `${API_URL}${url}`;
-  }
-  return url;
-};
 
 export default function ChatSidebar({
   friends,
@@ -106,9 +97,9 @@ export default function ChatSidebar({
                   }`}
               >
                 <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-purple/10 text-xs font-semibold text-purple overflow-hidden">
-                  {resolveAvatarUrl(chat.avatar_url) ? (
+                  {resolveProfileMediaUrl(chat.avatar_url) ? (
                     <img
-                      src={resolveAvatarUrl(chat.avatar_url) as string}
+                      src={resolveProfileMediaUrl(chat.avatar_url) as string}
                       alt=""
                       className="h-full w-full rounded-full object-cover"
                     />
@@ -180,9 +171,9 @@ export default function ChatSidebar({
                   }`}
               >
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-purple/10 text-xs font-semibold text-purple overflow-hidden">
-                  {resolveAvatarUrl(friend.avatar_url) ? (
+                  {resolveProfileMediaUrl(friend.avatar_url) ? (
                     <img
-                      src={resolveAvatarUrl(friend.avatar_url) as string}
+                      src={resolveProfileMediaUrl(friend.avatar_url) as string}
                       alt=""
                       className="h-full w-full rounded-full object-cover"
                     />

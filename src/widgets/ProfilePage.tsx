@@ -16,6 +16,7 @@ import { calendarApi } from '@/shared/api/calendar';
 import { friendsApi, type FriendStatus, type FriendProfile } from '@/shared/api/friends';
 import { Path } from '@/shared/routing/path';
 import { getCoverImageUrl } from '@/shared/utils/courseTransform';
+import { resolveAchievementMediaUrl, resolveProfileMediaUrl } from '@/shared/utils/media';
 import type { AuthorDashboard } from '@/shared/api/authorDashboard';
 
 interface UserProfile {
@@ -80,8 +81,6 @@ interface PublicAchievement {
   icon_url: string | null;
   unlocked_at: string;
 }
-
-const API_URL = import.meta.env.VITE_API_URL || '';
 
 export default function ProfilePage() {
   const { id: routeProfileId } = useParams();
@@ -539,35 +538,12 @@ export default function ProfilePage() {
           .trim() || 'П'
       : 'П';
 
-  const resolveMediaUrl = (url: string | null | undefined) => {
-    if (!url) return null;
-    if (url.startsWith('/profile-media/')) {
-      return `${API_URL}${url}`;
-    }
-    return url;
-  };
-
   const avatarUrl = !avatarError
-    ? resolveMediaUrl(user?.avatar_url || media?.avatarUrl || null)
+    ? resolveProfileMediaUrl(user?.avatar_url || media?.avatarUrl || null)
     : null;
   const bannerUrl = !bannerError
-    ? resolveMediaUrl(media?.bannerUrl || null)
+    ? resolveProfileMediaUrl(media?.bannerUrl || null)
     : null;
-
-  const resolveAchievementIcon = (iconUrl: string | null): string | null => {
-    if (!iconUrl) return null;
-    if (iconUrl.startsWith('/achievement-media/')) {
-      return `${API_URL}${iconUrl}`;
-    }
-    if (iconUrl.startsWith('/icons/achievements/')) {
-      const filename = iconUrl.replace('/icons/achievements/', '');
-      return `${API_URL}/achievement-media/${filename}`;
-    }
-    if (iconUrl.startsWith('http') || iconUrl.startsWith('')) {
-      return iconUrl;
-    }
-    return `${API_URL}/achievement-media/${iconUrl}`;
-  };
 
   return (
     <div className="bg-background">
@@ -792,7 +768,7 @@ export default function ProfilePage() {
                           ) : profileFriends && profileFriends.length > 0 ? (
                             <div className="space-y-2">
                               {profileFriends.map((friend) => {
-                                const avatarSrc = resolveMediaUrl(friend.avatar_url);
+                                const avatarSrc = resolveProfileMediaUrl(friend.avatar_url);
                                 return (
                                   <button
                                     key={friend.id}
@@ -982,7 +958,7 @@ export default function ProfilePage() {
                     ) : (
                       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
                         {publicAchievements.map((a) => {
-                          const iconSrc = resolveAchievementIcon(a.icon_url);
+                          const iconSrc = resolveAchievementMediaUrl(a.icon_url);
                           return (
                             <div
                               key={a.id}
