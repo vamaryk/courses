@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import { friendsApi, type DirectMessage } from '@/shared/api/friends';
 import type { ForwardInfo } from '@/hooks/useChat';
+import { loadChatHistoryCache, saveChatHistoryCache } from '@/shared/lib/chatHistoryCache';
+import { uploadSocketMedia } from '@/shared/lib/socketMediaUpload';
 
 export interface ReplyInfo {
   id: string;
@@ -12,6 +14,8 @@ export interface ReplyInfo {
 export interface UseDirectMessagesReturn {
   messages: DirectMessage[];
   loading: boolean;
+  isUploadingMedia: boolean;
+  uploadProgress: number;
   sendMessage: (text: string, replyTo?: ReplyInfo, forwardFrom?: ForwardInfo) => void;
   /** Отправить в личку конкретному пользователю (без смены активного чата), в т.ч. пересылку */
   sendMessageTo: (receiverId: string, text: string, replyTo?: ReplyInfo, forwardFrom?: ForwardInfo) => void;
@@ -35,22 +39,58 @@ export function useDirectMessages(
 ): UseDirectMessagesReturn {
   const [messages, setMessages] = useState<DirectMessage[]>([]);
   const [loading, setLoading] = useState(false);
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [activeFriendId, setActiveFriendIdState] = useState<string | null>(null);
   const [dbUserId, setDbUserId] = useState<string | null>(null);
 
   const activeFriendRef = useRef(activeFriendId);
-  const lastLoadedFriendIdRef = useRef<string | null>(null);
+  const messagesRef = useRef<DirectMessage[]>([]);
+  const messageCacheRef = useRef<Record<string, DirectMessage[]>>({});
+  const loadRequestIdRef = useRef(0);
   const API_URL = import.meta.env.VITE_API_URL || '';
 
   // Keep a stable ref to the callback so the socket listener doesn't go stale
   const onMessageRef = useRef(options?.onMessage);
   useEffect(() => { onMessageRef.current = options?.onMessage; }, [options?.onMessage]);
 
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  const applyMessages = useCallback((next: DirectMessage[]) => {
+    messagesRef.current = next;
+    setMessages(next);
+  }, []);
+
+  const readCachedMessages = useCallback((friendId: string) => {
+    const cached = messageCacheRef.current[friendId] ?? loadChatHistoryCache<DirectMessage>('dm', friendId);
+    if (cached) {
+      messageCacheRef.current[friendId] = cached;
+    }
+    return cached ?? null;
+  }, []);
+
+  const cacheMessages = useCallback((friendId: string, next: DirectMessage[]) => {
+    messageCacheRef.current[friendId] = next;
+    saveChatHistoryCache('dm', friendId, next);
+  }, []);
+
   const setActiveFriendId = useCallback((id: string | null) => {
     activeFriendRef.current = id;
     setActiveFriendIdState(id);
-    if (!id) setMessages([]);
-  }, []);
+    if (!id) {
+      applyMessages([]);
+      return;
+    }
+
+    const cached = readCachedMessages(id);
+    if (cached) {
+      applyMessages(cached);
+    } else {
+      applyMessages([]);
+    }
+  }, [applyMessages, readCachedMessages]);
 
   useEffect(() => {
     if (!socket) return;
@@ -66,10 +106,10 @@ export function useDirectMessages(
         ((msg.sender_id === friendId) || (msg.receiver_id === friendId));
 
       if (isRelevant) {
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === msg.id)) return prev;
-          return [...prev, msg];
-        });
+        const current = messagesRef.current;
+        const next = current.some((m) => m.id === msg.id) ? current : [...current, msg];
+        cacheMessages(friendId, next);
+        applyMessages(next);
 
         if (msg.sender_id === friendId) {
           socket.emit('dm:read', { senderId: friendId });
@@ -80,31 +120,44 @@ export function useDirectMessages(
     };
 
     const onUpdated = (updated: DirectMessage) => {
-      setMessages((prev) => prev.map((msg) => (msg.id === updated.id ? { ...msg, ...updated } : msg)));
+      const friendId = activeFriendRef.current;
+      const next = messagesRef.current.map((msg) => (msg.id === updated.id ? { ...msg, ...updated } : msg));
+      if (friendId) {
+        cacheMessages(friendId, next);
+      }
+      applyMessages(next);
       onMessageRef.current?.(updated);
     };
 
     const onDeleted = ({ messageId }: { messageId: string }) => {
-      setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
+      const friendId = activeFriendRef.current;
+      const next = messagesRef.current.filter((msg) => msg.id !== messageId);
+      if (friendId) {
+        cacheMessages(friendId, next);
+      }
+      applyMessages(next);
     };
 
     // Server notifies sender that recipient read their messages
     const onRead = ({ readBy }: { readBy: string }) => {
       const friendId = activeFriendRef.current;
       if (!friendId || readBy !== friendId) return;
-      setMessages((prev) =>
-        prev.map((msg) => (msg.is_read ? msg : { ...msg, is_read: true })),
-      );
+      const next = messagesRef.current.map((msg) => (msg.is_read ? msg : { ...msg, is_read: true }));
+      cacheMessages(friendId, next);
+      applyMessages(next);
     };
 
     // On reconnect: reload the active chat history to catch messages missed during disconnect
     const onConnect = () => {
       const friendId = activeFriendRef.current;
       if (!friendId) return;
-      // Clear deduplication guard so loadHistory runs again
-      lastLoadedFriendIdRef.current = null;
+
+      const requestId = ++loadRequestIdRef.current;
       void friendsApi.getMessages(friendId).then((history) => {
-        setMessages(history);
+        cacheMessages(friendId, history);
+        if (requestId === loadRequestIdRef.current && activeFriendRef.current === friendId) {
+          applyMessages(history);
+        }
       }).catch(() => {/* silent – user can refresh manually */});
     };
 
@@ -123,7 +176,7 @@ export function useDirectMessages(
       socket.off('dm:deleted', onDeleted);
       socket.off('dm:read', onRead);
     };
-  }, [socket]);
+  }, [applyMessages, cacheMessages, socket]);
 
   // Fallback: fetch current DB user id via HTTP in case socket auth event was missed
   useEffect(() => {
@@ -146,23 +199,34 @@ export function useDirectMessages(
   }, [API_URL, dbUserId]);
 
   const loadHistory = useCallback(async (friendId: string) => {
-    // Avoid spamming the API if we are already loaded (or trying to load) this friend
-    if (lastLoadedFriendIdRef.current === friendId && !loading) {
-      return;
+    const cached = readCachedMessages(friendId);
+    if (activeFriendRef.current === friendId) {
+      if (cached) {
+        applyMessages(cached);
+      } else {
+        applyMessages([]);
+      }
     }
-    lastLoadedFriendIdRef.current = friendId;
 
+    const requestId = ++loadRequestIdRef.current;
     setLoading(true);
     try {
       const history = await friendsApi.getMessages(friendId);
-      setMessages(history);
+      cacheMessages(friendId, history);
+      if (requestId === loadRequestIdRef.current && activeFriendRef.current === friendId) {
+        applyMessages(history);
+      }
     } catch (err) {
       console.error('[useDirectMessages] loadHistory error:', err);
-      setMessages([]);
+      if (!cached && requestId === loadRequestIdRef.current && activeFriendRef.current === friendId) {
+        applyMessages([]);
+      }
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestIdRef.current) {
+        setLoading(false);
+      }
     }
-  }, [loading]);
+  }, [applyMessages, cacheMessages, readCachedMessages]);
 
   const emitDm = useCallback(
     (
@@ -218,23 +282,20 @@ export function useDirectMessages(
       const isSupported = file.type.startsWith('image/') || file.type.startsWith('video/');
       if (!isSupported) return;
 
-      const base64Data = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const data = String(reader.result || '');
-          resolve(data.includes(',') ? data.split(',')[1] : data);
-        };
-        reader.onerror = () => reject(new Error('Failed to read file'));
-        reader.readAsDataURL(file);
-      });
-
-      socket.emit('dm:send', {
-        receiverId: activeFriendRef.current,
-        fileName: file.name,
-        mimeType: file.type,
-        base64Data,
-        caption: caption.trim(),
-      });
+      setIsUploadingMedia(true);
+      setUploadProgress(0);
+      try {
+        await uploadSocketMedia<DirectMessage>({
+          socket,
+          file,
+          caption: caption.trim(),
+          target: { type: 'dm', receiverId: activeFriendRef.current },
+          onProgress: setUploadProgress,
+        });
+      } finally {
+        setIsUploadingMedia(false);
+        setUploadProgress(0);
+      }
     },
     [socket],
   );
@@ -262,6 +323,8 @@ export function useDirectMessages(
   return {
     messages,
     loading,
+    isUploadingMedia,
+    uploadProgress,
     sendMessage,
     sendMessageTo,
     sendMedia,

@@ -66,6 +66,7 @@ interface Props {
 export default function MediaGalleryModal({ messages, isOpen, onClose }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>('images');
   const [lightboxUrl, setLightboxUrl] = useState<string | null>(null);
+  const [lightboxType, setLightboxType] = useState<'image' | 'video' | null>(null);
   const backdropRef = useRef<HTMLDivElement>(null);
 
   // Close on Escape
@@ -75,6 +76,7 @@ export default function MediaGalleryModal({ messages, isOpen, onClose }: Props) 
       if (e.key === 'Escape') {
         if (lightboxUrl) {
           setLightboxUrl(null);
+          setLightboxType(null);
         } else {
           onClose();
         }
@@ -164,7 +166,10 @@ export default function MediaGalleryModal({ messages, isOpen, onClose }: Props) 
                 {images.map((item) => (
                   <button
                     key={item.id}
-                    onClick={() => setLightboxUrl(item.url)}
+                    onClick={() => {
+                      setLightboxUrl(item.url);
+                      setLightboxType('image');
+                    }}
                     className="group relative aspect-square overflow-hidden rounded-xl bg-gray-100"
                   >
                     <img
@@ -182,30 +187,37 @@ export default function MediaGalleryModal({ messages, isOpen, onClose }: Props) 
             ) : activeTab === 'videos' ? (
               <div className="flex flex-col gap-3">
                 {videos.map((item) => (
-                  <div
+                  <button
                     key={item.id}
-                    className="flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50 px-4 py-3"
+                    type="button"
+                    onClick={() => {
+                      setLightboxUrl(item.url);
+                      setLightboxType('video');
+                    }}
+                    className="overflow-hidden rounded-xl border border-gray-100 bg-gray-50 text-left transition-colors hover:border-blue-200 hover:bg-blue-50/40"
                   >
-                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100">
-                      <Film className="h-5 w-5 text-blue-600" />
+                    <div className="aspect-video bg-black">
+                      <video
+                        src={item.url}
+                        preload="metadata"
+                        muted
+                        className="h-full w-full object-cover"
+                      />
                     </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-gray-700">
-                        {item.fileName ?? 'Видеофайл'}
-                      </p>
-                      {item.caption && (
-                        <p className="truncate text-xs text-gray-400">{item.caption}</p>
-                      )}
+                    <div className="flex items-center gap-3 px-4 py-3">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100">
+                        <Film className="h-5 w-5 text-blue-600" />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium text-gray-700">
+                          {item.fileName ?? 'Видеофайл'}
+                        </p>
+                        {item.caption && (
+                          <p className="truncate text-xs text-gray-400">{item.caption}</p>
+                        )}
+                      </div>
                     </div>
-                    <a
-                      href={item.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="shrink-0 rounded-lg bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-600 transition-colors hover:bg-blue-100"
-                    >
-                      Открыть
-                    </a>
-                  </div>
+                  </button>
                 ))}
               </div>
             ) : (
@@ -243,20 +255,37 @@ export default function MediaGalleryModal({ messages, isOpen, onClose }: Props) 
       {lightboxUrl && (
         <div
           className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm"
-          onClick={() => setLightboxUrl(null)}
+          onClick={() => {
+            setLightboxUrl(null);
+            setLightboxType(null);
+          }}
         >
           <button
             className="absolute right-4 top-4 flex h-10 w-10 items-center justify-center rounded-full bg-white/10 text-white transition-colors hover:bg-white/20"
-            onClick={() => setLightboxUrl(null)}
+            onClick={() => {
+              setLightboxUrl(null);
+              setLightboxType(null);
+            }}
           >
             <X className="h-5 w-5" />
           </button>
-          <img
-            src={lightboxUrl}
-            alt="preview"
-            className="max-h-[90vh] max-w-[90vw] rounded-xl object-contain shadow-2xl"
-            onClick={(e) => e.stopPropagation()}
-          />
+          {lightboxType === 'video' ? (
+            <video
+              src={lightboxUrl}
+              controls
+              autoPlay
+              preload="metadata"
+              className="max-h-[90vh] max-w-[90vw] rounded-xl object-contain shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <img
+              src={lightboxUrl}
+              alt="preview"
+              className="max-h-[90vh] max-w-[90vw] rounded-xl object-contain shadow-2xl"
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
         </div>
       )}
     </>

@@ -2,6 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import { groupsApi, type GroupChat, type GroupMessage } from '@/shared/api/groups';
 import type { ForwardInfo } from '@/hooks/useChat';
+import { loadChatHistoryCache, saveChatHistoryCache } from '@/shared/lib/chatHistoryCache';
+import { uploadSocketMedia } from '@/shared/lib/socketMediaUpload';
 
 export interface ReplyInfo {
   id: string;
@@ -14,6 +16,8 @@ export interface UseGroupChatReturn {
   messages: GroupMessage[];
   activeGroupId: number | null;
   loading: boolean;
+  isUploadingMedia: boolean;
+  uploadProgress: number;
   setActiveGroupId: (id: number | null) => void;
   loadHistory: (groupId: number) => Promise<void>;
   sendMessage: (text: string, replyTo?: ReplyInfo, forwardFrom?: ForwardInfo) => void;
@@ -32,16 +36,53 @@ export function useGroupChat(socket: Socket | null): UseGroupChatReturn {
   const [messages, setMessages] = useState<GroupMessage[]>([]);
   const [activeGroupId, setActiveGroupIdState] = useState<number | null>(null);
   const [loading, setLoading] = useState(false);
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const activeGroupRef = useRef<number | null>(null);
+  const messagesRef = useRef<GroupMessage[]>([]);
+  const messageCacheRef = useRef<Record<number, GroupMessage[]>>({});
+  const loadRequestIdRef = useRef(0);
 
   // Keep a stable ref to the logged-in user's socket DB id for sender comparison
   const dbUserIdRef = useRef<string | null>(null);
 
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
+
+  const applyMessages = useCallback((next: GroupMessage[]) => {
+    messagesRef.current = next;
+    setMessages(next);
+  }, []);
+
+  const readCachedMessages = useCallback((groupId: number) => {
+    const cached = messageCacheRef.current[groupId] ?? loadChatHistoryCache<GroupMessage>('group', groupId);
+    if (cached) {
+      messageCacheRef.current[groupId] = cached;
+    }
+    return cached ?? null;
+  }, []);
+
+  const cacheMessages = useCallback((groupId: number, next: GroupMessage[]) => {
+    messageCacheRef.current[groupId] = next;
+    saveChatHistoryCache('group', groupId, next);
+  }, []);
+
   const setActiveGroupId = useCallback((id: number | null) => {
     activeGroupRef.current = id;
     setActiveGroupIdState(id);
-    if (!id) setMessages([]);
-  }, []);
+    if (!id) {
+      applyMessages([]);
+      return;
+    }
+
+    const cached = readCachedMessages(id);
+    if (cached) {
+      applyMessages(cached);
+    } else {
+      applyMessages([]);
+    }
+  }, [applyMessages, readCachedMessages]);
 
   const refreshGroups = useCallback(async () => {
     try {
@@ -72,13 +113,17 @@ export function useGroupChat(socket: Socket | null): UseGroupChatReturn {
     const onReconnect = () => {
       const groupId = activeGroupRef.current;
       if (!groupId) return;
+      const requestId = ++loadRequestIdRef.current;
       void groupsApi.getMessages(groupId).then((history) => {
-        setMessages(history);
+        cacheMessages(groupId, history);
+        if (requestId === loadRequestIdRef.current && activeGroupRef.current === groupId) {
+          applyMessages(history);
+        }
       }).catch(() => {/* silent */});
     };
     socket.on('connect', onReconnect);
     return () => { socket.off('connect', onReconnect); };
-  }, [socket]);
+  }, [applyMessages, cacheMessages, socket]);
 
   useEffect(() => {
     if (!socket) return;
@@ -86,10 +131,10 @@ export function useGroupChat(socket: Socket | null): UseGroupChatReturn {
     const onGroupMessage = (msg: GroupMessage) => {
       // 1. Append to message list if the group is currently open
       if (msg.group_id === activeGroupRef.current) {
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === msg.id)) return prev;
-          return [...prev, msg];
-        });
+        const current = messagesRef.current;
+        const next = current.some((m) => m.id === msg.id) ? current : [...current, msg];
+        cacheMessages(msg.group_id, next);
+        applyMessages(next);
       }
 
       // 2. Update sidebar preview + unread count for that group
@@ -117,13 +162,17 @@ export function useGroupChat(socket: Socket | null): UseGroupChatReturn {
     socket.on('group:message', onGroupMessage);
     const onGroupUpdated = (updated: GroupMessage) => {
       if (updated.group_id === activeGroupRef.current) {
-        setMessages((prev) => prev.map((msg) => (msg.id === updated.id ? { ...msg, ...updated } : msg)));
+        const next = messagesRef.current.map((msg) => (msg.id === updated.id ? { ...msg, ...updated } : msg));
+        cacheMessages(updated.group_id, next);
+        applyMessages(next);
       }
     };
 
     const onGroupDeleted = ({ groupId, messageId }: { groupId: number; messageId: string }) => {
       if (groupId === activeGroupRef.current) {
-        setMessages((prev) => prev.filter((msg) => msg.id !== messageId));
+        const next = messagesRef.current.filter((msg) => msg.id !== messageId);
+        cacheMessages(groupId, next);
+        applyMessages(next);
       }
     };
 
@@ -134,21 +183,38 @@ export function useGroupChat(socket: Socket | null): UseGroupChatReturn {
       socket.off('group:updated', onGroupUpdated);
       socket.off('group:deleted', onGroupDeleted);
     };
-  }, [socket]);
+  }, [applyMessages, cacheMessages, socket]);
 
   const loadHistory = useCallback(async (groupId: number) => {
+    const cached = readCachedMessages(groupId);
+    if (activeGroupRef.current === groupId) {
+      if (cached) {
+        applyMessages(cached);
+      } else {
+        applyMessages([]);
+      }
+    }
+
+    const requestId = ++loadRequestIdRef.current;
     setLoading(true);
     try {
       if (socket) socket.emit('group:join', { groupId });
       const history = await groupsApi.getMessages(groupId);
-      setMessages(history);
+      cacheMessages(groupId, history);
+      if (requestId === loadRequestIdRef.current && activeGroupRef.current === groupId) {
+        applyMessages(history);
+      }
     } catch (err) {
       console.error('[useGroupChat] loadHistory error:', err);
-      setMessages([]);
+      if (!cached && requestId === loadRequestIdRef.current && activeGroupRef.current === groupId) {
+        applyMessages([]);
+      }
     } finally {
-      setLoading(false);
+      if (requestId === loadRequestIdRef.current) {
+        setLoading(false);
+      }
     }
-  }, [socket]);
+  }, [applyMessages, cacheMessages, readCachedMessages, socket]);
 
   const emitGroup = useCallback(
     (groupId: number, trimmed: string, replyTo?: ReplyInfo, forwardFrom?: ForwardInfo) => {
@@ -198,23 +264,20 @@ export function useGroupChat(socket: Socket | null): UseGroupChatReturn {
       const isSupported = file.type.startsWith('image/') || file.type.startsWith('video/');
       if (!isSupported) return;
 
-      const base64Data = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          const data = String(reader.result || '');
-          resolve(data.includes(',') ? data.split(',')[1] : data);
-        };
-        reader.onerror = () => reject(new Error('Failed to read file'));
-        reader.readAsDataURL(file);
-      });
-
-      socket.emit('group:send', {
-        groupId: activeGroupRef.current,
-        fileName: file.name,
-        mimeType: file.type,
-        base64Data,
-        caption: caption.trim(),
-      });
+      setIsUploadingMedia(true);
+      setUploadProgress(0);
+      try {
+        await uploadSocketMedia<GroupMessage>({
+          socket,
+          file,
+          caption: caption.trim(),
+          target: { type: 'group', groupId: activeGroupRef.current },
+          onProgress: setUploadProgress,
+        });
+      } finally {
+        setIsUploadingMedia(false);
+        setUploadProgress(0);
+      }
     },
     [socket],
   );
@@ -251,6 +314,8 @@ export function useGroupChat(socket: Socket | null): UseGroupChatReturn {
     messages,
     activeGroupId,
     loading,
+    isUploadingMedia,
+    uploadProgress,
     setActiveGroupId,
     loadHistory,
     sendMessage,

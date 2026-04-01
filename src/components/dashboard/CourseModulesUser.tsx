@@ -18,6 +18,8 @@ interface Section {
   title: string;
   chapterId?: number;
   firstSubchapterId?: number;
+  description?: string;
+  duration?: string;
   modules: Module[];
 }
 
@@ -31,6 +33,8 @@ const defaultSections: Section[] = [
   {
     id: "1",
     title: "1. Введение",
+    description: "Знакомство с основами веб-разработки и структурой первой главы.",
+    duration: "25 мин",
     modules: [
       { 
         id: "1-1", 
@@ -54,6 +58,8 @@ const defaultSections: Section[] = [
   {
     id: "2",
     title: "2. Базовые понятия интернета",
+    description: "Ключевые сетевые термины и базовые принципы работы интернета.",
+    duration: "42 мин",
     modules: [
       { 
         id: "2-1", 
@@ -69,6 +75,7 @@ const defaultSections: Section[] = [
   {
     id: "3",
     title: "3. Основы CSS",
+    description: "Базовые стили, селекторы и устройство визуального оформления.",
     modules: [
       { id: "3-1", title: "Селекторы и специфичность", description: "Как браузер понимает, какие стили применять к элементам." },
       { id: "3-2", title: "Блочная модель", description: "Margin, padding, border, content. Как элементы занимают место." },
@@ -77,6 +84,7 @@ const defaultSections: Section[] = [
   {
     id: "4",
     title: "4. Продвинутая верстка",
+    description: "Современные техники построения интерфейсов.",
     modules: [
       { id: "4-1", title: "Flexbox и Grid", description: "Современные методы расположения элементов на странице." },
     ],
@@ -108,6 +116,31 @@ const CourseModules = ({
     if (!canViewSubitems) return;
     setExpandedSections((prev) =>
       prev.includes(sectionId) ? prev.filter((id) => id !== sectionId) : [...prev, sectionId]
+    );
+  };
+
+  const renderSectionMeta = (section: Section) => {
+    if (!section.description && !section.duration) return null;
+
+    return (
+      <div className="px-4 pb-4 pt-0 animate-in fade-in slide-in-from-top-1 duration-200">
+        <div className="rounded-xl border border-border/50 bg-muted/20 px-4 py-3">
+          <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+            Краткая информация о главе
+          </h4>
+          {section.description ? (
+            <p className="text-sm text-muted-foreground leading-relaxed">
+              {section.description}
+            </p>
+          ) : null}
+          {section.duration ? (
+            <div className="mt-3 flex items-center gap-1.5 text-xs font-medium text-foreground bg-background border rounded-md px-2 py-1 shadow-sm w-fit">
+              <Clock className="w-3.5 h-3.5 text-muted-foreground" />
+              {section.duration}
+            </div>
+          ) : null}
+        </div>
+      </div>
     );
   };
 
@@ -143,6 +176,7 @@ const CourseModules = ({
                 )}
               >
                 <div className="pt-3 space-y-2">
+                  {renderSectionMeta(section)}
                   {section.modules.map((module) => {
                     const isExpanded = expandedModules.includes(module.id);
 
@@ -217,6 +251,12 @@ const CourseModules = ({
                     );
                   })}
                 </div>
+              </div>
+            )}
+
+            {!canViewSubitems && (
+              <div className="pt-3">
+                {renderSectionMeta(section)}
               </div>
             )}
           </div>

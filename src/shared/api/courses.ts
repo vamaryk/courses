@@ -222,7 +222,7 @@ export const coursesApi = {
     return response.data;
   },
 
-  async uploadCourseCover(courseId: number, file: File): Promise<{ url: string; filename: string }> {
+  async uploadCourseCover(courseId: number, file: File): Promise<{ url: string; filename: string; mediaType?: 'image' | 'video' }> {
     const formData = new FormData();
     formData.append('file', file);
     const response = await axios.post(
@@ -233,7 +233,7 @@ export const coursesApi = {
     return response.data;
   },
 
-  async uploadCourseMedia(courseId: number, file: File): Promise<{ url: string; filename: string }> {
+  async uploadCourseMedia(courseId: number, file: File): Promise<{ url: string; filename: string; mediaType?: 'image' | 'video' }> {
     const formData = new FormData();
     formData.append('file', file);
     const response = await axios.post(

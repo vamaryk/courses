@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Edit, Star } from "lucide-react";
 import { useAuth } from "@/app/providers/AuthProvider";
 import { progressApi } from '@/shared/api/progress';
+import axios from 'axios';
 
 interface CourseWithChapters extends Course {
   chapters?: Array<Chapter & {
@@ -29,6 +30,26 @@ interface CourseWithChapters extends Course {
   totalDuration?: number;
   language?: string;
 }
+
+const formatStudyMinutes = (minutes?: number | null) => {
+  if (minutes == null || !Number.isFinite(Number(minutes)) || Number(minutes) <= 0) {
+    return undefined;
+  }
+
+  const totalMinutes = Math.round(Number(minutes));
+  const hours = Math.floor(totalMinutes / 60);
+  const restMinutes = totalMinutes % 60;
+
+  if (hours > 0 && restMinutes > 0) {
+    return `${hours} ч ${restMinutes} мин`;
+  }
+
+  if (hours > 0) {
+    return `${hours} ч`;
+  }
+
+  return `${restMinutes} мин`;
+};
 
 export default function CourseDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -93,7 +114,13 @@ export default function CourseDetailPage() {
         setMyRating(courseData.my_rating != null ? Number(courseData.my_rating) : null);
       } catch (err) {
         console.error('Error fetching course:', err);
-        setError('Не удалось загрузить информацию о курсе');
+        if (axios.isAxiosError(err) && err.response?.status === 404) {
+          setError('Курс не найден');
+        } else if (axios.isAxiosError(err) && err.response?.status === 403) {
+          setError('У вас нет доступа к этому курсу');
+        } else {
+          setError('Не удалось загрузить информацию о курсе. Попробуйте позже.');
+        }
       } finally {
         setLoading(false);
       }
@@ -169,8 +196,8 @@ export default function CourseDetailPage() {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <div className="text-center p-6 max-w-md mx-auto">
-          <h2 className="text-xl font-semibold text-gray-800 mb-2">Курс не найден</h2>
-          <p className="text-gray-600 mb-6">Не удалось загрузить информацию о курсе. Пожалуйста, попробуйте позже.</p>
+          <h2 className="text-xl font-semibold text-gray-800 mb-2">{error || 'Курс не найден'}</h2>
+          <p className="text-gray-600 mb-6">{error || 'Не удалось загрузить информацию о курсе. Пожалуйста, попробуйте позже.'}</p>
         </div>
       </div>
     );
@@ -199,6 +226,8 @@ export default function CourseDetailPage() {
     title: `${chapterIndex + 1}. ${chapter.title}`,
     chapterId: chapter.id,
     firstSubchapterId: chapter.subchapters?.[0]?.id,
+    description: chapter.shortDescription || undefined,
+    duration: formatStudyMinutes(chapter.studyMinutes),
     modules: chapter.subchapters?.map((subchapter, subIndex) => ({
       id: `${chapter.id}-${subchapter.id}`,
       subchapterId: subchapter.id,

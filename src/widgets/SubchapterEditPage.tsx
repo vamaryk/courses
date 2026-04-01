@@ -1075,6 +1075,14 @@ function SubchapterEditPage() {
                                         }
                                       : undefined
                                   }
+                                  onUploadVideo={
+                                    courseId
+                                      ? async (file: File) => {
+                                          const { url } = await coursesApi.uploadCourseMedia(parseInt(courseId, 10), file);
+                                          return { url };
+                                        }
+                                      : undefined
+                                  }
                                 />
                               </div>
                             )}

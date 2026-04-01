@@ -428,6 +428,10 @@ export default function LectureBlocks({
                 prose-headings:text-[#222431] prose-p:text-[17px] prose-p:leading-8 prose-li:text-[17px] prose-li:leading-8
                 prose-pre:max-w-full prose-pre:overflow-x-auto prose-pre:whitespace-pre
                 prose-code:break-all prose-a:break-all
+                [&_.video-wrapper]:relative [&_.video-wrapper]:my-6 [&_.video-wrapper]:w-full [&_.video-wrapper]:overflow-hidden [&_.video-wrapper]:rounded-xl
+                [&_.video-wrapper_iframe]:absolute [&_.video-wrapper_iframe]:left-0 [&_.video-wrapper_iframe]:top-0 [&_.video-wrapper_iframe]:h-full [&_.video-wrapper_iframe]:w-full
+                [&_video]:my-6 [&_video]:w-full [&_video]:max-w-full [&_video]:rounded-xl [&_video]:bg-black
+                [&_iframe]:max-w-full
               `}
               style={{ 
                 wordBreak: 'break-word',

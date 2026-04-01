@@ -82,6 +82,7 @@ const io = new SocketIOServer(httpServer, {
     credentials: true,
   },
   transports: ['websocket', 'polling'],
+  maxHttpBufferSize: 200 * 1024 * 1024,
 });
 
 setupSocketController(io);

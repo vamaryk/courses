@@ -56,6 +56,8 @@ export default function VirtualClassPage() {
     messages: roomMessages,
     error,
     status,
+    isUploadingMedia,
+    uploadProgress: roomUploadProgress,
     joinRoom,
     sendMessage: sendRoomMessage,
     sendMedia: sendRoomMedia,
@@ -85,6 +87,8 @@ export default function VirtualClassPage() {
   const {
     messages: dmMessages,
     loading: dmLoading,
+    isUploadingMedia: isUploadingDmMedia,
+    uploadProgress: dmUploadProgress,
     sendMessage: sendDm,
     sendMedia: sendDmMedia,
     editMessage: editDmMessage,
@@ -101,6 +105,8 @@ export default function VirtualClassPage() {
     messages: groupMessages,
     activeGroupId,
     loading: groupLoading,
+    isUploadingMedia: isUploadingGroupMedia,
+    uploadProgress: groupUploadProgress,
     setActiveGroupId,
     loadHistory: loadGroupHistory,
     sendMessage: sendGroupMsg,
@@ -347,6 +353,8 @@ export default function VirtualClassPage() {
                   isVoiceActive={isVoiceActive} networkStatus={networkStatus}
                   isMuted={isMuted} onStartVoice={startVoice} onStopVoice={stopVoice}
                   onToggleMute={toggleMute}
+                  isSendingMedia={isUploadingMedia}
+                  mediaUploadProgress={roomUploadProgress}
                   onSend={sendRoomMessage} onSendMedia={sendRoomMedia}
                   onEditMessage={editRoomMessage} onDeleteMessage={deleteRoomMessage}
                   onForwardSnapshot={handleForwardSnapshot}
@@ -364,6 +372,8 @@ export default function VirtualClassPage() {
               currentUserId={dbUserId}
               loading={dmLoading}
               isConnected={isConnected}
+              isSendingMedia={isUploadingDmMedia}
+              mediaUploadProgress={dmUploadProgress}
               onSend={sendDmComposed}
               onSendMedia={sendDmMedia}
               onEditMessage={editDmMessage}
@@ -392,7 +402,7 @@ export default function VirtualClassPage() {
           {viewMode === 'group' && activeGroup && (
             <ChatArea mode="group" groupName={activeGroup.name} memberCount={activeGroup.member_count}
               inviteToken={activeGroup.invite_token} messages={groupMessages} currentUserId={dbUserId}
-              loading={groupLoading} isConnected={isConnected} onSend={sendGroupComposed} onSendMedia={sendGroupMedia}
+              loading={groupLoading} isConnected={isConnected} isSendingMedia={isUploadingGroupMedia} mediaUploadProgress={groupUploadProgress} onSend={sendGroupComposed} onSendMedia={sendGroupMedia}
               onEditMessage={editGroupMessage} onDeleteMessage={deleteGroupMessage}
               pendingForward={pendingForward}
               onCancelPendingForward={() => setPendingForward(null)}

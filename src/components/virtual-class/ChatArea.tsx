@@ -37,6 +37,8 @@ interface RoomChatProps {
   onStartVoice: () => void;
   onStopVoice: () => void;
   onToggleMute: () => void;
+  isSendingMedia?: boolean;
+  mediaUploadProgress?: number;
   onSend: (text: string, replyTo?: ReplyInfo, forwardFrom?: ForwardInfo) => void;
   onSendMedia: (file: File, caption?: string) => Promise<void>;
   onEditMessage: (messageId: string, text: string) => void;
@@ -53,6 +55,8 @@ interface DirectChatProps {
   currentUserId: string | null;
   loading: boolean;
   isConnected?: boolean;
+  isSendingMedia?: boolean;
+  mediaUploadProgress?: number;
   onSend: (text: string, replyTo?: ReplyInfo, forwardFrom?: ForwardInfo) => void;
   onSendMedia: (file: File, caption?: string) => Promise<void>;
   onEditMessage: (messageId: string, text: string) => void;
@@ -75,6 +79,8 @@ interface GroupChatProps {
   currentUserId: string | null;
   loading: boolean;
   isConnected?: boolean;
+  isSendingMedia?: boolean;
+  mediaUploadProgress?: number;
   onSend: (text: string, replyTo?: ReplyInfo, forwardFrom?: ForwardInfo) => void;
   onSendMedia: (file: File, caption?: string) => Promise<void>;
   onEditMessage: (messageId: string, text: string) => void;
@@ -95,76 +101,60 @@ const NETWORK_STATUS_LABELS: Record<NetworkStatus, { label: string; color: strin
   failed: { label: 'Связь потеряна', color: 'text-red-500' },
 };
 
-// ─── Quoted block inside a message bubble ────────────────────────────────────
-function QuotedBlock({
-  replyToText,
-  replyToSender,
+function MessageReferenceBlock({
+  title,
+  previewText,
   isMine,
-  onJump,
+  onClick,
+  children,
+  className = 'mb-2',
+  previewClassName,
 }: {
-  replyToText: string;
-  replyToSender: string;
+  title: string;
+  previewText?: string | null;
   isMine: boolean;
-  onJump: () => void;
+  onClick?: () => void;
+  children?: ReactNode;
+  className?: string;
+  previewClassName?: string;
 }) {
-  return (
-    <button
-      type="button"
-      onClick={(e) => { e.stopPropagation(); onJump(); }}
-      className={`mb-2 flex w-full cursor-pointer items-stretch gap-0 overflow-hidden rounded-lg text-left transition-opacity hover:opacity-75 active:scale-[0.98] ${
-        isMine
-          ? 'bg-white/20'
-          : 'bg-gray-200/70'
-      }`}
-    >
-      {/* accent line */}
+  const content = (
+    <>
       <span className={`w-[3px] shrink-0 rounded-l-lg ${isMine ? 'bg-white/60' : 'bg-purple'}`} />
-
       <div className="min-w-0 flex-1 px-2.5 py-1.5">
         <p className={`mb-0.5 text-[10px] font-bold leading-tight tracking-wide ${isMine ? 'text-white/80' : 'text-purple'}`}>
-          {replyToSender || 'Сообщение'}
+          {title}
         </p>
-        <p className={`line-clamp-2 text-[11px] leading-snug ${isMine ? 'text-white/60' : 'text-gray-500'}`}>
-          {replyToText}
-        </p>
-      </div>
-    </button>
-  );
-}
-
-/** Telegram-style «Переслано от …» block with nested text/media snapshot. */
-function ForwardedBlock({
-  forwardFromName,
-  innerText,
-  mediaUrl,
-  mediaType,
-  isMine,
-  renderMediaFn,
-}: {
-  forwardFromName: string;
-  innerText?: string | null;
-  mediaUrl?: string | null;
-  mediaType?: string | null;
-  isMine: boolean;
-  renderMediaFn: (mediaUrl?: string | null, mediaType?: string | null) => ReactNode;
-}) {
-  return (
-    <div
-      className={`mb-1 overflow-hidden rounded-lg text-left ${
-        isMine ? 'bg-white/15' : 'bg-gray-200/80'
-      }`}
-    >
-      <div className={`flex items-center gap-1.5 px-2.5 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide ${isMine ? 'text-white/70' : 'text-gray-500'}`}>
-        <Forward className="h-3 w-3 shrink-0 opacity-80" aria-hidden />
-        <span>Переслано от</span>
-        <span className={`truncate ${isMine ? 'text-white' : 'text-purple'}`}>{forwardFromName}</span>
-      </div>
-      <div className={`px-2.5 pb-2 ${isMine ? 'text-white/95' : 'text-gray-800'}`}>
-        {innerText?.trim() ? (
-          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed">{innerText}</p>
+        {previewText ? (
+          <p className={`${previewClassName ?? 'line-clamp-2'} text-[11px] leading-snug ${isMine ? 'text-white/60' : 'text-gray-500'}`}>
+            {previewText}
+          </p>
         ) : null}
-        {renderMediaFn(mediaUrl, mediaType)}
+        {children}
       </div>
+    </>
+  );
+
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={(e) => { e.stopPropagation(); onClick(); }}
+        className={`${className} flex w-full cursor-pointer items-stretch gap-0 overflow-hidden rounded-lg text-left transition-opacity hover:opacity-75 active:scale-[0.98] ${
+          isMine ? 'bg-white/20' : 'bg-gray-200/70'
+        }`}
+      >
+        {content}
+      </button>
+    );
+  }
+
+  return (
+    <div className={`${className} flex w-full items-stretch gap-0 overflow-hidden rounded-lg text-left ${
+      isMine ? 'bg-white/20' : 'bg-gray-200/70'
+    }`}
+    >
+      {content}
     </div>
   );
 }
@@ -223,6 +213,15 @@ export default function ChatArea(props: Props) {
   const contextMenuRef = useRef<HTMLDivElement>(null);
 
   const messageCount = props.messages.length;
+  const isSendingMedia = Boolean(props.isSendingMedia);
+  const mediaUploadProgress = Math.max(0, Math.min(100, Math.round(props.mediaUploadProgress ?? 0)));
+  const pendingMediaKind = pendingMediaFile
+    ? pendingMediaFile.type.startsWith('video/')
+      ? 'video'
+      : pendingMediaFile.type.startsWith('image/')
+        ? 'image'
+        : null
+    : null;
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }, [messageCount]);
@@ -267,6 +266,7 @@ export default function ChatArea(props: Props) {
   // ─── Send ─────────────────────────────────────────────────────────────────
   const handleSend = async () => {
     const text = inputText.trim();
+    if (isSendingMedia) return;
     if (!text && !pendingMediaFile && !fwdComposeOk) return;
 
     if (editingMessageId) {
@@ -281,13 +281,17 @@ export default function ChatArea(props: Props) {
     }
 
     if (pendingMediaFile) {
-      await props.onSendMedia(pendingMediaFile, text);
-      setPendingMediaFile(null);
-      setPendingMediaPreviewUrl(null);
-      setInputText('');
-      setReplyingTo(null);
-      if ('onCancelPendingForward' in props && props.onCancelPendingForward) {
-        props.onCancelPendingForward();
+      try {
+        await props.onSendMedia(pendingMediaFile, text);
+        setPendingMediaFile(null);
+        setPendingMediaPreviewUrl(null);
+        setInputText('');
+        setReplyingTo(null);
+        if ('onCancelPendingForward' in props && props.onCancelPendingForward) {
+          props.onCancelPendingForward();
+        }
+      } catch (error) {
+        console.error('Failed to send media:', error);
       }
       return;
     }
@@ -324,7 +328,7 @@ export default function ChatArea(props: Props) {
     const selectedFile = event.target.files?.[0];
     event.currentTarget.value = '';
     if (!selectedFile) return;
-    if (!selectedFile.type.startsWith('image/')) return;
+    if (!selectedFile.type.startsWith('image/') && !selectedFile.type.startsWith('video/')) return;
     if ('onCancelPendingForward' in props && props.onCancelPendingForward) {
       props.onCancelPendingForward();
     }
@@ -333,7 +337,7 @@ export default function ChatArea(props: Props) {
 
   const handleInputPaste = async (event: React.ClipboardEvent<HTMLInputElement>) => {
     const mediaItem = Array.from(event.clipboardData.items).find((i) =>
-      i.type.startsWith('image/'),
+      i.type.startsWith('image/') || i.type.startsWith('video/'),
     );
     if (!mediaItem) return;
     const pastedFile = mediaItem.getAsFile();
@@ -376,34 +380,67 @@ export default function ChatArea(props: Props) {
     if (!mediaUrl || !mediaType) return null;
     if (mediaType === 'image') {
       return (
-        <img
-          src={mediaUrl}
-          alt="photo"
-          className="mt-2 max-h-64 w-full cursor-pointer rounded-lg object-cover"
-          onClick={() => window.open(mediaUrl, '_blank')}
-        />
+        <div className="mt-2" onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()}>
+          <img
+            src={mediaUrl}
+            alt="photo"
+            className="max-h-64 w-full cursor-pointer rounded-lg object-cover"
+            onClick={() => window.open(mediaUrl, '_blank')}
+          />
+        </div>
       );
     }
     if (mediaType === 'video') {
       return (
-        <div className="mt-2 rounded-lg border border-dashed border-gray-300 bg-gray-50 px-3 py-2 text-xs text-gray-500">
-          Видео отправлено
+        <div className="mt-2" onClick={(e) => e.stopPropagation()} onContextMenu={(e) => e.stopPropagation()}>
+          <video
+            src={mediaUrl}
+            controls
+            preload="metadata"
+            className="max-h-80 w-full rounded-lg bg-black"
+          />
         </div>
       );
     }
     return null;
   };
 
+  const circularProgress = pendingMediaFile && isSendingMedia ? (
+    <div className="relative h-12 w-12 shrink-0">
+      <svg viewBox="0 0 36 36" className="h-12 w-12 -rotate-90">
+        <circle cx="18" cy="18" r="15.5" fill="none" stroke="currentColor" strokeWidth="3" className="text-gray-200" />
+        <circle
+          cx="18"
+          cy="18"
+          r="15.5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="3"
+          strokeLinecap="round"
+          className="text-purple transition-all duration-200"
+          strokeDasharray={`${2 * Math.PI * 15.5}`}
+          strokeDashoffset={`${2 * Math.PI * 15.5 * (1 - mediaUploadProgress / 100)}`}
+        />
+      </svg>
+      <span className="absolute inset-0 flex items-center justify-center text-[10px] font-semibold text-purple">
+        {mediaUploadProgress}%
+      </span>
+    </div>
+  ) : null;
+
   // ─── Compose box (shared) ─────────────────────────────────────────────────
   const composeBox = (
     <div className="border-t border-gray-100 px-4 py-3">
       {/* Reply indicator */}
       {replyingTo && !editingMessageId && !pendingForwardCompose && (
-        <div className="mb-2 flex items-center gap-2 rounded-xl border-l-2 border-purple bg-purple/5 px-3 py-2">
-          <Reply className="h-3.5 w-3.5 shrink-0 text-purple" />
+        <div className="mb-2 flex items-center gap-2 rounded-xl bg-purple/5 px-3 py-2">
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-semibold text-purple">{replyingTo.senderName}</p>
-            <p className="truncate text-xs text-gray-500">{replyingTo.text}</p>
+            <MessageReferenceBlock
+              title={replyingTo.senderName}
+              previewText={replyingTo.text}
+              isMine={false}
+              className="mb-0"
+            />
           </div>
           <button
             type="button"
@@ -416,13 +453,14 @@ export default function ChatArea(props: Props) {
       )}
 
       {pendingForwardCompose && !editingMessageId && (
-        <div className="mb-2 flex items-center gap-2 rounded-xl border-l-2 border-sky-500 bg-sky-50 px-3 py-2">
-          <Forward className="h-3.5 w-3.5 shrink-0 text-sky-600" />
+        <div className="mb-2 flex items-center gap-2 rounded-xl bg-sky-50 px-3 py-2">
           <div className="min-w-0 flex-1">
-            <p className="text-[10px] font-semibold text-sky-800">Переслано от {pendingForwardCompose.senderName}</p>
-            <p className="truncate text-xs text-gray-600">
-              {pendingForwardCompose.text?.trim() || (pendingForwardCompose.mediaUrl ? 'Медиа' : '')}
-            </p>
+            <MessageReferenceBlock
+              title={`Переслано от ${pendingForwardCompose.senderName}`}
+              previewText={pendingForwardCompose.text?.trim() || (pendingForwardCompose.mediaUrl ? 'Медиа' : '')}
+              isMine={false}
+              className="mb-0"
+            />
           </div>
           <button
             type="button"
@@ -455,19 +493,35 @@ export default function ChatArea(props: Props) {
       {pendingMediaFile && (
         <div className="mb-2 flex items-center gap-3 rounded-xl border border-gray-200 bg-gray-50 p-2.5">
           <div className="h-14 w-14 overflow-hidden rounded-lg bg-gray-100">
-            {pendingMediaPreviewUrl ? (
+            {pendingMediaPreviewUrl && pendingMediaKind === 'image' ? (
               <img src={pendingMediaPreviewUrl} alt="preview" className="h-full w-full object-cover" />
+            ) : pendingMediaPreviewUrl && pendingMediaKind === 'video' ? (
+              <video src={pendingMediaPreviewUrl} className="h-full w-full object-cover" muted />
             ) : (
-              <div className="flex h-full items-center justify-center text-[10px] text-gray-400">Фото</div>
+              <div className="flex h-full items-center justify-center text-[10px] text-gray-400">Медиа</div>
             )}
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs font-medium text-gray-700">{pendingMediaFile.name}</p>
-            <p className="text-[11px] text-gray-400">Будет отправлено вместе с сообщением</p>
+            <p className="text-[11px] text-gray-400">
+              {isSendingMedia
+                ? 'Загружаем медиафайл...'
+                : pendingMediaKind === 'video'
+                  ? 'Видео будет отправлено вместе с сообщением'
+                  : 'Файл будет отправлен вместе с сообщением'}
+            </p>
+            {isSendingMedia && (
+              <div className="mt-2 flex items-center gap-2 text-[11px] font-medium text-purple">
+                <span className="inline-block h-2 w-2 animate-pulse rounded-full bg-purple" />
+                Пожалуйста, дождитесь завершения загрузки
+              </div>
+            )}
           </div>
+          {circularProgress}
           <button
+            disabled={isSendingMedia}
             onClick={() => { setPendingMediaFile(null); setPendingMediaPreviewUrl(null); }}
-            className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-200 hover:text-gray-600"
+            className="flex h-7 w-7 items-center justify-center rounded-lg text-gray-400 hover:bg-gray-200 hover:text-gray-600 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <X className="h-4 w-4" />
           </button>
@@ -475,11 +529,12 @@ export default function ChatArea(props: Props) {
       )}
 
       <div className="flex items-center gap-2">
-        <input ref={fileInputRef} type="file" accept="image/*" className="hidden"
+        <input ref={fileInputRef} type="file" accept="image/*,video/*" className="hidden"
           onChange={(e) => { void handleFileSelected(e); }} />
         <button onClick={handleFileClick}
-          className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple/10 text-purple transition-colors hover:bg-purple/20"
-          title="Прикрепить фото">
+          disabled={isSendingMedia}
+          className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple/10 text-purple transition-colors hover:bg-purple/20 disabled:cursor-not-allowed disabled:opacity-40"
+          title="Прикрепить фото или видео">
           <Plus className="h-4 w-4" />
         </button>
         <input
@@ -488,6 +543,7 @@ export default function ChatArea(props: Props) {
           onChange={(e) => setInputText(e.target.value)}
           onKeyDown={handleKeyDown}
           onPaste={(e) => { void handleInputPaste(e); }}
+          disabled={isSendingMedia}
           placeholder={
             editingMessageId
               ? 'Изменить сообщение…'
@@ -497,17 +553,18 @@ export default function ChatArea(props: Props) {
                   ? 'Ответить…'
                   : 'Сообщение…'
           }
-          className="flex-1 rounded-xl bg-gray-50 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple/20"
+          className="flex-1 rounded-xl bg-gray-50 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-purple/20 disabled:cursor-not-allowed disabled:opacity-70"
         />
         <button
           onClick={() => { void handleSend(); }}
           disabled={
-            (!inputText.trim() && !pendingMediaFile && !fwdComposeOk)
+            isSendingMedia
+            || (!inputText.trim() && !pendingMediaFile && !fwdComposeOk)
             || (Boolean(editingMessageId) && !inputText.trim())
           }
           className="flex h-9 w-9 items-center justify-center rounded-xl bg-purple text-white transition-colors hover:bg-purple/90 disabled:opacity-40"
         >
-          <Send className="h-4 w-4" />
+          {isSendingMedia ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/40 border-t-white" /> : <Send className="h-4 w-4" />}
         </button>
       </div>
     </div>
@@ -717,11 +774,11 @@ export default function ChatArea(props: Props) {
 
           {/* Quoted block */}
           {item.replyToText && (
-            <QuotedBlock
-              replyToText={item.replyToText}
-              replyToSender={item.replyToSender ?? ''}
+            <MessageReferenceBlock
+              title={item.replyToSender || 'Сообщение'}
+              previewText={item.replyToText}
               isMine={item.isMine}
-              onJump={() => jumpToMessage(item.replyToId ?? '')}
+              onClick={() => jumpToMessage(item.replyToId ?? '')}
             />
           )}
 
@@ -730,14 +787,14 @@ export default function ChatArea(props: Props) {
           ) : null}
 
           {item.forwardFromName ? (
-            <ForwardedBlock
-              forwardFromName={item.forwardFromName}
-              innerText={item.forwardOriginalText}
-              mediaUrl={item.forwardMediaUrl}
-              mediaType={item.forwardMediaType}
+            <MessageReferenceBlock
+              title={`Переслано от ${item.forwardFromName}`}
+              previewText={item.forwardOriginalText?.trim() || (item.forwardMediaUrl ? 'Медиа' : '')}
               isMine={item.isMine}
-              renderMediaFn={renderMedia}
-            />
+              previewClassName="whitespace-pre-wrap break-words"
+            >
+              {item.forwardMediaUrl && item.forwardMediaType ? renderMedia(item.forwardMediaUrl, item.forwardMediaType) : null}
+            </MessageReferenceBlock>
           ) : (
             <>
               <p className="break-words text-sm leading-relaxed">{item.text}</p>

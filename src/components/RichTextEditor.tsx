@@ -44,6 +44,7 @@ interface RichTextEditorProps {
   /** Для загрузки изображений в контент (опционально) */
   courseId?: number;
   onUploadImage?: (file: File) => Promise<{ url: string }>;
+  onUploadVideo?: (file: File) => Promise<{ url: string }>;
 }
 
 const RichTextEditor: React.FC<RichTextEditorProps> = ({
@@ -54,15 +55,17 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   disabled = false,
   courseId,
   onUploadImage,
+  onUploadVideo,
 }) => {
   const editorRef = useRef<HTMLDivElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageInputRef = useRef<HTMLInputElement>(null);
+  const videoInputRef = useRef<HTMLInputElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const lastSyncedValueRef = useRef<string>(value);
   const isEmpty = !value || value.replace(/<[^>]*>/g, '').trim().length === 0;
 
-  const [activeImage, setActiveImage] = useState<HTMLImageElement | null>(null);
-  const [activeImageRect, setActiveImageRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  const [activeMedia, setActiveMedia] = useState<HTMLElement | null>(null);
+  const [activeMediaRect, setActiveMediaRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
   const resizeSessionRef = useRef<{
     handle: string;
     startX: number;
@@ -181,37 +184,87 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     }
   }, [onUploadImage, insertHtml]);
 
-  const syncActiveImageRect = useCallback(() => {
-    if (!activeImage || !wrapperRef.current) return;
+  const handleInsertVideoFile = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !onUploadVideo) return;
+    try {
+      const { url } = await onUploadVideo(file);
+      const fullUrl = url.startsWith('http') ? url : `${API_URL}${url}`;
+      insertHtml(`<video src="${fullUrl}" controls preload="metadata" style="max-width:100%;width:100%;border-radius:12px;"></video>`);
+    } catch (err) {
+      console.error('Upload video failed:', err);
+    }
+  }, [onUploadVideo, insertHtml]);
+
+  const syncActiveMediaRect = useCallback(() => {
+    if (!activeMedia || !wrapperRef.current) return;
     const wRect = wrapperRef.current.getBoundingClientRect();
-    const iRect = activeImage.getBoundingClientRect();
-    setActiveImageRect({
+    const iRect = activeMedia.getBoundingClientRect();
+    setActiveMediaRect({
       left: iRect.left - wRect.left,
       top: iRect.top - wRect.top,
       width: iRect.width,
       height: iRect.height,
     });
-  }, [activeImage]);
+  }, [activeMedia]);
+
+  const buildEmbeddedVideoHtml = useCallback((rawUrl: string) => {
+    const sanitizedUrl = rawUrl.trim();
+    if (!sanitizedUrl) return null;
+
+    let parsedUrl: URL;
+    try {
+      parsedUrl = new URL(sanitizedUrl);
+    } catch {
+      return null;
+    }
+
+    const host = parsedUrl.hostname.replace(/^www\./, '').toLowerCase();
+    const pathWithQuery = `${parsedUrl.pathname}${parsedUrl.search}`;
+    if (/\.(mp4|webm|mov|m4v)(\?.*)?$/i.test(pathWithQuery)) {
+      return `<video src="${sanitizedUrl.replace(/"/g, '&quot;')}" controls preload="metadata" style="max-width:100%;width:100%;border-radius:12px;"></video>`;
+    }
+
+    const youtubeMatch =
+      sanitizedUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)/) ||
+      sanitizedUrl.match(/youtube\.com\/embed\/([a-zA-Z0-9_-]+)/);
+    if (youtubeMatch) {
+      return `<div class="video-wrapper" style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;max-width:100%;"><iframe style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" src="https://www.youtube.com/embed/${youtubeMatch[1]}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div>`;
+    }
+
+    const rutubeMatch =
+      sanitizedUrl.match(/rutube\.ru\/video\/([a-zA-Z0-9_-]+)/) ||
+      sanitizedUrl.match(/rutube\.ru\/play\/embed\/([a-zA-Z0-9_-]+)/) ||
+      sanitizedUrl.match(/embed\.rutube\.ru\/play\/embed\/([a-zA-Z0-9_-]+)/);
+    if (rutubeMatch) {
+      return `<div class="video-wrapper" style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;max-width:100%;"><iframe style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" src="https://rutube.ru/play/embed/${rutubeMatch[1]}" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowfullscreen></iframe></div>`;
+    }
+
+    if (host === 'rutube.ru' || host === 'embed.rutube.ru') {
+      return `<div class="video-wrapper" style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;max-width:100%;"><iframe style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" src="${sanitizedUrl.replace(/"/g, '&quot;')}" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowfullscreen></iframe></div>`;
+    }
+
+    return null;
+  }, []);
 
   const handleInsertVideo = useCallback(() => {
-    const url = window.prompt('Введите URL видео (YouTube, или прямая ссылка на .mp4/.webm):');
+    const url = window.prompt('Введите URL видео (Rutube, YouTube или прямую ссылку на .mp4/.webm/.mov):');
     if (!url?.trim()) return;
-    const u = url.trim();
-    const ytMatch = u.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)/);
-    if (ytMatch) {
-      const embed = `https://www.youtube.com/embed/${ytMatch[1]}`;
-      insertHtml(`<div class="video-wrapper" style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;max-width:100%;"><iframe style="position:absolute;top:0;left:0;width:100%;height:100%;" src="${embed}" frameborder="0" allowfullscreen></iframe></div>`);
-    } else {
-      insertHtml(`<video src="${u.replace(/"/g, '&quot;')}" controls style="max-width:100%;"></video>`);
+    const embedHtml = buildEmbeddedVideoHtml(url);
+    if (!embedHtml) {
+      window.alert('Поддерживаются Rutube, YouTube и прямые ссылки на видеофайлы (.mp4/.webm/.mov).');
+      return;
     }
-  }, [insertHtml]);
+    insertHtml(embedHtml);
+  }, [buildEmbeddedVideoHtml, insertHtml]);
 
   const handleAlignMedia = useCallback(
     (mode: 'left' | 'center' | 'right' | 'full') => {
       const selection = window.getSelection();
       const clickTarget = selection?.anchorNode instanceof HTMLElement ? selection.anchorNode : null;
       const media =
-        (activeImage as HTMLElement | null) ||
+        activeMedia ||
         (clickTarget?.closest?.('img') as HTMLElement | null) ||
         (clickTarget?.closest?.('video') as HTMLElement | null) ||
         (clickTarget?.closest?.('iframe') as HTMLElement | null);
@@ -243,12 +296,12 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         }
       }
       handleInput();
-      if (media.tagName.toLowerCase() === 'img') {
-        setActiveImage(media as HTMLImageElement);
-        requestAnimationFrame(() => syncActiveImageRect());
+      if (media.tagName.toLowerCase() === 'img' || media.tagName.toLowerCase() === 'video') {
+        setActiveMedia(media as HTMLElement);
+        requestAnimationFrame(() => syncActiveMediaRect());
       }
     },
-    [activeImage, handleInput, syncActiveImageRect]
+    [activeMedia, handleInput, syncActiveMediaRect]
   );
 
   const handleInsertTableSized = useCallback(
@@ -344,32 +397,34 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   }, []);
 
   useEffect(() => {
-    syncActiveImageRect();
-  }, [syncActiveImageRect, value]);
+    syncActiveMediaRect();
+  }, [syncActiveMediaRect, value]);
 
   useEffect(() => {
     const onResize = () => {
-      syncActiveImageRect();
+      syncActiveMediaRect();
       syncActiveTableRect();
     };
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
-  }, [syncActiveImageRect, syncActiveTableRect]);
+  }, [syncActiveMediaRect, syncActiveTableRect]);
 
   const clearActiveMedia = useCallback(() => {
-    setActiveImage(null);
-    setActiveImageRect(null);
+    setActiveMedia(null);
+    setActiveMediaRect(null);
   }, []);
 
   const onEditorClick = useCallback(
     (e: React.MouseEvent) => {
       const target = e.target as HTMLElement | null;
-      const img = target && target.tagName === 'IMG' ? (target as HTMLImageElement) : (target?.closest?.('img') as HTMLImageElement | null);
-      if (img && editorRef.current?.contains(img)) {
-        setActiveImage(img);
+      const media =
+        (target && (target.tagName === 'IMG' || target.tagName === 'VIDEO') ? target : null) as HTMLElement | null
+        || (target?.closest?.('img,video') as HTMLElement | null);
+      if (media && editorRef.current?.contains(media)) {
+        setActiveMedia(media);
         setTableActionsOpen(false);
         requestAnimationFrame(() => {
-          syncActiveImageRect();
+          syncActiveMediaRect();
         });
         return;
       }
@@ -380,7 +435,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         setTableActionsOpen(false);
       }
     },
-    [clearActiveMedia, syncActiveImageRect]
+    [clearActiveMedia, syncActiveMediaRect]
   );
 
   const resizeHandles = useMemo(
@@ -399,10 +454,10 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
   const beginResize = useCallback(
     (handle: string, e: React.PointerEvent) => {
-      if (!activeImage) return;
+      if (!activeMedia) return;
       e.preventDefault();
       e.stopPropagation();
-      const rect = activeImage.getBoundingClientRect();
+      const rect = activeMedia.getBoundingClientRect();
       resizeSessionRef.current = {
         handle,
         startX: e.clientX,
@@ -412,12 +467,12 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       };
       (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     },
-    [activeImage]
+    [activeMedia]
   );
 
   const onResizeMove = useCallback(
     (e: React.PointerEvent) => {
-      if (!activeImage) return;
+      if (!activeMedia) return;
       const session = resizeSessionRef.current;
       if (!session) return;
       e.preventDefault();
@@ -437,14 +492,21 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       nextW = Math.max(min, nextW);
       nextH = Math.max(min, nextH);
 
-      activeImage.style.maxWidth = '100%';
-      activeImage.style.width = `${Math.round(nextW)}px`;
-      activeImage.style.height = `${Math.round(nextH)}px`;
+      activeMedia.style.maxWidth = '100%';
+      activeMedia.style.width = `${Math.round(nextW)}px`;
+      activeMedia.style.height = `${Math.round(nextH)}px`;
 
-      syncActiveImageRect();
+      syncActiveMediaRect();
     },
-    [activeImage, syncActiveImageRect]
+    [activeMedia, syncActiveMediaRect]
   );
+
+  const handleDeleteActiveMedia = useCallback(() => {
+    if (!activeMedia) return;
+    activeMedia.remove();
+    clearActiveMedia();
+    handleInput();
+  }, [activeMedia, clearActiveMedia, handleInput]);
 
   const endResize = useCallback(
     (e: React.PointerEvent) => {
@@ -474,10 +536,17 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       sel && sel.rangeCount > 0 ? sel.getRangeAt(0).cloneRange() : null;
 
     const target = e.target as HTMLElement;
+    const media = target.closest?.('img,video') as HTMLElement | null;
+    if (media && editorRef.current?.contains(media)) {
+      setActiveMedia(media);
+      requestAnimationFrame(() => {
+        syncActiveMediaRect();
+      });
+    }
     const targetText = (target.innerText ?? target.textContent ?? '').trim();
     const hasSelection = sel && !sel.isCollapsed && sel.toString().trim().length > 0;
     setCtxMenuOnEmpty(!hasSelection && (!targetText || target === editorRef.current));
-  }, [disabled]);
+  }, [disabled, syncActiveMediaRect]);
 
   const restoreSelectionForCmd = useCallback(() => {
     const editor = editorRef.current;
@@ -515,10 +584,14 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   }, [restoreSelectionForCmd, handleInput]);
 
   const ctxDelete = useCallback(() => {
+    if (activeMedia && editorRef.current?.contains(activeMedia)) {
+      handleDeleteActiveMedia();
+      return;
+    }
     restoreSelectionForCmd();
     document.execCommand('delete');
     handleInput();
-  }, [restoreSelectionForCmd, handleInput]);
+  }, [activeMedia, handleDeleteActiveMedia, restoreSelectionForCmd, handleInput]);
 
   const ctxAlignLeft = useCallback(() => {
     restoreSelectionForCmd();
@@ -615,7 +688,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         <div className="w-px h-6 bg-gray-300 mx-1" />
         <button
           type="button"
-          onClick={() => (onUploadImage ? fileInputRef.current?.click() : handleInsertImageByUrl())}
+          onClick={() => (onUploadImage ? imageInputRef.current?.click() : handleInsertImageByUrl())}
           className="p-1.5 border rounded hover:bg-gray-200 cursor-pointer"
           title="Вставить изображение"
         >
@@ -623,7 +696,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         </button>
         {onUploadImage && (
           <input
-            ref={fileInputRef}
+            ref={imageInputRef}
             type="file"
             accept="image/*"
             className="hidden"
@@ -634,10 +707,29 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           type="button"
           onClick={handleInsertVideo}
           className="p-1.5 border rounded hover:bg-gray-200 cursor-pointer"
-          title="Вставить видео (URL или YouTube)"
+          title="Вставить видео по ссылке"
         >
           <Video className="w-4 h-4" />
         </button>
+        {onUploadVideo && (
+          <>
+            <input
+              ref={videoInputRef}
+              type="file"
+              accept="video/mp4,video/webm,video/quicktime,video/x-m4v"
+              className="hidden"
+              onChange={handleInsertVideoFile}
+            />
+            <button
+              type="button"
+              onClick={() => videoInputRef.current?.click()}
+              className="px-2 py-1 text-sm border rounded hover:bg-gray-200 cursor-pointer"
+              title="Загрузить видеофайл"
+            >
+              Видео файл
+            </button>
+          </>
+        )}
         <button
           type="button"
           onClick={() => handleAlignMedia('left')}
@@ -806,20 +898,30 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             }}
           />
 
-          {/* Image resize overlay */}
-          {activeImageRect && !disabled && (
+          {/* Media resize overlay */}
+          {activeMediaRect && !disabled && (
             <div
               className="absolute z-40"
               style={{
-                left: activeImageRect.left,
-                top: activeImageRect.top,
-                width: activeImageRect.width,
-                height: activeImageRect.height,
+                left: activeMediaRect.left,
+                top: activeMediaRect.top,
+                width: activeMediaRect.width,
+                height: activeMediaRect.height,
                 border: '2px solid #8f6bf4',
                 borderRadius: 6,
                 pointerEvents: 'none',
               }}
             >
+              <button
+                type="button"
+                onClick={handleDeleteActiveMedia}
+                className="absolute -right-3 -top-3 flex h-6 w-6 items-center justify-center rounded-full border border-[#8f6bf4] bg-white text-[#8f6bf4] shadow-sm"
+                style={{ pointerEvents: 'auto' }}
+                aria-label="Удалить медиа"
+                title="Удалить медиа"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
               {resizeHandles.map((h) => (
                 <div
                   key={h.id}

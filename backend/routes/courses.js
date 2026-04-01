@@ -10,6 +10,22 @@ import { dirname } from 'path';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 const coursesMediaRoot = path.join(__dirname, '..', 'data', 'courses');
+const COURSE_IMAGE_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.gif', '.webp', '.svg']);
+const COURSE_IMAGE_MIME_TYPES = new Set([
+  'image/jpeg',
+  'image/jpg',
+  'image/png',
+  'image/gif',
+  'image/webp',
+  'image/svg+xml',
+]);
+const COURSE_VIDEO_EXTENSIONS = new Set(['.mp4', '.webm', '.mov', '.m4v']);
+const COURSE_VIDEO_MIME_TYPES = new Set([
+  'video/mp4',
+  'video/webm',
+  'video/quicktime',
+  'video/x-m4v',
+]);
 
 /** Строка chapters из PostgreSQL → поля для API (camelCase для новых колонок). */
 function chapterRowToApi(row) {
@@ -20,6 +36,36 @@ function chapterRowToApi(row) {
     shortDescription: short_description ?? null,
     studyMinutes: study_minutes ?? null,
   };
+}
+
+let chapterSchemaColumnsPromise = null;
+
+async function getChapterSchemaColumns() {
+  if (!chapterSchemaColumnsPromise) {
+    chapterSchemaColumnsPromise = pool
+      .query(
+        `SELECT column_name
+         FROM information_schema.columns
+         WHERE table_schema = 'public'
+           AND table_name = 'chapters'
+           AND column_name = ANY($1::text[])`,
+        [['short_description', 'study_minutes', 'canvas_data']],
+      )
+      .then((result) => {
+        const columns = new Set(result.rows.map((row) => row.column_name));
+        return {
+          hasShortDescription: columns.has('short_description'),
+          hasStudyMinutes: columns.has('study_minutes'),
+          hasCanvasData: columns.has('canvas_data'),
+        };
+      })
+      .catch((error) => {
+        chapterSchemaColumnsPromise = null;
+        throw error;
+      });
+  }
+
+  return chapterSchemaColumnsPromise;
 }
 
 // ---------------------------------------------------------------------------
@@ -176,12 +222,19 @@ const upload = multer({
       cb(null, `${prefix}${ext}`);
     },
   }),
-  limits: { fileSize: 10 * 1024 * 1024 },
+  limits: { fileSize: 200 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
-    const allowed = /jpeg|jpg|png|gif|webp|svg/;
-    const extOk = allowed.test(path.extname(file.originalname).toLowerCase());
-    const mimeOk = allowed.test(file.mimetype.split('/')[1]);
-    cb(null, extOk || mimeOk);
+    const ext = path.extname(file.originalname).toLowerCase();
+    const mime = String(file.mimetype || '').toLowerCase();
+    const isImage = COURSE_IMAGE_EXTENSIONS.has(ext) || COURSE_IMAGE_MIME_TYPES.has(mime);
+    const isVideo = COURSE_VIDEO_EXTENSIONS.has(ext) || COURSE_VIDEO_MIME_TYPES.has(mime);
+
+    if (req.query.type === 'cover') {
+      cb(null, isImage);
+      return;
+    }
+
+    cb(null, isImage || isVideo);
   },
 });
 
@@ -356,7 +409,8 @@ router.post('/:id/upload', authenticateSession, upload.single('file'), async (re
       );
     }
 
-    res.status(200).json({ url: fileUrl, filename: req.file.filename });
+    const mediaType = String(req.file.mimetype || '').startsWith('video/') ? 'video' : 'image';
+    res.status(200).json({ url: fileUrl, filename: req.file.filename, mediaType });
   } catch (error) {
     console.error(`Error uploading file for course ${id}:`, error.message);
     res.status(500).json({ error: 'Failed to upload file' });
@@ -670,8 +724,20 @@ router.post('/:id/enroll', authenticateSession, async (req, res) => {
 router.get('/:id(\\d+)', optionalAuthenticateSession, async (req, res) => {
   const { id } = req.params;
   const userId = req.user?.userId || null;
+ 
+  try {
+    const chapterSchema = await getChapterSchemaColumns();
+    const chapterShortDescriptionSelect = chapterSchema.hasShortDescription
+      ? 'COALESCE(ch.short_description, NULL) as "shortDescription"'
+      : 'NULL::text as "shortDescription"';
+    const chapterStudyMinutesSelect = chapterSchema.hasStudyMinutes
+      ? 'ch.study_minutes as "studyMinutes"'
+      : 'NULL::integer as "studyMinutes"';
+    const chapterCanvasDataSelect = chapterSchema.hasCanvasData
+      ? 'COALESCE(ch.canvas_data, NULL) as canvas_data'
+      : 'NULL::jsonb as canvas_data';
 
-  const query = `
+    const query = `
     SELECT
       c.id,
       c.title,
@@ -715,9 +781,9 @@ router.get('/:id(\\d+)', optionalAuthenticateSession, async (req, res) => {
               ch.id,
               ch.title,
               ch.order,
-              COALESCE(ch.short_description, NULL) as "shortDescription",
-              ch.study_minutes as "studyMinutes",
-              COALESCE(ch.canvas_data, NULL) as canvas_data,
+              ${chapterShortDescriptionSelect},
+              ${chapterStudyMinutesSelect},
+              ${chapterCanvasDataSelect},
               COALESCE(
                 (
                   SELECT JSON_AGG(sub_agg.*)
@@ -762,7 +828,6 @@ router.get('/:id(\\d+)', optionalAuthenticateSession, async (req, res) => {
     WHERE c.id = $1;
   `;
 
-  try {
     const result = await pool.query(query, [id, userId]);
     const course = result.rows[0];
 

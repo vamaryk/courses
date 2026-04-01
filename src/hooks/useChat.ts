@@ -12,6 +12,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import type { Socket } from 'socket.io-client';
+import { uploadSocketMedia } from '@/shared/lib/socketMediaUpload';
 
 export interface ReplyInfo {
   id: string;
@@ -52,6 +53,8 @@ export interface UseChatReturn {
   messages: ChatMessage[];
   error: string | null;
   status: ChatStatus;
+  isUploadingMedia: boolean;
+  uploadProgress: number;
   joinRoom: (targetUserId: string) => void;
   sendMessage: (text: string, replyTo?: ReplyInfo, forwardFrom?: ForwardInfo) => void;
   /** Отправить в другую комнату по ID (без смены текущей), в т.ч. пересылку */
@@ -66,17 +69,8 @@ export function useChat(socket: Socket | null): UseChatReturn {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState<ChatStatus>('idle');
-
-  const fileToBase64 = (file: File) =>
-    new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const data = String(reader.result || '');
-        resolve(data.includes(',') ? data.split(',')[1] : data);
-      };
-      reader.onerror = () => reject(new Error('Failed to read file'));
-      reader.readAsDataURL(file);
-    });
+  const [isUploadingMedia, setIsUploadingMedia] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
 
   useEffect(() => {
     if (!socket) return;
@@ -191,14 +185,23 @@ export function useChat(socket: Socket | null): UseChatReturn {
       const isSupported = file.type.startsWith('image/') || file.type.startsWith('video/');
       if (!isSupported) return;
 
-      const base64Data = await fileToBase64(file);
-      socket.emit('chat:media-upload', {
-        roomId,
-        fileName: file.name,
-        mimeType: file.type,
-        base64Data,
-        caption,
-      });
+      setIsUploadingMedia(true);
+      setUploadProgress(0);
+      try {
+        const message = await uploadSocketMedia<ChatMessage>({
+          socket,
+          file,
+          caption,
+          target: { type: 'room', roomId },
+          onProgress: setUploadProgress,
+        });
+        if (message) {
+          setMessages((prev) => (prev.some((msg) => msg.id === message.id) ? prev : [...prev, message]));
+        }
+      } finally {
+        setIsUploadingMedia(false);
+        setUploadProgress(0);
+      }
     },
     [socket, roomId],
   );
@@ -223,5 +226,5 @@ export function useChat(socket: Socket | null): UseChatReturn {
     [socket, roomId],
   );
 
-  return { roomId, messages, error, status, joinRoom, sendMessage, sendMessageToRoom, sendMedia, editMessage, deleteMessage };
+  return { roomId, messages, error, status, isUploadingMedia, uploadProgress, joinRoom, sendMessage, sendMessageToRoom, sendMedia, editMessage, deleteMessage };
 }

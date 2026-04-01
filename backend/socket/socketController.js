@@ -31,6 +31,7 @@ const socketToAuthUser = new Map();
 
 /** messageId → metadata for ephemeral room chat edits/deletes */
 const roomMessageMeta = new Map();
+const mediaUploadSessions = new Map();
 
 /** Shared io instance (set once setupSocketController is called) */
 let _io = null;
@@ -69,7 +70,7 @@ function normalizeMimeType(mimeType) {
   return null;
 }
 
-async function saveChatMediaFile({ chatId, fileName, base64Data }) {
+async function saveChatMediaFile({ chatId, fileName, base64Data, binaryData }) {
   await ensureDirectoryExists(chatsDataRoot);
   const chatDirectoryPath = path.join(chatsDataRoot, String(chatId));
   await ensureDirectoryExists(chatDirectoryPath);
@@ -77,7 +78,20 @@ async function saveChatMediaFile({ chatId, fileName, base64Data }) {
   const safeFileName = sanitizeFileName(fileName);
   const generatedName = `${Date.now()}-${safeFileName}`;
   const absoluteFilePath = path.join(chatDirectoryPath, generatedName);
-  const fileBuffer = Buffer.from(base64Data, 'base64');
+  let fileBuffer = null;
+  if (binaryData instanceof Uint8Array) {
+    fileBuffer = Buffer.from(binaryData);
+  } else if (binaryData instanceof ArrayBuffer) {
+    fileBuffer = Buffer.from(new Uint8Array(binaryData));
+  } else if (Buffer.isBuffer(binaryData)) {
+    fileBuffer = binaryData;
+  } else if (base64Data) {
+    fileBuffer = Buffer.from(base64Data, 'base64');
+  }
+
+  if (!fileBuffer || fileBuffer.length === 0) {
+    throw new Error('Empty media payload');
+  }
 
   await fs.writeFile(absoluteFilePath, fileBuffer);
   return `/chat-media/${encodeURIComponent(String(chatId))}/${encodeURIComponent(generatedName)}`;
@@ -101,6 +115,94 @@ function normalizeMongoMessage(doc) {
     forward_original_text: doc.forward_original_text ?? null,
     forward_media_url: doc.forward_media_url ?? null,
     forward_media_type: doc.forward_media_type ?? null,
+  };
+}
+
+function buildRoomMediaMessage({ roomId, fromUserId, text, mediaUrl, mediaType }) {
+  const message = {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+    fromUserId,
+    text: String(text || '').slice(0, 2000),
+    timestamp: new Date().toISOString(),
+    isRead: false,
+    mediaUrl,
+    mediaType,
+  };
+  roomMessageMeta.set(message.id, { roomId, fromUserId });
+  return message;
+}
+
+async function buildDirectMediaMessage({ chats, senderId, receiverId, text, mediaUrl, mediaType }) {
+  const chatId = buildDirectChatId(senderId, receiverId);
+  const insertResult = await chats.insertOne({
+    chat_id: chatId,
+    id_user: senderId,
+    receiver_id: receiverId,
+    message: String(text || '').slice(0, 2000),
+    sended_time: new Date(),
+    media_id: mediaUrl,
+    media_type: mediaType,
+    is_read: false,
+    reply_to_id: null,
+    reply_to_text: null,
+    reply_to_sender: null,
+    forward_from_name: null,
+    forward_original_text: null,
+    forward_media_url: null,
+    forward_media_type: null,
+  });
+  const insertedDoc = await chats.findOne({ _id: insertResult.insertedId });
+  if (!insertedDoc) return null;
+  return {
+    ...normalizeMongoMessage(insertedDoc),
+    reply_to_id: insertedDoc.reply_to_id ?? null,
+    reply_to_text: insertedDoc.reply_to_text ?? null,
+    reply_to_sender: insertedDoc.reply_to_sender ?? null,
+  };
+}
+
+async function buildGroupMediaMessage({ pool, groupchats, groupId, senderId, text, mediaUrl, mediaType }) {
+  const insertResult = await groupchats.insertOne({
+    chat_id: `group-${groupId}`,
+    group_id: Number(groupId),
+    id_user: senderId,
+    message: String(text || '').slice(0, 2000),
+    sended_time: new Date(),
+    media_id: mediaUrl,
+    media_type: mediaType,
+    reply_to_id: null,
+    reply_to_text: null,
+    reply_to_sender: null,
+    forward_from_name: null,
+    forward_original_text: null,
+    forward_media_url: null,
+    forward_media_type: null,
+  });
+  const insertedDoc = await groupchats.findOne({ _id: insertResult.insertedId });
+  if (!insertedDoc) return null;
+  const senderProfile = await pool.query(
+    'SELECT first_name, last_name, avatar_url FROM profiles WHERE id = $1',
+    [senderId]
+  );
+  const sender = senderProfile.rows[0] || {};
+  return {
+    id: String(insertedDoc._id),
+    group_id: insertedDoc.group_id,
+    sender_id: insertedDoc.id_user,
+    text: insertedDoc.message || '',
+    created_at: new Date(insertedDoc.sended_time || Date.now()).toISOString(),
+    media_url: insertedDoc.media_id || null,
+    media_type: insertedDoc.media_type || null,
+    sender_first_name: sender.first_name,
+    sender_last_name: sender.last_name,
+    sender_avatar: sender.avatar_url,
+    reply_to_id: null,
+    reply_to_text: null,
+    reply_to_sender: null,
+    forward_from_name: null,
+    forward_original_text: null,
+    forward_media_url: null,
+    forward_media_type: null,
   };
 }
 
@@ -203,6 +305,159 @@ export function setupSocketController(io) {
       console.log(`💬 [SOCKET] Room accepted: ${roomId} (by ${userId})`);
     });
 
+    socket.on('chat:media-upload:start', async ({ uploadId, target, fileName, mimeType, caption, totalChunks, totalSize }, ack) => {
+      if (!uploadId || !target || !fileName || !mimeType || !totalChunks || totalChunks < 1) {
+        if (typeof ack === 'function') ack({ ok: false, error: 'Некорректные параметры загрузки' });
+        return;
+      }
+
+      const mediaType = normalizeMimeType(mimeType);
+      if (!mediaType) {
+        if (typeof ack === 'function') ack({ ok: false, error: 'Неподдерживаемый тип файла' });
+        return;
+      }
+
+      if (target.type === 'dm' || target.type === 'group') {
+        const authId = socketToAuthUser.get(socket.id);
+        if (!authId) {
+          if (typeof ack === 'function') ack({ ok: false, error: 'Требуется авторизация' });
+          return;
+        }
+      }
+
+      mediaUploadSessions.set(uploadId, {
+        socketId: socket.id,
+        userId,
+        authUserId: socketToAuthUser.get(socket.id) || null,
+        target,
+        fileName,
+        mimeType,
+        mediaType,
+        caption: String(caption || '').slice(0, 2000),
+        totalChunks: Number(totalChunks),
+        totalSize: Number(totalSize) || 0,
+        chunks: new Array(Number(totalChunks)),
+        receivedChunks: 0,
+      });
+
+      if (typeof ack === 'function') ack({ ok: true });
+    });
+
+    socket.on('chat:media-upload:chunk', ({ uploadId, index, chunk }, ack) => {
+      const session = mediaUploadSessions.get(uploadId);
+      if (!session || session.socketId !== socket.id) {
+        if (typeof ack === 'function') ack({ ok: false, error: 'Сессия загрузки не найдена' });
+        return;
+      }
+      if (typeof index !== 'number' || index < 0 || index >= session.totalChunks) {
+        if (typeof ack === 'function') ack({ ok: false, error: 'Некорректный индекс чанка' });
+        return;
+      }
+      if (!(chunk instanceof Uint8Array) && !(chunk instanceof ArrayBuffer) && !Buffer.isBuffer(chunk)) {
+        if (typeof ack === 'function') ack({ ok: false, error: 'Некорректные данные чанка' });
+        return;
+      }
+
+      const bufferChunk = Buffer.isBuffer(chunk)
+        ? chunk
+        : chunk instanceof Uint8Array
+          ? Buffer.from(chunk)
+          : Buffer.from(new Uint8Array(chunk));
+
+      if (!session.chunks[index]) {
+        session.receivedChunks += 1;
+      }
+      session.chunks[index] = bufferChunk;
+      if (typeof ack === 'function') ack({ ok: true });
+    });
+
+    socket.on('chat:media-upload:finish', async ({ uploadId }, ack) => {
+      const session = mediaUploadSessions.get(uploadId);
+      if (!session || session.socketId !== socket.id) {
+        if (typeof ack === 'function') ack({ ok: false, error: 'Сессия загрузки не найдена' });
+        return;
+      }
+      if (session.receivedChunks !== session.totalChunks || session.chunks.some((chunk) => !chunk)) {
+        if (typeof ack === 'function') ack({ ok: false, error: 'Файл загружен не полностью' });
+        return;
+      }
+
+      try {
+        const binaryData = Buffer.concat(session.chunks);
+        const mediaUrl = await saveChatMediaFile({
+          chatId:
+            session.target.type === 'room'
+              ? session.target.roomId
+              : session.target.type === 'dm'
+                ? buildDirectChatId(session.authUserId, session.target.receiverId)
+                : `group-${session.target.groupId}`,
+          fileName: session.fileName,
+          binaryData,
+        });
+
+        let message = null;
+
+        if (session.target.type === 'room') {
+          message = buildRoomMediaMessage({
+            roomId: session.target.roomId,
+            fromUserId: session.userId,
+            text: session.caption,
+            mediaUrl,
+            mediaType: session.mediaType,
+          });
+          io.to(session.target.roomId).emit('chat:message', message);
+        }
+
+        if (session.target.type === 'dm') {
+          message = await buildDirectMediaMessage({
+            chats,
+            senderId: session.authUserId,
+            receiverId: session.target.receiverId,
+            text: session.caption,
+            mediaUrl,
+            mediaType: session.mediaType,
+          });
+          if (message) {
+            socket.emit('dm:message', message);
+            const receiverSocketId = authUsers.get(session.target.receiverId);
+            if (receiverSocketId) {
+              io.to(receiverSocketId).emit('dm:message', message);
+            }
+          }
+        }
+
+        if (session.target.type === 'group') {
+          const memberCheck = await pool.query(
+            'SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2',
+            [session.target.groupId, session.authUserId]
+          );
+          if (memberCheck.rows.length === 0) {
+            throw new Error('Вы не состоите в этой группе');
+          }
+          message = await buildGroupMediaMessage({
+            pool,
+            groupchats,
+            groupId: session.target.groupId,
+            senderId: session.authUserId,
+            text: session.caption,
+            mediaUrl,
+            mediaType: session.mediaType,
+          });
+          if (message) {
+            io.to(`group:${session.target.groupId}`).emit('group:message', message);
+          }
+        }
+
+        mediaUploadSessions.delete(uploadId);
+        if (typeof ack === 'function') ack({ ok: true, message });
+      } catch (error) {
+        mediaUploadSessions.delete(uploadId);
+        if (typeof ack === 'function') {
+          ack({ ok: false, error: error instanceof Error ? error.message : 'Не удалось завершить загрузку медиа' });
+        }
+      }
+    });
+
     // ─── Chat: Send a message ───────────────────────────────────────────────
     socket.on('chat:message', ({ roomId, text, replyToId, replyToText, replyToSender, forwardFromName, forwardOriginalText, forwardMediaUrl, forwardMediaType }) => {
       if (!roomId) return;
@@ -238,14 +493,24 @@ export function setupSocketController(io) {
       console.log(`💬 [SOCKET] [${roomId}] ${userId}: ${String(text || '').slice(0, 60)}`);
     });
 
-    socket.on('chat:media-upload', async ({ roomId, fileName, mimeType, base64Data, caption }) => {
-      if (!roomId || !base64Data) return;
+    socket.on('chat:media-upload', async ({ roomId, fileName, mimeType, base64Data, binaryData, caption }, callback) => {
+      if (!roomId || (!base64Data && !binaryData)) {
+        if (typeof callback === 'function') {
+          callback({ ok: false, error: 'Некорректные данные медиафайла' });
+        }
+        return;
+      }
 
       const mediaType = normalizeMimeType(mimeType);
-      if (!mediaType) return;
+      if (!mediaType) {
+        if (typeof callback === 'function') {
+          callback({ ok: false, error: 'Неподдерживаемый тип файла' });
+        }
+        return;
+      }
 
       try {
-        const mediaUrl = await saveChatMediaFile({ chatId: roomId, fileName, base64Data });
+        const mediaUrl = await saveChatMediaFile({ chatId: roomId, fileName, base64Data, binaryData });
         const message = {
           id: `${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
           fromUserId: userId,
@@ -259,9 +524,15 @@ export function setupSocketController(io) {
         roomMessageMeta.set(message.id, { roomId, fromUserId: userId });
 
         io.to(roomId).emit('chat:message', message);
+        if (typeof callback === 'function') {
+          callback({ ok: true, message });
+        }
       } catch (err) {
         console.error('[CHAT MEDIA] Save error:', err.message);
         socket.emit('chat:error', { message: 'Не удалось сохранить медиафайл' });
+        if (typeof callback === 'function') {
+          callback({ ok: false, error: 'Не удалось сохранить медиафайл' });
+        }
       }
     });
 
@@ -296,17 +567,21 @@ export function setupSocketController(io) {
     });
 
     // ─── DM: Send a direct message (persisted) ─────────────────────────────
-    socket.on('dm:send', async ({ receiverId, text, fileName, mimeType, base64Data, caption, replyToId, replyToText, replyToSender, forwardFromName, forwardOriginalText, forwardMediaUrl, forwardMediaType }) => {
+    socket.on('dm:send', async ({ receiverId, text, fileName, mimeType, base64Data, binaryData, caption, replyToId, replyToText, replyToSender, forwardFromName, forwardOriginalText, forwardMediaUrl, forwardMediaType }, ack) => {
       const senderId = socketToAuthUser.get(socket.id);
       if (!senderId) {
         socket.emit('dm:error', { message: 'Требуется авторизация для отправки личных сообщений' });
+        if (typeof ack === 'function') ack({ ok: false, error: 'Требуется авторизация для отправки личных сообщений' });
         return;
       }
-      if (!receiverId) return;
+      if (!receiverId) {
+        if (typeof ack === 'function') ack({ ok: false, error: 'Не выбран получатель' });
+        return;
+      }
 
       const trimmedText = String(text || '').trim();
       const mediaType = normalizeMimeType(mimeType);
-      const hasMedia = Boolean(mediaType && base64Data);
+      const hasMedia = Boolean(mediaType && (base64Data || binaryData));
       const messageText = hasMedia ? String(caption || '').slice(0, 2000) : trimmedText.slice(0, 2000);
 
       const fname = forwardFromName ? String(forwardFromName).slice(0, 100) : null;
@@ -315,13 +590,16 @@ export function setupSocketController(io) {
       const fmediaType = forwardMediaType === 'image' || forwardMediaType === 'video' ? forwardMediaType : null;
       const hasForward = Boolean(fname && (ftext || (fmediaUrl && fmediaType)));
 
-      if (!hasMedia && !messageText && !hasForward) return;
+      if (!hasMedia && !messageText && !hasForward) {
+        if (typeof ack === 'function') ack({ ok: false, error: 'Пустое сообщение' });
+        return;
+      }
 
       try {
         let mediaUrl = null;
         if (hasMedia) {
           const chatId = buildDirectChatId(senderId, receiverId);
-          mediaUrl = await saveChatMediaFile({ chatId, fileName, base64Data });
+          mediaUrl = await saveChatMediaFile({ chatId, fileName, base64Data, binaryData });
         }
 
         const chatId = buildDirectChatId(senderId, receiverId);
@@ -373,9 +651,11 @@ export function setupSocketController(io) {
         }
 
         console.log(`📩 [DM] ${senderId} → ${receiverId}: ${(messageText || '[media]').slice(0, 60)}`);
+        if (typeof ack === 'function') ack({ ok: true, message: msg });
       } catch (err) {
         console.error('[DM] Save error:', err.message);
         socket.emit('dm:error', { message: 'Не удалось отправить сообщение' });
+        if (typeof ack === 'function') ack({ ok: false, error: 'Не удалось отправить сообщение' });
       }
     });
 
@@ -478,13 +758,16 @@ export function setupSocketController(io) {
     });
 
     // ─── Group: Send a message ──────────────────────────────────────────────
-    socket.on('group:send', async ({ groupId, text, fileName, mimeType, base64Data, caption, replyToId, replyToText, replyToSender, forwardFromName, forwardOriginalText, forwardMediaUrl, forwardMediaType }) => {
+    socket.on('group:send', async ({ groupId, text, fileName, mimeType, base64Data, binaryData, caption, replyToId, replyToText, replyToSender, forwardFromName, forwardOriginalText, forwardMediaUrl, forwardMediaType }, ack) => {
       const uid = socketToAuthUser.get(socket.id);
-      if (!uid || !groupId) return;
+      if (!uid || !groupId) {
+        if (typeof ack === 'function') ack({ ok: false, error: 'Нет доступа к групповому чату' });
+        return;
+      }
 
       const trimmedText = String(text || '').trim();
       const mediaType = normalizeMimeType(mimeType);
-      const hasMedia = Boolean(mediaType && base64Data);
+      const hasMedia = Boolean(mediaType && (base64Data || binaryData));
       const messageText = hasMedia ? String(caption || '').slice(0, 2000) : trimmedText.slice(0, 2000);
 
       const gfname = forwardFromName ? String(forwardFromName).slice(0, 100) : null;
@@ -493,19 +776,25 @@ export function setupSocketController(io) {
       const gfmediaType = forwardMediaType === 'image' || forwardMediaType === 'video' ? forwardMediaType : null;
       const hasForward = Boolean(gfname && (gftext || (gfmediaUrl && gfmediaType)));
 
-      if (!hasMedia && !messageText && !hasForward) return;
+      if (!hasMedia && !messageText && !hasForward) {
+        if (typeof ack === 'function') ack({ ok: false, error: 'Пустое сообщение' });
+        return;
+      }
 
       try {
         const check = await pool.query(
           'SELECT 1 FROM group_members WHERE group_id = $1 AND user_id = $2',
           [groupId, uid]
         );
-        if (check.rows.length === 0) return;
+        if (check.rows.length === 0) {
+          if (typeof ack === 'function') ack({ ok: false, error: 'Вы не состоите в этой группе' });
+          return;
+        }
 
         let mediaUrl = null;
         if (hasMedia) {
           const chatId = `group-${groupId}`;
-          mediaUrl = await saveChatMediaFile({ chatId, fileName, base64Data });
+          mediaUrl = await saveChatMediaFile({ chatId, fileName, base64Data, binaryData });
         }
 
         const chatId = `group-${groupId}`;
@@ -556,8 +845,10 @@ export function setupSocketController(io) {
 
         io.to(`group:${groupId}`).emit('group:message', fullMsg);
         console.log(`👥 [GROUP] ${uid} → group:${groupId}: ${(messageText || '[media]').slice(0, 60)}`);
+        if (typeof ack === 'function') ack({ ok: true, message: fullMsg });
       } catch (err) {
         console.error('[GROUP SOCKET] Send error:', err.message);
+        if (typeof ack === 'function') ack({ ok: false, error: 'Не удалось отправить сообщение' });
       }
     });
 
