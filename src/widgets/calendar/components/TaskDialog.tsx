@@ -168,9 +168,9 @@ export function TaskDialog({ open, onOpenChange, onSave, initialTask }: TaskDial
   return (
     <Dialog.Root open={open}>
       <Dialog.Portal>
-        <Dialog.Overlay className="fixed inset-0 bg-black/50 z-50" />
+        <Dialog.Overlay className="fixed inset-0 bg-black/50 z-[101]" />
         <Dialog.Content
-          className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-lg p-6 w-[500px] max-w-[95vw] z-[51]"
+          className="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-white rounded-xl p-6 w-[500px] max-w-[95vw] z-[101]"
           onInteractOutside={(e) => e.preventDefault()}
           onEscapeKeyDown={(e) => e.preventDefault()}
         >
@@ -182,7 +182,7 @@ export function TaskDialog({ open, onOpenChange, onSave, initialTask }: TaskDial
           </Dialog.Description>
           <Dialog.Close asChild>
             <button className="absolute right-6 top-6 text-gray-400 hover:text-gray-600" onClick={onOpenChange}>
-              <X className="w-5 h-5" />
+              <X className="w-5 h-5 cursor-pointer" />
             </button>
           </Dialog.Close>
 

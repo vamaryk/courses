@@ -239,7 +239,7 @@ export function Calendar({ view, currentDate, tasks, onEditTask, isCompactView }
                     }`}>
                       {dayName}
                     </div>
-                    <div className={`text-[2.5em] font-semibold font-Montserrat leading-none py-[0.2em] ${
+                    <div className={`text-2xl min-[1400px]:text-[2.5em] font-semibold font-Montserrat leading-none py-[0.2em] ${
                       isCurrentDay ? 'text-purple-600' : 'text-[#525252]'
                     }`}>
                       {format(date, 'd', { locale: ru })}

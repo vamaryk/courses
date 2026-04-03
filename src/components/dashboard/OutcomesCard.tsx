@@ -189,16 +189,17 @@ const OutcomesCard = ({
             <span key={skill} className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-1 rounded-full text-xs">
               {skill}
               <button type="button" onClick={() => removeValue(skill, skills, onSkillsChange)}>
-                <X className="w-3 h-3" />
+                <X className="w-3 h-3 cursor-pointer" />
               </button>
             </span>
           ))}
         </div>
       )}
 
-      {/* Software/Tools — выбор из списка (теперь с input-field классом) */}
+      {/* Software/Tools — выбор из списка */}
       <div className="mb-4 relative" ref={toolsDropdownRef}>
-        <div className="mb-2 flex gap-2">
+        {/* Поле ввода кастомных инструментов */}
+        <div className="relative mb-3">
           <input
             type="text"
             value={toolInput}
@@ -211,27 +212,30 @@ const OutcomesCard = ({
             }}
             onBlur={commitToolsFromInput}
             placeholder="Добавить свой инструмент (через запятую)"
-            className="input-field"
+            className="input-field pr-10"
           />
           <button
             type="button"
             onClick={commitToolsFromInput}
-            className="px-3 rounded-md border hover:bg-muted transition-colors cursor-pointer"
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-primary hover:scale-110 transition-transform"
             aria-label="Добавить инструмент"
           >
-            <Plus className="w-4 h-4" />
+            <Plus className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Кнопка выбора из предустановленного списка — всегда с плейсхолдером */}
         <button
           type="button"
           onClick={() => setToolsOpen((v) => !v)}
           className="input-field flex items-center justify-between text-left cursor-pointer"
         >
-          <span className={tools.length === 0 ? "text-muted-foreground" : ""}>
-            {tools.length === 0 ? "Используемые программы, инструменты" : tools.join(", ")}
+          <span className="text-muted-foreground">
+            Используемые программы, инструменты
           </span>
           <ChevronDown className="h-5 w-5 shrink-0" />
         </button>
+
         {toolsOpen && (
           <div className="absolute top-full left-0 right-0 z-50 mt-1 rounded-xl border border-input bg-white text-foreground shadow-lg py-1 max-h-[280px] overflow-y-auto">
             {AVAILABLE_TOOLS.map((tool) => {
@@ -257,19 +261,21 @@ const OutcomesCard = ({
             })}
           </div>
         )}
+
+        {/* Отображение выбранных инструментов тегами */}
+        {tools.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-3">
+            {tools.map((tool) => (
+              <span key={tool} className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-1 rounded-full text-xs">
+                {tool}
+                <button type="button" onClick={() => removeValue(tool, tools, onToolsChange)}>
+                  <X className="w-3 h-3 cursor-pointer" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
       </div>
-      {tools.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-4">
-          {tools.map((tool) => (
-            <span key={tool} className="flex items-center gap-1 bg-primary/10 text-primary px-2 py-1 rounded-full text-xs">
-              {tool}
-              <button type="button" onClick={() => removeValue(tool, tools, onToolsChange)}>
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          ))}
-        </div>
-      )}
 
       {/* Certificate Upload - Drag & Drop */}
       <div className="mb-4">

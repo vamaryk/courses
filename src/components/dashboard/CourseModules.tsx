@@ -268,7 +268,7 @@ const CourseModules = ({
         <div className="mt-6 flex justify-center">
           <button 
             onClick={() => setShowMore(!showMore)}
-            className="px-6 py-2 rounded-full border border-border text-sm font-medium text-foreground hover:bg-muted transition-colors"
+            className="px-6 py-2 rounded-full border border-border text-sm font-medium text-foreground hover:bg-muted transition-colors cursor-pointer"
           >
             {showMore ? "свернуть" : "показать все"}
           </button>

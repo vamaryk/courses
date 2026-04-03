@@ -4,6 +4,9 @@ import { ChevronDown, Clock, BookOpen, Trophy, Users, X } from "lucide-react";
 import { friendsApi, type FriendProfile } from "@/shared/api/friends";
 import { resolveProfileMediaUrl } from "@/shared/utils/media";
 
+// Предполагаем, что API_URL определен глобально или импортирован
+declare const API_URL: string;
+
 interface StatsData {
   hoursOnPlatform: number;
   coursesCompleted: number;
@@ -104,7 +107,7 @@ const StatsCards = () => {
           }`}
           style={{ animationDelay: `${index * 100}ms` }}
         >
-          {/* 🔧 Заголовок: иконка по первой строке текста */}
+          {/* Заголовок: иконка по первой строке текста */}
           <div className="flex items-start gap-2 text-white/60">
             <stat.icon className="w-4 h-4 flex-shrink-0 mt-[2px]" />
             <span className="text-xs font-medium min-h-[32px] line-clamp-2 leading-tight">
@@ -112,7 +115,7 @@ const StatsCards = () => {
             </span>
           </div>
           
-          {/* 🔧 Число с кнопкой (если есть) */}
+          {/* Число с кнопкой (если есть) */}
           <div className="flex items-center justify-between mt-auto">
             <span className="text-xl sm:text-2xl font-bold">
               {loading ? '...' : stat.value}
@@ -132,15 +135,15 @@ const StatsCards = () => {
             )}
           </div>
 
-          {/* Выпадающий список друзей: карточки с аватаркой, именем и фамилией */}
+          {/* Выпадающий список друзей */}
           {stat.hasDropdown && showFriendsMenu && (
-            <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-lg z-50 border border-gray-200 overflow-hidden animate-fade-in min-w-[240px]">
-              <div className="p-3 border-b border-gray-100">
-                <h4 className="text-sm font-semibold text-gray-700">
+            <div className="absolute top-full left-0 w-full mt-2 bg-white rounded-xl shadow-lg z-50 border border-gray-200 overflow-hidden animate-fade-in">
+              <div className="p-3 border-b border-gray-100 bg-gray-50">
+                <h4 className="text-sm font-semibold text-gray-700 text-center">
                   Мои друзья ({friends.length})
                 </h4>
               </div>
-              <div className="max-h-96 overflow-y-auto p-2">
+              <div className="max-h-96 overflow-y-auto p-2 bg-white">
                 {loadingFriends ? (
                   <div className="p-4 text-center text-gray-500 text-sm">
                     Загрузка...
@@ -161,13 +164,13 @@ const StatsCards = () => {
                             setShowFriendsMenu(false);
                             navigate(`/profile/${friend.id}`);
                           }}
-                          className="w-full flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50/50 p-3 text-left hover:bg-gray-100 transition-colors cursor-pointer"
+                          className="w-full flex items-center gap-3 rounded-lg border border-gray-100 bg-gray-50/50 p-2 text-left hover:bg-gray-100 transition-colors cursor-pointer"
                         >
-                          <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 bg-gray-200">
+                          <div className="w-8 h-8 rounded-full overflow-hidden flex-shrink-0 bg-gray-200">
                             {avatarSrc ? (
                               <img src={avatarSrc} alt="" className="w-full h-full object-cover" />
                             ) : (
-                              <div className="w-full h-full flex items-center justify-center text-sm font-semibold text-gray-500">
+                              <div className="w-full h-full flex items-center justify-center text-xs font-semibold text-gray-500">
                                 {(friend.first_name?.charAt(0) || '') + (friend.last_name?.charAt(0) || '') || '?'}
                               </div>
                             )}

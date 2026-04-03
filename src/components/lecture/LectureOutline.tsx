@@ -21,14 +21,14 @@ export default function LectureOutline({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-40 bg-grey/25" onClick={onClose}>
+    <div className="fixed inset-0 bg-grey/25 z-[101]" onClick={onClose}>
       <div
-        className="absolute right-5 top-16 w-[min(420px,calc(100vw-2.5rem))] max-h-[calc(100vh-5rem)] overflow-y-auto rounded-2xl border border-[#e6e7f0] bg-white p-4 shadow-2xl"
+        className="absolute right-5 top-16 w-[min(420px,calc(100vw-2.5rem))] max-h-[calc(100vh-5rem)] overflow-y-auto rounded-xl border border-[#e6e7f0] bg-white p-4 shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
           <h3 className="text-base font-semibold text-[#2f2f3f]">Содержание курса</h3>
-          <button onClick={onClose} className="rounded-md p-1 hover:bg-[#f1f1f5]" type="button">
+          <button onClick={onClose} className="rounded-md p-1 hover:bg-[#f1f1f5] cursor-pointer" type="button">
             <X className="h-4 w-4" />
           </button>
         </div>

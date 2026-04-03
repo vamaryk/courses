@@ -6,6 +6,7 @@ import {
   CarouselItem,
   CarouselNext,
   CarouselPrevious,
+  type CarouselApi,
 } from "@/components/ui/carousel";
 import { getCoverImageUrl } from "@/shared/utils/courseTransform";
 
@@ -19,13 +20,62 @@ interface Course {
   progress: number;
   isCompleted?: boolean;
 }
+
 interface MyCoursesProps {
   profileId?: string;
 }
 
+// Хук для определения количества видимых элементов в зависимости от ширины экрана
+const useCarouselBreakpoint = (): number => {
+  const [visibleItems, setVisibleItems] = useState(5);
+
+  useEffect(() => {
+    const calculateVisibleItems = () => {
+      if (window.innerWidth >= 1024) return 5;
+      if (window.innerWidth >= 768) return 3;
+      return 2;
+    };
+
+    setVisibleItems(calculateVisibleItems());
+
+    const handleResize = () => {
+      setVisibleItems(calculateVisibleItems());
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  return visibleItems;
+};
+
 const MyCourses = ({ profileId }: MyCoursesProps) => {
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
+  const [carouselApi, setCarouselApi] = useState<CarouselApi>();
+  const [canScrollPrev, setCanScrollPrev] = useState(false);
+  const [canScrollNext, setCanScrollNext] = useState(false);
+  
+  const visibleItems = useCarouselBreakpoint();
+
+  useEffect(() => {
+    if (!carouselApi) return;
+
+    const updateScrollState = () => {
+      setCanScrollPrev(carouselApi.canScrollPrev());
+      setCanScrollNext(carouselApi.canScrollNext());
+    };
+
+    updateScrollState();
+    carouselApi.on('select', updateScrollState);
+    carouselApi.on('reInit', updateScrollState);
+
+    return () => {
+      carouselApi.off('select', updateScrollState);
+      carouselApi.off('reInit', updateScrollState);
+    };
+  }, [carouselApi]);
+
   useEffect(() => {
     const fetchCourses = async () => {
       try {
@@ -47,6 +97,10 @@ const MyCourses = ({ profileId }: MyCoursesProps) => {
     };
     fetchCourses();
   }, [profileId]);
+
+  // Показываем стрелки только если элементов больше, чем видно, и есть куда скроллить
+  const showArrows = courses.length > visibleItems && (canScrollPrev || canScrollNext);
+
   if (loading) {
     return (
       <section className="mb-8">
@@ -59,6 +113,7 @@ const MyCourses = ({ profileId }: MyCoursesProps) => {
       </section>
     );
   }
+
   if (courses.length === 0) {
     return (
       <section className="mb-8">
@@ -71,6 +126,7 @@ const MyCourses = ({ profileId }: MyCoursesProps) => {
       </section>
     );
   }
+
   return (
     <section className="mb-8">
       <div className="flex items-center justify-between mb-4">
@@ -82,6 +138,7 @@ const MyCourses = ({ profileId }: MyCoursesProps) => {
           loop: false,
         }}
         className="w-full"
+        setApi={setCarouselApi}
       >
         <CarouselContent className="-ml-1 md:-ml-2">
           {courses.map((course) => (
@@ -96,10 +153,20 @@ const MyCourses = ({ profileId }: MyCoursesProps) => {
             </CarouselItem>
           ))}
         </CarouselContent>
-        <CarouselPrevious className="sm:flex -left-4" />
-        <CarouselNext className="sm:flex -right-4" />
+        
+        {showArrows && (
+          <>
+            <CarouselPrevious 
+              className="sm:flex -left-4 h-10 w-10 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 hover:border-gray-300 transition-colors shadow-sm"
+            />
+            <CarouselNext 
+              className="sm:flex -right-4 h-10 w-10 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 hover:border-gray-300 transition-colors shadow-sm"
+            />
+          </>
+        )}
       </Carousel>
     </section>
   );
 };
+
 export default MyCourses;

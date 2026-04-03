@@ -7,6 +7,7 @@ import {
   CarouselItem,
   CarouselNext,
   CarouselPrevious,
+  type CarouselApi,
 } from "@/components/ui/carousel";
 import { getCoverImageUrl } from "@/shared/utils/courseTransform";
 import type { AuthorDashboard } from "@/shared/api/authorDashboard";
@@ -32,10 +33,56 @@ interface CrCoursesProps {
   authorDashboardLoading?: boolean;
 }
 
+const useCarouselBreakpoint = (): number => {
+  const [visibleItems, setVisibleItems] = useState(5);
+
+  useEffect(() => {
+    const calculateVisibleItems = () => {
+      if (window.innerWidth >= 1024) return 5;
+      if (window.innerWidth >= 768) return 3;
+      return 2;
+    };
+
+    setVisibleItems(calculateVisibleItems());
+
+    const handleResize = () => {
+      setVisibleItems(calculateVisibleItems());
+    };
+
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  return visibleItems;
+};
+
 const CrCourses = ({ profileId, authorDashboard, authorDashboardLoading }: CrCoursesProps) => {
   const [remoteCourses, setRemoteCourses] = useState<CreatedCourse[]>([]);
   const [loadingRemote, setLoadingRemote] = useState(Boolean(profileId));
   const [error, setError] = useState<string | null>(null);
+  const [carouselApi, setCarouselApi] = useState<CarouselApi>();
+  const [canScrollPrev, setCanScrollPrev] = useState(false);
+  const [canScrollNext, setCanScrollNext] = useState(false);
+  
+  const visibleItems = useCarouselBreakpoint();
+
+  useEffect(() => {
+    if (!carouselApi) return;
+
+    const updateScrollState = () => {
+      setCanScrollPrev(carouselApi.canScrollPrev());
+      setCanScrollNext(carouselApi.canScrollNext());
+    };
+
+    updateScrollState();
+    carouselApi.on('select', updateScrollState);
+    carouselApi.on('reInit', updateScrollState);
+
+    return () => {
+      carouselApi.off('select', updateScrollState);
+      carouselApi.off('reInit', updateScrollState);
+    };
+  }, [carouselApi]);
 
   useEffect(() => {
     if (!profileId) {
@@ -107,6 +154,9 @@ const CrCourses = ({ profileId, authorDashboard, authorDashboardLoading }: CrCou
   }, [profileId, remoteCourses, authorDashboard]);
 
   const loading = profileId ? loadingRemote : Boolean(authorDashboardLoading);
+
+  const totalItems = 1 + courses.length;
+  const showArrows = totalItems > visibleItems && (canScrollPrev || canScrollNext);
 
   if (loading) {
     return (
@@ -195,6 +245,7 @@ const CrCourses = ({ profileId, authorDashboard, authorDashboardLoading }: CrCou
           loop: false,
         }}
         className="w-full"
+        setApi={setCarouselApi}
       >
         <CarouselContent className="-ml-1 md:-ml-2">
           <CarouselItem className="pl-1 md:pl-2 basis-1/2 md:basis-1/3 lg:basis-1/5">
@@ -202,7 +253,10 @@ const CrCourses = ({ profileId, authorDashboard, authorDashboardLoading }: CrCou
           </CarouselItem>
 
           {courses.map((course) => (
-            <CarouselItem key={String(course.id)} className="pl-1 md:pl-2 basis-1/2 md:basis-1/3 lg:basis-1/5">
+            <CarouselItem 
+              key={String(course.id)} 
+              className="pl-1 md:pl-2 basis-1/2 md:basis-1/3 lg:basis-1/5"
+            >
               <CrCourseCard
                 id={course.id}
                 title={course.title}
@@ -213,8 +267,17 @@ const CrCourses = ({ profileId, authorDashboard, authorDashboardLoading }: CrCou
             </CarouselItem>
           ))}
         </CarouselContent>
-        <CarouselPrevious className="sm:flex -left-4" />
-        <CarouselNext className="sm:flex -right-4" />
+        
+        {showArrows && (
+        <>
+            <CarouselPrevious 
+            className="sm:flex -left-4 h-8 w-8 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 hover:border-gray-300 transition-colors shadow-sm"
+            />
+            <CarouselNext 
+            className="sm:flex -right-4 h-8 w-8 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 hover:border-gray-300 transition-colors shadow-sm"
+            />
+        </>
+        )}
       </Carousel>
     </section>
   );

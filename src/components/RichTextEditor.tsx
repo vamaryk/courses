@@ -20,6 +20,8 @@ import {
   Italic,
   Underline,
   Type,
+  Code as CodeIcon,
+  Check,
 } from 'lucide-react';
 import {
   ContextMenu,
@@ -41,11 +43,253 @@ interface RichTextEditorProps {
   placeholder?: string;
   className?: string;
   disabled?: boolean;
-  /** Для загрузки изображений в контент (опционально) */
   courseId?: number;
   onUploadImage?: (file: File) => Promise<{ url: string }>;
   onUploadVideo?: (file: File) => Promise<{ url: string }>;
 }
+
+// 🔧 Компонент модального окна для редактирования кода
+interface CodeEditorModalProps {
+  isOpen: boolean;
+  codeBlockId: string | null;
+  initialCode: string;
+  initialLanguage?: string;
+  onSave: (code: string, blockId: string | null, language?: string) => void;
+  onClose: () => void;
+}
+
+const CodeEditorModal: React.FC<CodeEditorModalProps> = ({
+  isOpen,
+  codeBlockId,
+  initialCode,
+  initialLanguage = '',
+  onSave,
+  onClose,
+}) => {
+  const [code, setCode] = useState(initialCode);
+  const [language, setLanguage] = useState(initialLanguage);
+  const [copied, setCopied] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const lineNumbersRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const innerContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setCode(initialCode);
+      setLanguage(initialLanguage);
+      setCopied(false);
+      setTimeout(() => textareaRef.current?.focus(), 100);
+    }
+  }, [isOpen, initialCode, initialLanguage]);
+
+  // 🔧 Синхронизация скролла: вертикальная и горизонтальная
+  useEffect(() => {
+    const scrollContainer = scrollContainerRef.current;
+    const lineNumbers = lineNumbersRef.current;
+    const textarea = textareaRef.current;
+    const innerContainer = innerContainerRef.current;
+    
+    if (!scrollContainer || !lineNumbers || !textarea || !innerContainer) return;
+
+    const handleScroll = () => {
+      lineNumbers.scrollTop = scrollContainer.scrollTop;
+      innerContainer.scrollLeft = textarea.scrollLeft;
+    };
+
+    textarea.addEventListener('scroll', handleScroll, { passive: true });
+    return () => textarea.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const handleSave = () => {
+    onSave(code, codeBlockId, language);
+    onClose();
+  };
+
+  // 🔧 Копирование кода
+  const handleCopyCode = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const textarea = textareaRef.current;
+      if (textarea) {
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const newCode = code.substring(0, start) + '  ' + code.substring(end);
+        setCode(newCode);
+        setTimeout(() => {
+          textarea.selectionStart = textarea.selectionEnd = start + 2;
+        }, 0);
+      }
+    }
+    if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      handleSave();
+    }
+  };
+
+  const lineCount = Math.max(1, code.split('\n').length);
+  const maxDigits = lineCount.toString().length;
+  const lineNumberWidth = Math.max(24, maxDigits * 10 + 16);
+  const LINE_HEIGHT = 20;
+
+  const languages = [
+    { value: '', label: 'Plain Text' },
+    { value: 'javascript', label: 'JavaScript' },
+    { value: 'typescript', label: 'TypeScript' },
+    { value: 'python', label: 'Python' },
+    { value: 'java', label: 'Java' },
+    { value: 'cpp', label: 'C++' },
+    { value: 'csharp', label: 'C#' },
+    { value: 'php', label: 'PHP' },
+    { value: 'ruby', label: 'Ruby' },
+    { value: 'go', label: 'Go' },
+    { value: 'rust', label: 'Rust' },
+    { value: 'sql', label: 'SQL' },
+    { value: 'html', label: 'HTML' },
+    { value: 'css', label: 'CSS' },
+    { value: 'bash', label: 'Bash' },
+    { value: 'json', label: 'JSON' },
+    { value: 'xml', label: 'XML' },
+    { value: 'yaml', label: 'YAML' },
+  ];
+
+  if (!isOpen) return null;
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl mx-4 overflow-hidden flex flex-col" style={{ maxHeight: '80vh' }}>
+        <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 bg-gray-50 flex-shrink-0">
+          <div className="flex items-center gap-3">
+            <h3 className="text-sm font-semibold text-gray-700">
+              {codeBlockId ? 'Редактировать код' : 'Вставить код'}
+            </h3>
+            {/* 🔧 Добавлено скругление для выпадающего списка */}
+            <select
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+              className="text-xs border border-gray-300 rounded-md px-2 py-1 bg-white focus:outline-none focus:ring-1 focus:ring-purple-500 cursor-pointer"
+            >
+              {languages.map(lang => (
+                <option key={lang.value} value={lang.value}>{lang.label}</option>
+              ))}
+            </select>
+          </div>
+          <div className="flex items-center gap-2">
+            {/* 🔧 Кнопка копирования в режиме редактирования */}
+            <button
+              onClick={handleCopyCode}
+              className="flex items-center gap-1 px-2 py-1 text-xs border border-gray-300 rounded-md hover:bg-gray-100 transition-colors cursor-pointer"
+              title="Копировать код"
+            >
+              {copied ? <Check className="w-4 h-4 text-green-600" /> : <Copy className="w-4 h-4" />}
+              <span>{copied ? 'Скопировано' : 'Копировать'}</span>
+            </button>
+            <button
+              onClick={onClose}
+              className="p-1 rounded hover:bg-gray-200 transition-colors cursor-pointer"
+              aria-label="Закрыть"
+            >
+              <X className="w-4 h-4 text-gray-500" />
+            </button>
+          </div>
+        </div>
+        
+        <div 
+          ref={scrollContainerRef} 
+          className="flex-1 overflow-y-auto p-2"
+          style={{ scrollbarGutter: 'stable both-edges' }}
+        >
+          <div 
+            ref={innerContainerRef} 
+            className="overflow-x-auto" 
+            style={{ maxWidth: '100%', scrollbarGutter: 'stable both-edges' }}
+          >
+            <div className="flex border border-gray-200 rounded-lg overflow-hidden" style={{ minWidth: 0, maxWidth: '100%' }}>
+              {/* Номера строк */}
+              <div
+                ref={lineNumbersRef}
+                className="bg-gray-100 border-r border-gray-200 flex-shrink-0 overflow-hidden select-none"
+                style={{ width: lineNumberWidth, minWidth: lineNumberWidth }}
+              >
+                <div 
+                  className="py-1.5 pr-2 text-xs text-gray-400 font-mono text-right"
+                  style={{ minWidth: lineNumberWidth }}
+                >
+                  {Array.from({ length: lineCount }, (_, i) => (
+                    <div 
+                      key={i} 
+                      style={{ 
+                        height: `${LINE_HEIGHT}px`,
+                        lineHeight: `${LINE_HEIGHT}px`,
+                        fontSize: '12px',
+                        whiteSpace: 'pre',
+                      }}
+                    >
+                      {i + 1}
+                    </div>
+                  ))}
+                </div>
+              </div>
+              
+              {/* Textarea для кода */}
+              <textarea
+                ref={textareaRef}
+                value={code}
+                onChange={(e) => setCode(e.target.value)}
+                onKeyDown={handleKeyDown}
+                className="flex-1 px-2 py-1.5 font-mono text-sm bg-white border-0 focus:outline-none focus:ring-0 resize-none"
+                style={{ 
+                  lineHeight: `${LINE_HEIGHT}px`,
+                  fontSize: '12px',
+                  minHeight: `${Math.max(5, lineCount) * LINE_HEIGHT}px`,
+                  whiteSpace: 'pre',
+                  overflowWrap: 'normal',
+                  wordBreak: 'normal',
+                  overflowX: 'auto',
+                  overflowY: 'hidden',
+                  maxWidth: '100%',
+                  minWidth: 0,
+                  scrollbarGutter: 'stable both-edges',
+                }}
+                placeholder="Введите код...&#10;&#10;Tab — отступ&#10;Ctrl+Enter / Cmd+Enter — сохранить"
+                spellCheck={false}
+                autoCapitalize="off"
+                autoComplete="off"
+                autoCorrect="off"
+              />
+            </div>
+          </div>
+        </div>
+        
+        <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-gray-200 bg-gray-50 flex-shrink-0">
+          <span className="text-xs text-gray-500 mr-auto">Ctrl+Enter / Cmd+Enter — сохранить</span>
+          <button
+            onClick={onClose}
+            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+          >
+            Отмена
+          </button>
+          <button
+            onClick={handleSave}
+            className="px-3 py-1.5 text-sm bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors cursor-pointer"
+          >
+            Сохранить
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
 
 const RichTextEditor: React.FC<RichTextEditorProps> = ({
   value,
@@ -63,6 +307,9 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const wrapperRef = useRef<HTMLDivElement>(null);
   const lastSyncedValueRef = useRef<string>(value);
   const isEmpty = !value || value.replace(/<[^>]*>/g, '').trim().length === 0;
+  
+  // 🔧 Сохраняем позицию курсора перед открытием модального окна
+  const savedSelectionRef = useRef<Range | null>(null);
 
   const [activeMedia, setActiveMedia] = useState<HTMLElement | null>(null);
   const [activeMediaRect, setActiveMediaRect] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
@@ -79,13 +326,16 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const [tableActionsOpen, setTableActionsOpen] = useState(false);
   const [activeTableRect, setActiveTableRect] = useState<{ left: number; top: number } | null>(null);
 
+  const [codeModalOpen, setCodeModalOpen] = useState(false);
+  const [editingCodeBlockId, setEditingCodeBlockId] = useState<string | null>(null);
+  const [initialCodeContent, setInitialCodeContent] = useState('');
+  const [initialLanguageContent, setInitialLanguageContent] = useState('');
+
+  // 🔧 Синхронизация контента из value в editor
   useEffect(() => {
     const editor = editorRef.current;
     if (!editor) return;
-
-    // Do not rewrite innerHTML while typing, otherwise caret jumps to the start.
     if (document.activeElement === editor) return;
-
     if (editor.innerHTML !== value) {
       editor.innerHTML = value || '';
       lastSyncedValueRef.current = value;
@@ -95,7 +345,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const handleInput = useCallback(() => {
     const editor = editorRef.current;
     if (!editor) return;
-
+    
     const nextValue = editor.innerHTML;
     if (nextValue !== lastSyncedValueRef.current) {
       lastSyncedValueRef.current = nextValue;
@@ -121,6 +371,17 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     const editor = editorRef.current;
     if (!editor) return;
     editor.focus();
+    
+    // 🔧 Восстанавливаем сохранённую позицию курсора
+    if (savedSelectionRef.current) {
+      const selection = window.getSelection();
+      if (selection) {
+        selection.removeAllRanges();
+        selection.addRange(savedSelectionRef.current);
+      }
+      savedSelectionRef.current = null;
+    }
+    
     document.execCommand('insertHTML', false, html);
     handleInput();
   }, [handleInput]);
@@ -155,11 +416,11 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const normalizeTableStyle = useCallback((table: HTMLTableElement) => {
     table.style.width = table.style.width || '100%';
     table.style.borderCollapse = 'collapse';
-    table.style.margin = '12px 0';
+    table.style.margin = '4px 0';
     table.querySelectorAll('td,th').forEach((node) => {
       const cell = node as HTMLTableCellElement;
       cell.style.border = '1px solid #d1d5db';
-      cell.style.padding = '8px';
+      cell.style.padding = '6px';
       cell.style.verticalAlign = 'top';
     });
   }, []);
@@ -191,7 +452,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     try {
       const { url } = await onUploadVideo(file);
       const fullUrl = url.startsWith('http') ? url : `${API_URL}${url}`;
-      insertHtml(`<video src="${fullUrl}" controls preload="metadata" style="max-width:100%;width:100%;border-radius:12px;"></video>`);
+      insertHtml(`<video src="${fullUrl}" controls preload="metadata" style="max-width:100%;width:100%;border-radius:6px;"></video>`);
     } catch (err) {
       console.error('Upload video failed:', err);
     }
@@ -212,27 +473,26 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const buildEmbeddedVideoHtml = useCallback((rawUrl: string) => {
     const sanitizedUrl = rawUrl.trim();
     if (!sanitizedUrl) return null;
-
     let parsedUrl: URL;
     try {
       parsedUrl = new URL(sanitizedUrl);
     } catch {
       return null;
     }
-
     const host = parsedUrl.hostname.replace(/^www\./, '').toLowerCase();
     const pathWithQuery = `${parsedUrl.pathname}${parsedUrl.search}`;
+    
     if (/\.(mp4|webm|mov|m4v)(\?.*)?$/i.test(pathWithQuery)) {
-      return `<video src="${sanitizedUrl.replace(/"/g, '&quot;')}" controls preload="metadata" style="max-width:100%;width:100%;border-radius:12px;"></video>`;
+      return `<video src="${sanitizedUrl.replace(/"/g, '&quot;')}" controls preload="metadata" style="max-width:100%;width:100%;border-radius:6px;"></video>`;
     }
-
+    
     const youtubeMatch =
       sanitizedUrl.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([a-zA-Z0-9_-]+)/) ||
       sanitizedUrl.match(/youtube\.com\/embed\/([a-zA-Z0-9_-]+)/);
     if (youtubeMatch) {
       return `<div class="video-wrapper" style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;max-width:100%;"><iframe style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" src="https://www.youtube.com/embed/${youtubeMatch[1]}" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" allowfullscreen></iframe></div>`;
     }
-
+    
     const rutubeMatch =
       sanitizedUrl.match(/rutube\.ru\/video\/([a-zA-Z0-9_-]+)/) ||
       sanitizedUrl.match(/rutube\.ru\/play\/embed\/([a-zA-Z0-9_-]+)/) ||
@@ -240,11 +500,11 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     if (rutubeMatch) {
       return `<div class="video-wrapper" style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;max-width:100%;"><iframe style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" src="https://rutube.ru/play/embed/${rutubeMatch[1]}" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowfullscreen></iframe></div>`;
     }
-
+    
     if (host === 'rutube.ru' || host === 'embed.rutube.ru') {
       return `<div class="video-wrapper" style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;max-width:100%;"><iframe style="position:absolute;top:0;left:0;width:100%;height:100%;border:0;" src="${sanitizedUrl.replace(/"/g, '&quot;')}" allow="autoplay; fullscreen; picture-in-picture; encrypted-media" allowfullscreen></iframe></div>`;
     }
-
+    
     return null;
   }, []);
 
@@ -258,6 +518,135 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     }
     insertHtml(embedHtml);
   }, [buildEmbeddedVideoHtml, insertHtml]);
+
+  // 🔧 Извлечение кода и языка из блока
+  const extractCodeFromBlock = useCallback((block: HTMLElement): { code: string; language: string } => {
+    const codeElement = block.querySelector('code');
+    const language = block.getAttribute('data-language') || '';
+    if (!codeElement) return { code: '', language };
+    
+    const clone = codeElement.cloneNode(true) as HTMLElement;
+    clone.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+    clone.querySelectorAll('.code-linenum').forEach(el => el.remove());
+    const contentElements = clone.querySelectorAll('.code-content');
+    
+    const code = contentElements.length > 0 
+      ? Array.from(contentElements).map(el => el.textContent || '').join('\n')
+      : clone.textContent || '';
+      
+    return { code, language };
+  }, []);
+
+  // 🔧 Генерация КОМПАКТНОГО HTML для блока кода (убраны отступы)
+  const generateCodeBlockHtml = useCallback((code: string, blockId: string, language: string = ''): string => {
+    const lines = code.split('\n');
+    const maxDigits = lines.length.toString().length;
+    const lineNumberWidth = Math.max(20, maxDigits * 8 + 12);
+    
+    const codeRows = lines.map((line, i) => {
+      const num = (i + 1).toString().padStart(maxDigits, ' ');
+      const escaped = line
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+      return `<div class="code-line" style="display:flex;line-height:20px;min-height:20px;">
+        <span class="code-linenum" style="color:#6e7681;user-select:none;padding-right:8px;display:inline-block;text-align:right;width:${lineNumberWidth}px;font-variant-numeric:tabular-nums;font-size:12px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;flex-shrink:0;">${num}</span>
+        <span class="code-content" style="flex:1;min-width:0;white-space:pre-wrap;word-wrap:break-word;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:13px;">${escaped || ' '}</span>
+      </div>`;
+    }).join('');
+    
+    return `
+      <div class="code-block" contenteditable="false" data-code-block="true" data-code-id="${blockId}" data-language="${language}"
+           style="background:#1e1e1e;color:#d4d4d4;padding:0;border-radius:4px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:13px;margin:4px 0;border:1px solid #333;position:relative;max-width:100%;width:100%;overflow:hidden;">
+        <div style="position:absolute;top:6px;right:6px;opacity:0;transition:opacity 0.2s;display:flex;gap:4px;" class="code-edit-btn-wrapper">
+          <button type="button" data-copy-code="true" style="background:#333;color:#fff;border:1px solid #555;padding:2px 5px;border-radius:2px;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:2px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            <span>Копировать</span>
+          </button>
+          <button type="button" data-edit-code="true" style="background:#333;color:#fff;border:1px solid #555;padding:2px 5px;border-radius:2px;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:2px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+            <span>Редактировать</span>
+          </button>
+          <button type="button" data-delete-code="true" style="background:#dc2626;color:#fff;border:1px solid #b91c1c;padding:2px 5px;border-radius:2px;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:2px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+            <span>Удалить</span>
+          </button>
+        </div>
+        ${language ? `<div style="position:absolute;top:6px;left:10px;font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.5px;">${language}</div>` : ''}
+        <div style="overflow-x:auto;overflow-y:hidden;max-width:100%;scrollbar-gutter:stable both-edges;${language ? 'margin-top:24px' : 'margin-top:0'};">
+          <pre style="margin:0;padding:8px 10px;background:transparent;border:0;white-space:pre-wrap;word-wrap:break-word;overflow:visible;line-height:20px;"><code style="display:block;min-width:0;max-width:100%;line-height:20px;font-size:13px;">${codeRows}</code></pre>
+        </div>
+      </div>
+    `;
+  }, []);
+
+  // 🔧 Сохраняем позицию курсора перед открытием модального окна
+  const handleInsertCode = useCallback(() => {
+    const editor = editorRef.current;
+    if (editor) {
+      const selection = window.getSelection();
+      if (selection && selection.rangeCount > 0) {
+        savedSelectionRef.current = selection.getRangeAt(0).cloneRange();
+      }
+    }
+    
+    setEditingCodeBlockId(null);
+    setInitialCodeContent('');
+    setInitialLanguageContent('');
+    setCodeModalOpen(true);
+  }, []);
+
+  const handleSaveCode = useCallback((code: string, blockId: string | null, language?: string) => {
+    if (blockId) {
+      const editor = editorRef.current;
+      if (!editor) return;
+      
+      const existingBlock = editor.querySelector(`[data-code-id="${blockId}"]`) as HTMLElement;
+      if (existingBlock) {
+        const newHtml = generateCodeBlockHtml(code, blockId, language);
+        const temp = document.createElement('div');
+        temp.innerHTML = newHtml;
+        const newBlock = temp.querySelector('[data-code-block="true"]') as HTMLElement;
+        if (newBlock) {
+          existingBlock.replaceWith(newBlock);
+          handleInput();
+        }
+      }
+    } else {
+      const uniqueId = `code-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const html = generateCodeBlockHtml(code, uniqueId, language);
+      insertHtml(html);
+    }
+  }, [generateCodeBlockHtml, insertHtml, handleInput]);
+
+  // 🔧 Функция для копирования кода
+  const handleCopyCode = useCallback(async (codeBlock: HTMLElement) => {
+    const { code } = extractCodeFromBlock(codeBlock);
+    try {
+      await navigator.clipboard.writeText(code);
+      // Показываем визуальную обратную связь
+      const copyBtn = codeBlock.querySelector('[data-copy-code="true"]') as HTMLElement;
+      if (copyBtn) {
+        const originalText = copyBtn.innerHTML;
+        copyBtn.innerHTML = '<svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg><span>Скопировано</span>';
+        copyBtn.style.background = '#16a34a';
+        setTimeout(() => {
+          copyBtn.innerHTML = originalText;
+          copyBtn.style.background = '#333';
+        }, 2000);
+      }
+    } catch (err) {
+      console.error('Ошибка копирования:', err);
+    }
+  }, [extractCodeFromBlock]);
+
+  // 🔧 Функция для удаления блока кода
+  const handleDeleteCode = useCallback((codeBlock: HTMLElement) => {
+    if (window.confirm('Вы уверены, что хотите удалить этот блок кода?')) {
+      codeBlock.remove();
+      handleInput();
+    }
+  }, [handleInput]);
 
   const handleAlignMedia = useCallback(
     (mode: 'left' | 'center' | 'right' | 'full') => {
@@ -311,11 +700,11 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       const cells = Array.from({ length: safeRows }, (_, r) => {
         const tds = Array.from({ length: safeCols }, (_, c) => {
           const label = r === 0 ? `Колонка ${c + 1}` : '';
-          return `<td style="border:1px solid #d1d5db;padding:8px;">${label}</td>`;
+          return `<td style="border:1px solid #d1d5db;padding:6px;">${label}</td>`;
         }).join('');
         return `<tr>${tds}</tr>`;
       }).join('');
-      insertHtml(`<table style="width:100%;border-collapse:collapse;margin:12px 0;"><tbody>${cells}</tbody></table><p></p>`);
+      insertHtml(`<table style="width:100%;border-collapse:collapse;margin:4px 0;"><tbody>${cells}</tbody></table><p></p>`);
       setTablePickerOpen(false);
     },
     [insertHtml]
@@ -417,6 +806,42 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const onEditorClick = useCallback(
     (e: React.MouseEvent) => {
       const target = e.target as HTMLElement | null;
+      
+      // 🔧 Обработка кнопки удаления кода
+      const deleteBtn = target?.closest?.('[data-delete-code="true"]') as HTMLElement | null;
+      if (deleteBtn) {
+        const codeBlock = target?.closest?.('[data-code-block="true"]') as HTMLElement | null;
+        if (codeBlock) {
+          handleDeleteCode(codeBlock);
+        }
+        return;
+      }
+      
+      // 🔧 Обработка кнопки копирования кода
+      const copyBtn = target?.closest?.('[data-copy-code="true"]') as HTMLElement | null;
+      if (copyBtn) {
+        const codeBlock = target?.closest?.('[data-code-block="true"]') as HTMLElement | null;
+        if (codeBlock) {
+          handleCopyCode(codeBlock);
+        }
+        return;
+      }
+      
+      // Обработка кнопки редактирования кода
+      const editBtn = target?.closest?.('[data-edit-code="true"]') as HTMLElement | null;
+      if (editBtn) {
+        const codeBlock = target?.closest?.('[data-code-block="true"]') as HTMLElement | null;
+        if (codeBlock) {
+          const blockId = codeBlock.getAttribute('data-code-id');
+          const { code, language } = extractCodeFromBlock(codeBlock);
+          setEditingCodeBlockId(blockId);
+          setInitialCodeContent(code);
+          setInitialLanguageContent(language);
+          setCodeModalOpen(true);
+        }
+        return;
+      }
+      
       const media =
         (target && (target.tagName === 'IMG' || target.tagName === 'VIDEO') ? target : null) as HTMLElement | null
         || (target?.closest?.('img,video') as HTMLElement | null);
@@ -428,14 +853,12 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         });
         return;
       }
-      // Clicking elsewhere closes image handles
       clearActiveMedia();
-      // If clicked outside table actions, close it.
       if (!target?.closest?.('[data-table-actions]')) {
         setTableActionsOpen(false);
       }
     },
-    [clearActiveMedia, syncActiveMediaRect]
+    [clearActiveMedia, syncActiveMediaRect, extractCodeFromBlock, handleCopyCode, handleDeleteCode]
   );
 
   const resizeHandles = useMemo(
@@ -479,23 +902,18 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       const dx = e.clientX - session.startX;
       const dy = e.clientY - session.startY;
       const min = 40;
-
       let nextW = session.startW;
       let nextH = session.startH;
-
       const h = session.handle;
       if (h.includes('e')) nextW = session.startW + dx;
       if (h.includes('w')) nextW = session.startW - dx;
       if (h.includes('s')) nextH = session.startH + dy;
       if (h.includes('n')) nextH = session.startH - dy;
-
       nextW = Math.max(min, nextW);
       nextH = Math.max(min, nextH);
-
       activeMedia.style.maxWidth = '100%';
       activeMedia.style.width = `${Math.round(nextW)}px`;
       activeMedia.style.height = `${Math.round(nextH)}px`;
-
       syncActiveMediaRect();
     },
     [activeMedia, syncActiveMediaRect]
@@ -525,7 +943,6 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     }
   }, [execCommand]);
 
-  // ── Context menu ──────────────────────────────────────────────────────────
   const savedRangeRef = useRef<Range | null>(null);
   const [ctxMenuOnEmpty, setCtxMenuOnEmpty] = useState(false);
 
@@ -534,7 +951,6 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     const sel = window.getSelection();
     savedRangeRef.current =
       sel && sel.rangeCount > 0 ? sel.getRangeAt(0).cloneRange() : null;
-
     const target = e.target as HTMLElement;
     const media = target.closest?.('img,video') as HTMLElement | null;
     if (media && editorRef.current?.contains(media)) {
@@ -640,15 +1056,89 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
     handleInsertTableSized(3, 3);
   }, [restoreSelectionForCmd, handleInsertTableSized]);
 
+  // 🔧 Показ/скрытие кнопки редактирования при наведении на блок кода
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const handleMouseOver = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const codeBlock = target.closest('[data-code-block="true"]') as HTMLElement | null;
+      if (codeBlock) {
+        const btnWrapper = codeBlock.querySelector('.code-edit-btn-wrapper') as HTMLElement | null;
+        if (btnWrapper) {
+          btnWrapper.style.opacity = '1';
+        }
+      }
+    };
+
+    const handleMouseOut = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const codeBlock = target.closest('[data-code-block="true"]') as HTMLElement | null;
+      if (codeBlock) {
+        const btnWrapper = codeBlock.querySelector('.code-edit-btn-wrapper') as HTMLElement | null;
+        if (btnWrapper) {
+          btnWrapper.style.opacity = '0';
+        }
+      }
+    };
+
+    editor.addEventListener('mouseover', handleMouseOver);
+    editor.addEventListener('mouseout', handleMouseOut);
+
+    return () => {
+      editor.removeEventListener('mouseover', handleMouseOver);
+      editor.removeEventListener('mouseout', handleMouseOut);
+    };
+  }, []);
+
   return (
-    <div className={`rich-text-editor ${className}`}>
+    <div className={`rich-text-editor ${className}`} style={{ maxWidth: '100%', overflowX: 'hidden' }}>
+      {/* 🔧 Стили для кастомного скроллбара */}
+      <style>{`
+        .code-block::-webkit-scrollbar {
+          height: 6px;
+          width: 6px;
+        }
+        .code-block::-webkit-scrollbar-track {
+          background: #2d2d2d;
+          border-radius: 2px;
+        }
+        .code-block::-webkit-scrollbar-thumb {
+          background: #555;
+          border-radius: 2px;
+        }
+        .code-block::-webkit-scrollbar-thumb:hover {
+          background: #777;
+        }
+        .code-block {
+          scrollbar-width: thin;
+          scrollbar-color: #555 #2d2d2d;
+        }
+        .code-block pre,
+        .code-block code {
+          min-width: 0;
+          max-width: 100%;
+        }
+      `}</style>
+
+      <CodeEditorModal
+        isOpen={codeModalOpen}
+        codeBlockId={editingCodeBlockId}
+        initialCode={initialCodeContent}
+        initialLanguage={initialLanguageContent}
+        onSave={handleSaveCode}
+        onClose={() => setCodeModalOpen(false)}
+      />
+
       {/* Toolbar */}
-      <div className="border border-gray-300 border-b-0 rounded-t-md bg-gray-50 p-2 flex flex-wrap gap-1">
+      <div className="border border-gray-300 border-b-0 rounded-t-md bg-gray-50 p-1.5 flex flex-wrap gap-0.5">
         <button
           type="button"
           onClick={() => execCommand('bold')}
           className="px-2 py-1 text-sm border rounded hover:bg-gray-200 cursor-pointer"
           title="Жирный"
+          disabled={disabled}
         >
           <strong>B</strong>
         </button>
@@ -657,6 +1147,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           onClick={() => execCommand('italic')}
           className="px-2 py-1 text-sm border rounded hover:bg-gray-200 cursor-pointer"
           title="Курсив"
+          disabled={disabled}
         >
           <em>I</em>
         </button>
@@ -665,6 +1156,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           onClick={() => execCommand('underline')}
           className="px-2 py-1 text-sm border rounded hover:bg-gray-200 cursor-pointer"
           title="Подчеркнутый"
+          disabled={disabled}
         >
           <u>U</u>
         </button>
@@ -672,16 +1164,18 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         <button
           type="button"
           onClick={() => setHeading('h2')}
-          className="p-1.5 border rounded hover:bg-gray-200 cursor-pointer"
-          title="Заголовок 2 — выделите текст и нажмите"
+          className="p-1 border rounded hover:bg-gray-200 cursor-pointer"
+          title="Заголовок 2"
+          disabled={disabled}
         >
           <Heading2 className="w-4 h-4" />
         </button>
         <button
           type="button"
           onClick={() => setHeading('h3')}
-          className="p-1.5 border rounded hover:bg-gray-200 cursor-pointer"
-          title="Заголовок 3 — выделите текст и нажмите"
+          className="p-1 border rounded hover:bg-gray-200 cursor-pointer"
+          title="Заголовок 3"
+          disabled={disabled}
         >
           <Heading3 className="w-4 h-4" />
         </button>
@@ -689,8 +1183,9 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         <button
           type="button"
           onClick={() => (onUploadImage ? imageInputRef.current?.click() : handleInsertImageByUrl())}
-          className="p-1.5 border rounded hover:bg-gray-200 cursor-pointer"
+          className="p-1 border rounded hover:bg-gray-200 cursor-pointer"
           title="Вставить изображение"
+          disabled={disabled}
         >
           <Image className="w-4 h-4" />
         </button>
@@ -701,13 +1196,15 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             accept="image/*"
             className="hidden"
             onChange={handleInsertImageFile}
+            disabled={disabled}
           />
         )}
         <button
           type="button"
           onClick={handleInsertVideo}
-          className="p-1.5 border rounded hover:bg-gray-200 cursor-pointer"
+          className="p-1 border rounded hover:bg-gray-200 cursor-pointer"
           title="Вставить видео по ссылке"
+          disabled={disabled}
         >
           <Video className="w-4 h-4" />
         </button>
@@ -719,67 +1216,85 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
               accept="video/mp4,video/webm,video/quicktime,video/x-m4v"
               className="hidden"
               onChange={handleInsertVideoFile}
+              disabled={disabled}
             />
             <button
               type="button"
               onClick={() => videoInputRef.current?.click()}
               className="px-2 py-1 text-sm border rounded hover:bg-gray-200 cursor-pointer"
               title="Загрузить видеофайл"
+              disabled={disabled}
             >
-              Видео файл
+              Видео
             </button>
           </>
         )}
         <button
           type="button"
           onClick={() => handleAlignMedia('left')}
-          className="p-1.5 border rounded hover:bg-gray-200 cursor-pointer"
+          className="p-1 border rounded hover:bg-gray-200 cursor-pointer"
           title="Медиа слева"
+          disabled={disabled}
         >
           <AlignLeft className="w-4 h-4" />
         </button>
         <button
           type="button"
           onClick={() => handleAlignMedia('center')}
-          className="p-1.5 border rounded hover:bg-gray-200 cursor-pointer"
+          className="p-1 border rounded hover:bg-gray-200 cursor-pointer"
           title="Медиа по центру"
+          disabled={disabled}
         >
           <AlignCenter className="w-4 h-4" />
         </button>
         <button
           type="button"
           onClick={() => handleAlignMedia('right')}
-          className="p-1.5 border rounded hover:bg-gray-200 cursor-pointer"
+          className="p-1 border rounded hover:bg-gray-200 cursor-pointer"
           title="Медиа справа"
+          disabled={disabled}
         >
           <AlignRight className="w-4 h-4" />
         </button>
         <button
           type="button"
           onClick={() => handleAlignMedia('full')}
-          className="p-1.5 border rounded hover:bg-gray-200 cursor-pointer"
+          className="p-1 border rounded hover:bg-gray-200 cursor-pointer"
           title="Медиа на всю ширину"
+          disabled={disabled}
         >
           <Columns3 className="w-4 h-4" />
         </button>
         <div className="w-px h-6 bg-gray-300 mx-1" />
+        
+        <button
+          type="button"
+          onClick={handleInsertCode}
+          className="p-1 border rounded hover:bg-gray-200 cursor-pointer"
+          title="Вставить код"
+          disabled={disabled}
+        >
+          <CodeIcon className="w-4 h-4" />
+        </button>
+        
         <button
           type="button"
           onClick={() => setTablePickerOpen((v) => !v)}
-          className="p-1.5 border rounded hover:bg-gray-200 cursor-pointer"
+          className="p-1 border rounded hover:bg-gray-200 cursor-pointer"
           title="Вставить таблицу"
+          disabled={disabled}
         >
           <Table2 className="w-4 h-4" />
         </button>
         {tablePickerOpen && (
           <div className="relative">
             <div
-              className="absolute top-10 left-0 z-50 w-[240px] rounded-md border bg-white shadow-md p-3"
+              className="absolute top-8 left-0 z-50 w-[200px] rounded-md border bg-white shadow-md p-2"
               onMouseLeave={() => setTablePickerOpen(false)}
             >
-              <div className="flex items-center justify-between mb-2">
-                <div className="text-xs font-medium text-gray-700">
-                  Таблица: {tablePickerHover.rows}×{tablePickerHover.cols}
+              <div className="flex items-center justify-between mb-1.5">
+                <div className="text-[10px] font-medium text-gray-700">
+                  {tablePickerHover.rows}×{tablePickerHover.cols}
                 </div>
                 <button
                   type="button"
@@ -790,7 +1305,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                   <X className="w-4 h-4" />
                 </button>
               </div>
-              <div className="grid grid-cols-8 gap-1">
+              <div className="grid grid-cols-8 gap-0.5">
                 {Array.from({ length: 8 * 8 }).map((_, idx) => {
                   const r = Math.floor(idx / 8) + 1;
                   const c = (idx % 8) + 1;
@@ -799,15 +1314,15 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                     <button
                       key={`${r}-${c}`}
                       type="button"
-                      className={`h-5 w-5 rounded border cursor-pointer ${active ? 'bg-[#efe9ff] border-[#8f6bf4]' : 'bg-white'}`}
+                      className={`h-4 w-4 rounded border cursor-pointer ${active ? 'bg-[#efe9ff] border-[#8f6bf4]' : 'bg-white'}`}
                       onMouseEnter={() => setTablePickerHover({ rows: r, cols: c })}
                       onClick={() => handleInsertTableSized(r, c)}
                       aria-label={`Таблица ${r} на ${c}`}
+                      disabled={disabled}
                     />
                   );
                 })}
               </div>
-              <div className="mt-2 text-[11px] text-gray-500">Выберите размер (до 8×8)</div>
             </div>
           </div>
         )}
@@ -816,6 +1331,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           onClick={() => execCommand('insertUnorderedList')}
           className="px-2 py-1 text-sm border rounded hover:bg-gray-200 cursor-pointer"
           title="Маркированный список"
+          disabled={disabled}
         >
           • список
         </button>
@@ -824,6 +1340,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           onClick={() => execCommand('insertOrderedList')}
           className="px-2 py-1 text-sm border rounded hover:bg-gray-200 cursor-pointer"
           title="Нумерованный список"
+          disabled={disabled}
         >
           1. список
         </button>
@@ -833,6 +1350,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           onClick={() => execCommand('justifyLeft')}
           className="px-2 py-1 text-sm border rounded hover:bg-gray-200 cursor-pointer"
           title="По левому краю"
+          disabled={disabled}
         >
           ←
         </button>
@@ -841,6 +1359,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           onClick={() => execCommand('justifyCenter')}
           className="px-2 py-1 text-sm border rounded hover:bg-gray-200 cursor-pointer"
           title="По центру"
+          disabled={disabled}
         >
           ↔
         </button>
@@ -849,6 +1368,7 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           onClick={() => execCommand('justifyRight')}
           className="px-2 py-1 text-sm border rounded hover:bg-gray-200 cursor-pointer"
           title="По правому краю"
+          disabled={disabled}
         >
           →
         </button>
@@ -858,12 +1378,12 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
       <ContextMenu>
         <ContextMenuTrigger asChild disabled={disabled}>
           <div className="relative">
-            {isEmpty && (
-              <div className="absolute top-3 left-3 text-sm text-gray-400 pointer-events-none z-10">
+            {isEmpty && !disabled && (
+              <div className="absolute top-2.5 left-2.5 text-sm text-gray-400 pointer-events-none z-10">
                 {placeholder}
               </div>
             )}
-            <div ref={wrapperRef} className="relative">
+            <div ref={wrapperRef} className="relative" style={{ overflowX: 'hidden', maxWidth: '100%' }}>
               <div
                 ref={editorRef}
                 contentEditable={!disabled}
@@ -876,146 +1396,141 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
                 onClick={onEditorClick}
                 onKeyDown={(e) => {
                   handleKeyDown(e);
-                  // update table actions on navigation
                   requestAnimationFrame(() => syncActiveTableRect());
                 }}
                 onMouseUp={() => {
                   requestAnimationFrame(() => syncActiveTableRect());
                 }}
-            className={`
-              min-h-[200px] p-3 border border-gray-300 border-t-0 rounded-b-md
-              focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent
-              ${disabled ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}
-            `}
-            style={{
-              display: 'block',
-              maxWidth: '100%',
-              overflowWrap: 'break-word',
-              wordWrap: 'break-word',
-              wordBreak: 'break-word',
-              whiteSpace: 'pre-wrap',
-              overflowX: 'hidden',
-            }}
-          />
+                className={`
+                  min-h-[150px] p-2.5 border border-gray-300 border-t-0 rounded-b-md
+                  focus:outline-none focus:ring-2 focus:ring-purple-500
+                  ${disabled ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}
+                `}
+                style={{
+                  display: 'block',
+                  maxWidth: '100%',
+                  overflowWrap: 'break-word',
+                  wordWrap: 'break-word',
+                  wordBreak: 'break-word',
+                  whiteSpace: 'pre-wrap',
+                  overflowX: 'hidden',
+                }}
+              />
 
-          {/* Media resize overlay */}
-          {activeMediaRect && !disabled && (
-            <div
-              className="absolute z-40"
-              style={{
-                left: activeMediaRect.left,
-                top: activeMediaRect.top,
-                width: activeMediaRect.width,
-                height: activeMediaRect.height,
-                border: '2px solid #8f6bf4',
-                borderRadius: 6,
-                pointerEvents: 'none',
-              }}
-            >
-              <button
-                type="button"
-                onClick={handleDeleteActiveMedia}
-                className="absolute -right-3 -top-3 flex h-6 w-6 items-center justify-center rounded-full border border-[#8f6bf4] bg-white text-[#8f6bf4] shadow-sm"
-                style={{ pointerEvents: 'auto' }}
-                aria-label="Удалить медиа"
-                title="Удалить медиа"
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </button>
-              {resizeHandles.map((h) => (
+              {activeMediaRect && !disabled && (
                 <div
-                  key={h.id}
-                  role="button"
-                  tabIndex={0}
-                  onPointerDown={(e) => beginResize(h.id, e)}
-                  onPointerMove={onResizeMove}
-                  onPointerUp={endResize}
-                  onPointerCancel={endResize}
+                  className="absolute z-40"
                   style={{
-                    position: 'absolute',
-                    width: 12,
-                    height: 12,
-                    borderRadius: 3,
-                    background: '#efe9ff',
+                    left: activeMediaRect.left,
+                    top: activeMediaRect.top,
+                    width: activeMediaRect.width,
+                    height: activeMediaRect.height,
                     border: '2px solid #8f6bf4',
-                    boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
-                    pointerEvents: 'auto',
-                    ...h.style,
+                    borderRadius: 6,
+                    pointerEvents: 'none',
                   }}
-                />
-              ))}
-            </div>
-          )}
+                >
+                  <button
+                    type="button"
+                    onClick={handleDeleteActiveMedia}
+                    className="absolute -right-3 -top-3 flex h-6 w-6 items-center justify-center rounded-full border border-[#8f6bf4] bg-white text-[#8f6bf4] shadow-sm"
+                    style={{ pointerEvents: 'auto' }}
+                    aria-label="Удалить медиа"
+                    title="Удалить медиа"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                  {resizeHandles.map((h) => (
+                    <div
+                      key={h.id}
+                      role="button"
+                      tabIndex={0}
+                      onPointerDown={(e) => beginResize(h.id, e)}
+                      onPointerMove={onResizeMove}
+                      onPointerUp={endResize}
+                      onPointerCancel={endResize}
+                      style={{
+                        position: 'absolute',
+                        width: 12,
+                        height: 12,
+                        borderRadius: 3,
+                        background: '#efe9ff',
+                        border: '2px solid #8f6bf4',
+                        boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
+                        pointerEvents: 'auto',
+                        ...h.style,
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
 
-          {/* Table action button (inside table) */}
-          {activeTableRect && !disabled && (
-            <div
-              className="absolute z-40"
-              style={{ left: activeTableRect.left, top: activeTableRect.top }}
-              data-table-actions
-            >
-              <button
-                type="button"
-                onClick={() => setTableActionsOpen((v) => !v)}
-                className="h-7 w-7 rounded-full bg-[#efe9ff] hover:bg-[#e1d5ff] text-[#8f6bf4] cursor-pointer inline-flex items-center justify-center border border-[#d7c8ff] shadow-sm"
-                title="Таблица — действия"
-              >
-                <Plus className="w-4 h-4" />
-              </button>
-              {tableActionsOpen && (
-                <div className="mt-2 w-56 rounded-md border bg-white shadow-md p-2 text-sm">
+              {activeTableRect && !disabled && (
+                <div
+                  className="absolute z-40"
+                  style={{ left: activeTableRect.left, top: activeTableRect.top }}
+                  data-table-actions
+                >
                   <button
                     type="button"
-                    onClick={() => {
-                      handleAddTableRow();
-                      setTableActionsOpen(false);
-                    }}
-                    className="w-full text-left px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer"
+                    onClick={() => setTableActionsOpen((v) => !v)}
+                    className="h-6 w-6 rounded-full bg-[#efe9ff] hover:bg-[#e1d5ff] text-[#8f6bf4] cursor-pointer inline-flex items-center justify-center border border-[#d7c8ff] shadow-sm"
+                    title="Таблица — действия"
                   >
-                    + Строку ниже
+                    <Plus className="w-4 h-4" />
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleAddTableColumn();
-                      setTableActionsOpen(false);
-                    }}
-                    className="w-full text-left px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer"
-                  >
-                    + Столбец справа
-                  </button>
-                  <div className="h-px bg-gray-200 my-1" />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleDeleteTableRow();
-                      setTableActionsOpen(false);
-                    }}
-                    className="w-full text-left px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer"
-                  >
-                    − Удалить строку
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      handleDeleteTableColumn();
-                      setTableActionsOpen(false);
-                    }}
-                    className="w-full text-left px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer"
-                  >
-                    − Удалить столбец
-                  </button>
+                  {tableActionsOpen && (
+                    <div className="mt-1 w-48 rounded-md border bg-white shadow-md p-1 text-xs">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleAddTableRow();
+                          setTableActionsOpen(false);
+                        }}
+                        className="w-full text-left px-2 py-1 rounded hover:bg-gray-50 cursor-pointer"
+                      >
+                        + Строку
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleAddTableColumn();
+                          setTableActionsOpen(false);
+                        }}
+                        className="w-full text-left px-2 py-1 rounded hover:bg-gray-50 cursor-pointer"
+                      >
+                        + Столбец
+                      </button>
+                      <div className="h-px bg-gray-200 my-0.5" />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleDeleteTableRow();
+                          setTableActionsOpen(false);
+                        }}
+                        className="w-full text-left px-2 py-1 rounded hover:bg-gray-50 cursor-pointer"
+                      >
+                        − Строку
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleDeleteTableColumn();
+                          setTableActionsOpen(false);
+                        }}
+                        className="w-full text-left px-2 py-1 rounded hover:bg-gray-50 cursor-pointer"
+                      >
+                        − Столбец
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
-          )}
-        </div>
-      </div>
+          </div>
         </ContextMenuTrigger>
 
-        {/* ── Context menu content ── */}
         <ContextMenuContent className="w-52">
-          {/* Group 1: Edit actions */}
           <ContextMenuItem onSelect={ctxCut} className="flex items-center gap-2">
             <Scissors className="h-4 w-4 shrink-0" />
             Вырезать
@@ -1041,7 +1556,6 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
           <ContextMenuSeparator />
 
-          {/* Group 2: Alignment */}
           <ContextMenuItem onSelect={ctxAlignLeft} className="flex items-center gap-2">
             <AlignLeft className="h-4 w-4 shrink-0" />
             Слева
@@ -1057,7 +1571,6 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
           <ContextMenuSeparator />
 
-          {/* Group 3: Format submenu */}
           <ContextMenuSub>
             <ContextMenuSubTrigger className="flex items-center gap-2">
               <Type className="h-4 w-4 shrink-0" />
@@ -1091,7 +1604,6 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
             </ContextMenuSubContent>
           </ContextMenuSub>
 
-          {/* Conditional: empty area only */}
           {ctxMenuOnEmpty && (
             <>
               <ContextMenuSeparator />

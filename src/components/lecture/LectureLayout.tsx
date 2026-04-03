@@ -68,7 +68,7 @@ export default function LectureLayout({
               <button
                 type="button"
                 onClick={onToggleOutline}
-                className="inline-flex items-center gap-1.5 text-sm text-[#4f4f62] transition hover:text-[#2f2f3f]"
+                className="inline-flex items-center gap-1.5 text-sm text-[#4f4f62] transition hover:text-[#2f2f3f] cursor-pointer"
               >
                 <Menu className="h-4 w-4" />
                 Содержание

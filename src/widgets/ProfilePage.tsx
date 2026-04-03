@@ -1013,8 +1013,8 @@ export default function ProfilePage() {
 
       {/* Модальное окно редактирования профиля */}
       {isOwnProfile && showEditModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
-          <div className="bg-white w-full max-w-xl rounded-2xl shadow-xl overflow-hidden">
+        <div className="fixed inset-0 z-[101] flex items-center justify-center bg-black/50 p-4">
+          <div className="bg-white w-full max-w-xl rounded-xl shadow-xl overflow-hidden">
             <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
               <h2 className="text-lg font-semibold text-gray-900">
                 Редактировать профиль
