@@ -38,6 +38,7 @@ import { Button } from '@/components/ui/button';
 import {
   parseCodeTaskConfig,
   type CodeTaskConfig,
+  LANGUAGE_LABELS,
 } from '@/shared/codeTasks';
 import {
   runCodeTaskTests,
@@ -154,6 +155,12 @@ const isMeaningfulBlock = (item: ContentBlock): boolean => {
   }
   if (item.type === 'code_task') {
     const config = parseCodeTaskConfig(item.answer);
+    if (config?.language === 'html_css') {
+      return htmlText.length > 0 || Boolean(config?.starterHtml) || Boolean(config?.starterCss);
+    }
+    if (config?.language === 'cpp') {
+      return htmlText.length > 0 || Boolean(config?.starterCode);
+    }
     const hasTests = config?.testCases?.length;
     return htmlText.length > 0 || Boolean(hasTests);
   }
@@ -178,11 +185,15 @@ export default function LectureBlocks({
   const [testCheckResult, setTestCheckResult] = useState<'correct' | 'wrong' | null>(null);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
   const [codeTaskCode, setCodeTaskCode] = useState('');
+  const [codeTaskHtml, setCodeTaskHtml] = useState('');
+  const [codeTaskCss, setCodeTaskCss] = useState('');
   const [codeTaskResults, setCodeTaskResults] = useState<CodeTaskTestResult[] | null>(null);
   const [codeTaskIsRunning, setCodeTaskIsRunning] = useState(false);
   const [codeTaskError, setCodeTaskError] = useState<string | null>(null);
+  const [htmlCssSubmitResult, setHtmlCssSubmitResult] = useState<'correct' | 'wrong' | 'submitted' | null>(null);
   const highlightTimeoutRef = useRef<number | null>(null);
   const highlightedHeadingRef = useRef<HTMLElement | null>(null);
+  const contentRef = useRef<HTMLDivElement>(null);
 
   const meaningfulBlocks = useMemo(() => blocks.filter(isMeaningfulBlock), [blocks]);
   const viewBlocks = meaningfulBlocks.length > 0 ? meaningfulBlocks : blocks;
@@ -211,12 +222,20 @@ export default function LectureBlocks({
   const isLastBlock = safeIndex === viewBlocks.length - 1;
   const blockHtmlText = stripHtml(block.content);
 
-  // Parse headings and inject IDs into the HTML string directly (no DOM queries needed)
+  // Parse headings, inject IDs, and add not-prose to code blocks so Tailwind Typography
+  // doesn't add its own padding/margin that inflates the block beyond the code height.
   const { processedHtml, headings: headingsList } = useMemo(() => {
     if (block.type === 'test' || !block.content) {
       return { processedHtml: block.content || '', headings: [] };
     }
-    return injectHeadingIds(block.content, block.id);
+    const { processedHtml: html, headings } = injectHeadingIds(block.content, block.id);
+    // DOMParser re-parents <div class="code-line"> elements out of <code>/<pre> per HTML5 spec,
+    // so we also mark code blocks as not-prose to prevent Tailwind Typography from touching
+    // the now-empty <pre> element (which otherwise gets large prose margins/padding).
+    const notProse = html
+      .replace(/class="code-block"/g, 'class="code-block not-prose"')
+      .replace(/class='code-block'/g, "class='code-block not-prose'");
+    return { processedHtml: notProse, headings };
   }, [block.id, block.content, block.type]);
 
   useEffect(() => {
@@ -226,8 +245,35 @@ export default function LectureBlocks({
     setTestCheckResult(null);
     setCurrentQuestionIndex(0);
     setCodeTaskIsRunning(false);
+    setCodeTaskResults(null);
+    setCodeTaskError(null);
+    setHtmlCssSubmitResult(null);
 
     const savedAnswer = storedAnswers[block.id];
+
+    if (block.type === 'code_task' && codeTaskConfig?.language === 'html_css') {
+      const starterHtml = codeTaskConfig.starterHtml ?? '';
+      const starterCss = codeTaskConfig.starterCss ?? '';
+      if (savedAnswer) {
+        try {
+          const parsed = JSON.parse(savedAnswer.userAnswer || '{}') as { format?: string; html?: string; css?: string };
+          if (parsed.format === 'code_task_answer_v1') {
+            setCodeTaskHtml(typeof parsed.html === 'string' ? parsed.html : starterHtml);
+            setCodeTaskCss(typeof parsed.css === 'string' ? parsed.css : starterCss);
+            return;
+          }
+        } catch {
+          // ignore
+        }
+      }
+      setCodeTaskHtml(starterHtml);
+      setCodeTaskCss(starterCss);
+      return;
+    }
+
+    setCodeTaskHtml('');
+    setCodeTaskCss('');
+
     if (!savedAnswer) return;
 
     if (block.type === 'task') {
@@ -253,10 +299,7 @@ export default function LectureBlocks({
     if (block.type === 'code_task') {
       const starter = codeTaskConfig?.starterCode ?? '';
       try {
-        const parsed = JSON.parse(savedAnswer.userAnswer || '{}') as {
-          format?: string;
-          code?: string;
-        };
+        const parsed = JSON.parse(savedAnswer.userAnswer || '{}') as { format?: string; code?: string };
         if (parsed.format === 'code_task_answer_v1' && typeof parsed.code === 'string') {
           setCodeTaskCode(parsed.code);
           return;
@@ -266,7 +309,7 @@ export default function LectureBlocks({
       }
       setCodeTaskCode(starter);
     }
-  }, [block.id, block.type, storedAnswers, codeTaskConfig?.starterCode]);
+  }, [block.id, block.type, storedAnswers, codeTaskConfig?.language, codeTaskConfig?.starterCode, codeTaskConfig?.starterHtml, codeTaskConfig?.starterCss]);
 
   const canCheckTask = taskInput.trim().length > 0;
   const canCheckTest = currentQuestion ? testSelectedOptions.length > 0 : false;
@@ -278,7 +321,30 @@ export default function LectureBlocks({
   const selectedSortedIds = useMemo(() => [...testSelectedOptions].sort(), [testSelectedOptions]);
 
   const handleRunCodeTask = async () => {
-    if (!codeTaskConfig || !codeTaskConfig.testCases.length) return;
+    if (!codeTaskConfig) return;
+
+    if (codeTaskConfig.language === 'cpp') {
+      const codeToSave = codeTaskCode.trim() || codeTaskConfig.starterCode || '';
+      if (!codeToSave.trim()) {
+        setCodeTaskError('Добавьте код перед отправкой');
+        return;
+      }
+      setCodeTaskIsRunning(true);
+      setCodeTaskError(null);
+      setCodeTaskResults(null);
+      try {
+        const payload = JSON.stringify({ format: 'code_task_answer_v1', code: codeToSave });
+        await onPersistAnswer?.(block.id, payload, true);
+        setCodeTaskError('C++ нельзя автоматически проверить в браузере. Ваш код сохранён и отправлен на проверку.');
+      } catch (err) {
+        setCodeTaskError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setCodeTaskIsRunning(false);
+      }
+      return;
+    }
+
+    if (!codeTaskConfig.testCases.length) return;
 
     const codeToRun =
       codeTaskCode && codeTaskCode.trim().length > 0
@@ -308,6 +374,34 @@ export default function LectureBlocks({
       await onPersistAnswer?.(block.id, payload, allPassed);
     } catch (error) {
       setCodeTaskError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setCodeTaskIsRunning(false);
+    }
+  };
+
+  const handleRunHtmlCssTask = async () => {
+    if (!codeTaskConfig) return;
+    const expectedHtml = codeTaskConfig.expectedHtml?.trim() ?? '';
+    const expectedCss = codeTaskConfig.expectedCss?.trim() ?? '';
+
+    let isCorrect = true;
+    if (expectedHtml || expectedCss) {
+      const htmlMatch = !expectedHtml || codeTaskHtml.trim() === expectedHtml;
+      const cssMatch = !expectedCss || codeTaskCss.trim() === expectedCss;
+      isCorrect = htmlMatch && cssMatch;
+    }
+
+    setCodeTaskIsRunning(true);
+    try {
+      const payload = JSON.stringify({
+        format: 'code_task_answer_v1',
+        html: codeTaskHtml,
+        css: codeTaskCss,
+      });
+      await onPersistAnswer?.(block.id, payload, isCorrect);
+      setHtmlCssSubmitResult(expectedHtml || expectedCss ? (isCorrect ? 'correct' : 'wrong') : 'submitted');
+    } catch (err) {
+      setCodeTaskError(err instanceof Error ? err.message : String(err));
     } finally {
       setCodeTaskIsRunning(false);
     }
@@ -370,6 +464,104 @@ export default function LectureBlocks({
     };
   }, []);
 
+  // Event delegation for copy buttons inside RichTextEditor code blocks.
+  // Searches .code-content spans from codeBlock (not from <code>) because DOMParser
+  // re-parents <div class="code-line"> elements out of <code>/<pre> per HTML5 spec,
+  // leaving <code> empty while the content spans remain siblings inside the scroll div.
+  useEffect(() => {
+    const container = contentRef.current;
+    if (!container) return;
+
+    const showCopyToast = () => {
+      const existing = document.getElementById('lecture-copy-toast');
+      if (existing) existing.remove();
+
+      const toast = document.createElement('div');
+      toast.id = 'lecture-copy-toast';
+      toast.textContent = '✓ Код скопирован';
+      Object.assign(toast.style, {
+        position: 'fixed',
+        bottom: '28px',
+        left: '50%',
+        transform: 'translateX(-50%) translateY(8px)',
+        background: '#16a34a',
+        color: '#fff',
+        padding: '8px 18px',
+        borderRadius: '8px',
+        fontSize: '14px',
+        fontWeight: '500',
+        letterSpacing: '0.01em',
+        opacity: '0',
+        transition: 'opacity 0.18s ease, transform 0.18s ease',
+        zIndex: '99999',
+        pointerEvents: 'none',
+        boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
+        whiteSpace: 'nowrap',
+      });
+      document.body.appendChild(toast);
+      requestAnimationFrame(() => {
+        toast.style.opacity = '1';
+        toast.style.transform = 'translateX(-50%) translateY(0)';
+      });
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(-50%) translateY(8px)';
+        setTimeout(() => toast.remove(), 200);
+      }, 1800);
+    };
+
+    const handleClick = async (e: MouseEvent) => {
+      const copyBtn = (e.target as HTMLElement)?.closest?.('[data-copy-code="true"]') as HTMLElement | null;
+      if (!copyBtn) return;
+
+      const codeBlock = copyBtn.closest('[data-code-block="true"]') as HTMLElement | null;
+      if (!codeBlock) return;
+
+      // Button press animation
+      copyBtn.style.transform = 'scale(0.88)';
+      copyBtn.style.transition = 'transform 0.08s ease';
+      setTimeout(() => {
+        copyBtn.style.transform = 'scale(1)';
+        copyBtn.style.transition = 'transform 0.12s ease';
+      }, 80);
+
+      // Extract code: DOMParser moves <div.code-line> out of <code>, so search from codeBlock
+      const contentSpans = codeBlock.querySelectorAll<HTMLElement>('.code-content');
+      let text = '';
+      if (contentSpans.length > 0) {
+        text = Array.from(contentSpans)
+          .map((el) => {
+            const t = el.textContent ?? '';
+            return t === '\u00a0' || t === ' ' ? '' : t;
+          })
+          .join('\n');
+      } else {
+        // Fallback: raw text from pre minus line numbers
+        const pre = codeBlock.querySelector('pre');
+        if (pre) {
+          const clone = pre.cloneNode(true) as HTMLElement;
+          clone.querySelectorAll('.code-linenum').forEach((el) => el.remove());
+          text = clone.textContent ?? '';
+        }
+      }
+
+      try {
+        await navigator.clipboard.writeText(text);
+        showCopyToast();
+      } catch {
+        const span = copyBtn.querySelector('span');
+        if (span) {
+          const orig = span.textContent;
+          span.textContent = 'Ошибка';
+          setTimeout(() => { if (span) span.textContent = orig ?? 'Копировать'; }, 1500);
+        }
+      }
+    };
+
+    container.addEventListener('click', handleClick);
+    return () => container.removeEventListener('click', handleClick);
+  }, [processedHtml]);
+
   const clearHeadingHighlight = (el: HTMLElement) => {
     el.style.transition = '';
     el.style.backgroundColor = '';
@@ -418,7 +610,6 @@ export default function LectureBlocks({
 
   return (
     <div className="flex flex-col lg:flex-row gap-6 w-full min-w-0">
-      
       {/* Меню «Содержание» — на мобильных сверху, на десктопе справа */}
       {headingsList.length > 0 && (
         <div className="order-1 lg:order-2 w-full lg:w-56 flex-shrink-0">
@@ -453,17 +644,113 @@ export default function LectureBlocks({
       <div className="order-2 lg:order-1 flex-1 min-w-0 space-y-8 text-[#31323f]">
         <section key={block.id} className="w-full min-w-0">
           {block.type !== 'test' && block.content && (
-            <div className="w-full max-w-full overflow-x-hidden px-4">
+            <div className="w-full max-w-full px-4">
+              {/* Show copy button; hide editor-only buttons. Pre/code prose reset handled
+                  by not-prose class injected into .code-block in processedHtml. */}
+              <style>{`
+                .lecture-prose .code-edit-btn-wrapper {
+                  opacity: 1 !important;
+                  transition: none !important;
+                }
+                .lecture-prose [data-edit-code="true"],
+                .lecture-prose [data-delete-code="true"] {
+                  display: none !important;
+                }
+                .lecture-prose [data-copy-code="true"]:hover {
+                  background: #444 !important;
+                }
+                /* No line wrapping — scroll horizontally instead */
+                .lecture-prose .code-block .code-content {
+                  white-space: pre !important;
+                  word-wrap: normal !important;
+                  word-break: normal !important;
+                  overflow-wrap: normal !important;
+                }
+                .lecture-prose .code-block .code-line {
+                  flex-wrap: nowrap !important;
+                  min-width: max-content;
+                }
+                /* Компактные вертикальные отступы у блока кода (в т.ч. для старого HTML из редактора) */
+                .lecture-prose .code-block {
+                  margin-top: 0.25rem !important;
+                  margin-bottom: 0.25rem !important;
+                  height: fit-content !important;
+                }
+                /*
+                  Typography (prose) задаёт pre большие margin/padding (~20px/8px). Без margin:0 пустота
+                  внутри тёмного блока остаётся даже при not-prose — переопределяем явно.
+                */
+                .lecture-prose .code-block pre {
+                  margin: 0 !important;
+                  margin-top: 0 !important;
+                  margin-bottom: 0 !important;
+                  padding-top: 2px !important;
+                  padding-bottom: 2px !important;
+                  padding-left: 10px !important;
+                  padding-right: 10px !important;
+                  background: transparent !important;
+                  border-radius: 0 !important;
+                  font-size: inherit !important;
+                  line-height: 18px !important;
+                  color: #d4d4d4 !important;
+                  white-space: normal !important;
+                }
+                /* Только пустой <code> (призрак после невалидного div внутри code) — не скрывать <code> с .code-line внутри */
+                .lecture-prose .code-block pre > code:empty {
+                  display: none !important;
+                }
+                /* Старый HTML: без класса code-block-scroll — целимся по инлайновому overflow-x */
+                .lecture-prose .code-block-scroll,
+                .lecture-prose .code-block > div[style*="overflow-x"] {
+                  scrollbar-gutter: auto !important;
+                  margin-top: 0 !important;
+                  min-height: 0 !important;
+                  height: auto !important;
+                }
+                .lecture-prose .code-block[data-language]:not([data-language=""]) > div[style*="overflow-x"] {
+                  padding-top: 14px !important;
+                }
+                /* Изображения в лекции: адаптивно, без искажения пропорций */
+                .lecture-prose picture {
+                  display: block;
+                  max-width: 100%;
+                  margin-left: auto;
+                  margin-right: auto;
+                }
+                .lecture-prose img {
+                  display: block;
+                  max-width: 100% !important;
+                  width: auto;
+                  height: auto !important;
+                  object-fit: contain;
+                  object-position: center;
+                  margin-left: auto;
+                  margin-right: auto;
+                  box-sizing: border-box;
+                }
+                .lecture-prose figure {
+                  max-width: 100%;
+                  margin-left: auto;
+                  margin-right: auto;
+                }
+                .lecture-prose figure > img {
+                  width: auto;
+                  max-width: 100% !important;
+                }
+              `}</style>
               <div
+                ref={contentRef}
                 className={`
-                  prose break-words whitespace-pre-wrap overflow-x-hidden
+                  lecture-prose prose break-words whitespace-pre-wrap
                   prose-headings:text-[#222431] prose-p:text-[17px] prose-p:leading-8 prose-li:text-[17px] prose-li:leading-8
-                  prose-pre:max-w-full prose-pre:overflow-x-auto prose-pre:whitespace-pre
+                  prose-pre:w-full prose-pre:overflow-x-auto prose-pre:whitespace-pre
                   prose-code:break-all prose-a:break-all
                   [&_.video-wrapper]:relative [&_.video-wrapper]:my-6 [&_.video-wrapper]:w-full [&_.video-wrapper]:overflow-hidden [&_.video-wrapper]:rounded-xl
                   [&_.video-wrapper_iframe]:absolute [&_.video-wrapper_iframe]:left-0 [&_.video-wrapper_iframe]:top-0 [&_.video-wrapper_iframe]:h-full [&_.video-wrapper_iframe]:w-full
                   [&_video]:my-6 [&_video]:w-full [&_video]:max-w-full [&_video]:rounded-xl [&_video]:bg-black
                   [&_iframe]:max-w-full
+                  [&_picture]:block [&_picture]:max-w-full [&_picture]:mx-auto
+                  [&_img]:max-w-full [&_img]:!h-auto [&_img]:w-auto [&_img]:object-contain [&_img]:mx-auto [&_img]:block
                 `}
                 style={{ 
                   wordBreak: 'break-word',
@@ -527,7 +814,80 @@ export default function LectureBlocks({
             </div>
           )}
 
-          {block.type === 'code_task' && codeTaskConfig && (
+          {/* HTML+CSS code task */}
+          {block.type === 'code_task' && codeTaskConfig && codeTaskConfig.language === 'html_css' && (
+            <div className="mt-2 rounded-xl border border-[#e7e7f2] bg-white p-4 w-full min-w-0">
+              <div className="mb-3">
+                <div className="text-sm font-semibold text-[#35364a] break-words">HTML + CSS задача</div>
+                <div className="text-xs text-[#707286] break-words">
+                  Напишите HTML и CSS код. Результат отобразится в предварительном просмотре.
+                </div>
+              </div>
+              <div className="flex flex-col lg:flex-row gap-4 min-w-0">
+                <div className="lg:w-1/2 space-y-3 min-w-0">
+                  <div>
+                    <div className="text-xs font-semibold text-[#35364a] mb-1">HTML</div>
+                    <textarea
+                      value={codeTaskHtml}
+                      onChange={(e) => { setCodeTaskHtml(e.target.value); setHtmlCssSubmitResult(null); }}
+                      rows={10}
+                      className="w-full min-w-0 max-w-full font-mono text-sm rounded-lg border border-[#1f2937] px-3 py-2 text-gray-100 outline-none focus:border-[#8f6bf4] bg-[#111827]"
+                      placeholder={'<h1>Заголовок</h1>\n<p>Текст страницы</p>'}
+                      style={{ whiteSpace: 'pre', overflowX: 'auto', overflowY: 'auto' }}
+                    />
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-[#35364a] mb-1">CSS</div>
+                    <textarea
+                      value={codeTaskCss}
+                      onChange={(e) => { setCodeTaskCss(e.target.value); setHtmlCssSubmitResult(null); }}
+                      rows={6}
+                      className="w-full min-w-0 max-w-full font-mono text-sm rounded-lg border border-[#1f2937] px-3 py-2 text-gray-100 outline-none focus:border-[#8f6bf4] bg-[#111827]"
+                      placeholder={'h1 {\n  color: blue;\n}'}
+                      style={{ whiteSpace: 'pre', overflowX: 'auto', overflowY: 'auto' }}
+                    />
+                  </div>
+                  <div>
+                    <Button
+                      onClick={handleRunHtmlCssTask}
+                      disabled={codeTaskIsRunning}
+                      className={codeTaskIsRunning ? `${buttonPrimaryClasses} ${buttonDisabledClasses}` : buttonPrimaryClasses}
+                    >
+                      {codeTaskIsRunning ? 'Отправка…' : 'Отправить'}
+                    </Button>
+                    {htmlCssSubmitResult && (
+                      <div className={`mt-2 rounded-md px-3 py-2 text-sm break-words ${
+                        htmlCssSubmitResult === 'correct'
+                          ? 'bg-green-100 text-green-800 border border-green-300'
+                          : htmlCssSubmitResult === 'wrong'
+                          ? 'bg-red-100 text-red-800 border border-red-300'
+                          : 'bg-blue-50 text-blue-800 border border-blue-200'
+                      }`}>
+                        {htmlCssSubmitResult === 'correct'
+                          ? 'Верно! Код соответствует ожидаемому.'
+                          : htmlCssSubmitResult === 'wrong'
+                          ? 'Не совпадает с ожидаемым кодом. Попробуйте ещё раз.'
+                          : 'Код сохранён.'}
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="lg:w-1/2 flex flex-col gap-2 min-w-0">
+                  <div className="text-xs font-semibold text-[#35364a]">Предварительный просмотр</div>
+                  <iframe
+                    srcDoc={`<!DOCTYPE html><html><head><style>${codeTaskCss}</style></head><body>${codeTaskHtml}</body></html>`}
+                    sandbox="allow-scripts"
+                    title="HTML/CSS Preview"
+                    className="w-full rounded-lg border border-[#d6d8e3] bg-white"
+                    style={{ height: '340px' }}
+                  />
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* JS / Python / C++ code task */}
+          {block.type === 'code_task' && codeTaskConfig && codeTaskConfig.language !== 'html_css' && (
             <div className="mt-2 rounded-xl border border-[#e7e7f2] bg-white p-4 w-full min-w-0">
               <div className="flex flex-col lg:flex-row gap-4 min-w-0">
                 {/* Левая колонка: условие и код */}
@@ -538,11 +898,13 @@ export default function LectureBlocks({
                         Проверяемая задача
                       </div>
                       <div className="text-xs text-[#707286] break-words">
-                        Реализуйте функцию <span className="font-mono break-all">solve(input)</span> на языке{' '}
-                        <span className="font-semibold">
-                          {codeTaskConfig.language === 'javascript' ? 'JavaScript' : 'Python'}
-                        </span>
-                        . На каждый тест в неё будет подан input из таблицы.
+                        {codeTaskConfig.language === 'cpp' ? (
+                          <>Напишите решение на языке <span className="font-semibold">C++</span>. Код сохраняется и отправляется на проверку.</>
+                        ) : (
+                          <>Реализуйте функцию <span className="font-mono break-all">solve(input)</span> на языке{' '}
+                          <span className="font-semibold">{LANGUAGE_LABELS[codeTaskConfig.language]}</span>
+                          . На каждый тест в неё будет подан input из таблицы.</>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -550,21 +912,17 @@ export default function LectureBlocks({
                   <div className="min-w-0">
                     <textarea
                       value={codeTaskCode}
-                      onChange={(event) => {
-                        setCodeTaskCode(event.target.value);
-                      }}
+                      onChange={(event) => setCodeTaskCode(event.target.value)}
                       rows={14}
                       className="w-full min-w-0 max-w-full font-mono text-sm rounded-lg border border-[#1f2937] px-3 py-2 text-gray-100 outline-none focus:border-[#8f6bf4] bg-[#111827] break-all"
                       placeholder={
                         codeTaskConfig.language === 'javascript'
                           ? 'function solve(input) {\n  // напишите решение\n  return input;\n}'
-                          : 'def solve(data: str) -> str:\n    # напишите решение\n    return data'
+                          : codeTaskConfig.language === 'python'
+                          ? 'def solve(data: str) -> str:\n    # напишите решение\n    return data'
+                          : '#include <iostream>\nusing namespace std;\n\nint main() {\n  // напишите решение\n  return 0;\n}'
                       }
-                      style={{ 
-                        whiteSpace: 'pre',
-                        overflowX: 'auto',
-                        overflowY: 'auto',
-                      }}
+                      style={{ whiteSpace: 'pre', overflowX: 'auto', overflowY: 'auto' }}
                     />
                   </div>
                 </div>
@@ -574,35 +932,52 @@ export default function LectureBlocks({
                   <div className="flex flex-wrap items-center gap-3">
                     <Button
                       onClick={handleRunCodeTask}
-                      disabled={codeTaskIsRunning || !codeTaskConfig.testCases.length}
+                      disabled={codeTaskIsRunning || (codeTaskConfig.language !== 'cpp' && !codeTaskConfig.testCases.length)}
                       className={
-                        codeTaskIsRunning || !codeTaskConfig.testCases.length
+                        codeTaskIsRunning || (codeTaskConfig.language !== 'cpp' && !codeTaskConfig.testCases.length)
                           ? `${buttonPrimaryClasses} ${buttonDisabledClasses}`
                           : buttonPrimaryClasses
                       }
                     >
-                      {codeTaskIsRunning ? 'Выполняется…' : 'Запустить тесты'}
+                      {codeTaskIsRunning
+                        ? 'Выполняется…'
+                        : codeTaskConfig.language === 'cpp'
+                        ? 'Отправить код'
+                        : 'Запустить тесты'}
                     </Button>
-                    <div className="text-[11px] text-[#707286] break-words">
-                      Тестов: {codeTaskConfig.testCases.filter((tc) => !tc.hidden).length} видимых,{' '}
-                      {codeTaskConfig.testCases.filter((tc) => tc.hidden).length} скрытых
-                    </div>
+                    {codeTaskConfig.language !== 'cpp' && (
+                      <div className="text-[11px] text-[#707286] break-words">
+                        Тестов: {codeTaskConfig.testCases.filter((tc) => !tc.hidden).length} видимых,{' '}
+                        {codeTaskConfig.testCases.filter((tc) => tc.hidden).length} скрытых
+                      </div>
+                    )}
+                    {codeTaskConfig.language === 'cpp' && (
+                      <div className="text-[11px] text-[#707286] break-words">
+                        Код сохраняется и отправляется на ручную проверку
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex-1 rounded-md bg-slate-950 text-[11px] text-slate-100 border border-slate-800 p-3 overflow-x-auto overflow-y-auto min-w-0">
                     <div className="mb-1 text-xs font-semibold text-slate-200 break-words">
-                      Консоль программы
+                      {codeTaskConfig.language === 'cpp' ? 'Статус' : 'Консоль программы'}
                     </div>
 
                     {codeTaskError && (
-                      <div className="mb-2 rounded-md bg-red-900/40 border border-red-500 px-2 py-1 text-[11px] text-red-100 break-words">
-                        Ошибка выполнения: {codeTaskError}
+                      <div className={`mb-2 rounded-md border px-2 py-1 text-[11px] break-words ${
+                        codeTaskConfig.language === 'cpp'
+                          ? 'bg-blue-900/40 border-blue-500 text-blue-100'
+                          : 'bg-red-900/40 border-red-500 text-red-100'
+                      }`}>
+                        {codeTaskError}
                       </div>
                     )}
 
                     {!codeTaskResults && !codeTaskError && (
                       <div className="text-slate-400 break-words">
-                        Нажмите «Запустить тесты», чтобы увидеть вывод программы.
+                        {codeTaskConfig.language === 'cpp'
+                          ? 'Нажмите «Отправить код», чтобы сохранить решение.'
+                          : 'Нажмите «Запустить тесты», чтобы увидеть вывод программы.'}
                       </div>
                     )}
 
@@ -612,9 +987,7 @@ export default function LectureBlocks({
                           <li key={result.testId} className="border-b border-slate-800 last:border-0 pb-1 min-w-0">
                             <div className="flex items-center justify-between gap-2 flex-wrap">
                               <span className="font-medium break-words">
-                                {result.hidden
-                                  ? `Скрытый тест #${index + 1}`
-                                  : `Тест #${index + 1}`}
+                                {result.hidden ? `Скрытый тест #${index + 1}` : `Тест #${index + 1}`}
                               </span>
                               <span className="shrink-0">
                                 {result.passed ? (
@@ -630,9 +1003,7 @@ export default function LectureBlocks({
                                 <div className="break-words">Ожидалось: {result.expectedOutputs.join(' | ')}</div>
                                 <div className="break-words">Фактический вывод: {result.actualOutput || '(пусто)'}</div>
                                 {result.error && (
-                                  <div className="text-red-300 mt-0.5 break-words">
-                                    Ошибка: {result.error}
-                                  </div>
+                                  <div className="text-red-300 mt-0.5 break-words">Ошибка: {result.error}</div>
                                 )}
                               </div>
                             )}

@@ -80,6 +80,33 @@ const LECTURE_PROCESSOR_ASYNC_URL =
   process.env.GOLLOSSARY_LECTURE_PROCESSOR_ASYNC_URL ||
   LECTURE_PROCESSOR_URL.replace('/process', '/process-async');
 
+/** База URL сервиса concept-crud (Mongo mindmaps). Не открывать список mindmap в браузере без сессии — см. GET /glossary/mindmaps. */
+const GOLLOSSARY_CONCEPT_CRUD_BASE =
+  process.env.GOLLOSSARY_CONCEPT_CRUD_URL || 'http://127.0.0.1:8002';
+
+/**
+ * Подглавы (лекции), к которым у пользователя есть доступ: автор курса, запись на курс или course_access.
+ */
+async function getUserAccessibleSubchapterIds(userId) {
+  const r = await pool.query(
+    `SELECT DISTINCT s.id
+     FROM subchapters s
+     INNER JOIN chapters ch ON s.chapter_id = ch.id
+     INNER JOIN courses c ON ch.course_id = c.id
+     WHERE c.author_id = $1::uuid
+        OR EXISTS (
+          SELECT 1 FROM user_enrollments ue
+          WHERE ue.course_id = c.id AND ue.user_id = $1::uuid
+        )
+        OR EXISTS (
+          SELECT 1 FROM course_access ca
+          WHERE ca.course_id = c.id AND ca.user_id = $1::uuid
+        )`,
+    [userId],
+  );
+  return new Set(r.rows.map((row) => Number(row.id)).filter(Number.isFinite));
+}
+
 async function getFetch() {
   if (typeof fetch !== 'undefined') {
     return fetch;
@@ -305,6 +332,72 @@ const getCourseAccessStatus = async (courseId, userId) => {
     canViewContent,
   };
 };
+
+/**
+ * Статистика для UI «лекций / заданий» (как на странице курса):
+ * - lectures: блоки type = theory; completed = theory в подглавах с user_lesson_progress.is_completed
+ * - assignments: task, test, code_task; completed = есть user_content_block_answers с is_correct
+ */
+async function computeCourseContentStats(courseId, userId) {
+  const cid = Number(courseId);
+  const [lectureTotalRow, assignmentTotalRow] = await Promise.all([
+    pool.query(
+      `SELECT COUNT(*)::int AS n
+       FROM content_blocks cb
+       INNER JOIN subchapters s ON s.id = cb.subchapter_id
+       INNER JOIN chapters ch ON ch.id = s.chapter_id
+       WHERE ch.course_id = $1 AND cb.type = 'theory'`,
+      [cid],
+    ),
+    pool.query(
+      `SELECT COUNT(*)::int AS n
+       FROM content_blocks cb
+       INNER JOIN subchapters s ON s.id = cb.subchapter_id
+       INNER JOIN chapters ch ON ch.id = s.chapter_id
+       WHERE ch.course_id = $1 AND cb.type IN ('task', 'test', 'code_task')`,
+      [cid],
+    ),
+  ]);
+
+  const lecturesTotal = Number(lectureTotalRow.rows[0]?.n ?? 0);
+  const assignmentsTotal = Number(assignmentTotalRow.rows[0]?.n ?? 0);
+
+  let lecturesCompleted = 0;
+  let assignmentsCompleted = 0;
+
+  if (userId) {
+    const [lectureDoneRow, assignmentDoneRow] = await Promise.all([
+      pool.query(
+        `SELECT COUNT(*)::int AS n
+         FROM content_blocks cb
+         INNER JOIN subchapters s ON s.id = cb.subchapter_id
+         INNER JOIN chapters ch ON ch.id = s.chapter_id
+         INNER JOIN user_lesson_progress ulp ON ulp.lesson_id = s.id AND ulp.user_id = $2::uuid
+         WHERE ch.course_id = $1 AND cb.type = 'theory' AND ulp.is_completed = true`,
+        [cid, userId],
+      ),
+      pool.query(
+        `SELECT COUNT(DISTINCT cb.id)::int AS n
+         FROM content_blocks cb
+         INNER JOIN subchapters s ON s.id = cb.subchapter_id
+         INNER JOIN chapters ch ON ch.id = s.chapter_id
+         INNER JOIN user_content_block_answers uca
+           ON uca.content_block_id = cb.id AND uca.user_id = $2::uuid
+         WHERE ch.course_id = $1
+           AND cb.type IN ('task', 'test', 'code_task')
+           AND uca.is_correct = true`,
+        [cid, userId],
+      ),
+    ]);
+    lecturesCompleted = Number(lectureDoneRow.rows[0]?.n ?? 0);
+    assignmentsCompleted = Number(assignmentDoneRow.rows[0]?.n ?? 0);
+  }
+
+  return {
+    lectures: { completed: lecturesCompleted, total: lecturesTotal },
+    assignments: { completed: assignmentsCompleted, total: assignmentsTotal },
+  };
+}
 
 // POST /api/courses - Create a new course
 router.post('/', authenticateSession, async (req, res) => {
@@ -670,6 +763,92 @@ router.get('/my', authenticateSession, async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Gollossary: прокси чтения mindmap (только лекции из курсов пользователя)
+// ---------------------------------------------------------------------------
+
+router.get('/glossary/mindmaps', authenticateSession, async (req, res) => {
+  const userId = req.user.userId;
+  const limit = Math.min(500, Math.max(1, parseInt(String(req.query.limit || '500'), 10) || 500));
+  try {
+    const allowed = await getUserAccessibleSubchapterIds(userId);
+    const f = await getFetch();
+    const r = await f(`${GOLLOSSARY_CONCEPT_CRUD_BASE}/api/v1/mindmaps?limit=${limit}`);
+    if (!r.ok) {
+      const text = await r.text().catch(() => '');
+      console.error(`[GLOSSARY PROXY] list upstream ${r.status}:`, text.slice(0, 200));
+      return res.status(502).json({ error: 'Glossary service unavailable' });
+    }
+    const data = await r.json();
+    if (!Array.isArray(data)) {
+      return res.status(502).json({ error: 'Invalid glossary response' });
+    }
+    const filtered = data.filter((mm) => {
+      const sid = Number(mm?.source_lecture_id);
+      return Number.isFinite(sid) && allowed.has(sid);
+    });
+    res.status(200).json(filtered);
+  } catch (e) {
+    console.error('[GLOSSARY PROXY] list error:', e.message);
+    res.status(502).json({ error: 'Glossary service error' });
+  }
+});
+
+router.get('/glossary/mindmaps/:mindmapId', authenticateSession, async (req, res) => {
+  const userId = req.user.userId;
+  const { mindmapId } = req.params;
+  try {
+    const allowed = await getUserAccessibleSubchapterIds(userId);
+    const f = await getFetch();
+    const r = await f(
+      `${GOLLOSSARY_CONCEPT_CRUD_BASE}/api/v1/mindmaps/${encodeURIComponent(mindmapId)}`,
+    );
+    if (!r.ok) {
+      return res.status(r.status).json({ error: 'Mindmap not found' });
+    }
+    const data = await r.json();
+    const sid = Number(data?.source_lecture_id);
+    if (!Number.isFinite(sid) || !allowed.has(sid)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    res.status(200).json(data);
+  } catch (e) {
+    console.error('[GLOSSARY PROXY] get mindmap error:', e.message);
+    res.status(502).json({ error: 'Glossary service error' });
+  }
+});
+
+router.get('/glossary/mindmaps/:mindmapId/canvas', authenticateSession, async (req, res) => {
+  const userId = req.user.userId;
+  const { mindmapId } = req.params;
+  try {
+    const allowed = await getUserAccessibleSubchapterIds(userId);
+    const f = await getFetch();
+    const check = await f(
+      `${GOLLOSSARY_CONCEPT_CRUD_BASE}/api/v1/mindmaps/${encodeURIComponent(mindmapId)}`,
+    );
+    if (!check.ok) {
+      return res.status(check.status).json({ error: 'Mindmap not found' });
+    }
+    const mm = await check.json();
+    const sid = Number(mm?.source_lecture_id);
+    if (!Number.isFinite(sid) || !allowed.has(sid)) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+    const canvasR = await f(
+      `${GOLLOSSARY_CONCEPT_CRUD_BASE}/api/v1/mindmaps/${encodeURIComponent(mindmapId)}/canvas`,
+    );
+    if (!canvasR.ok) {
+      return res.status(canvasR.status).json({ error: 'Canvas not found' });
+    }
+    const canvasData = await canvasR.json();
+    res.status(200).json(canvasData);
+  } catch (e) {
+    console.error('[GLOSSARY PROXY] canvas error:', e.message);
+    res.status(502).json({ error: 'Glossary service error' });
+  }
+});
+
 // GET /api/courses/:id/access-status - Get current user's access status for a course
 router.get('/:id/access-status', optionalAuthenticateSession, async (req, res) => {
   const { id: courseId } = req.params;
@@ -719,6 +898,32 @@ router.post('/:id/enroll', authenticateSession, async (req, res) => {
   }
 });
 
+// GET /api/courses/:id/content-stats — то же тело, что поле contentStats в GET /api/courses/:id
+router.get('/:id(\\d+)/content-stats', optionalAuthenticateSession, async (req, res) => {
+  const courseId = parseInt(req.params.id, 10);
+  const userId = req.user?.userId || null;
+
+  if (!Number.isInteger(courseId)) {
+    return res.status(400).json({ error: 'Invalid course id' });
+  }
+
+  try {
+    const access = await getCourseAccessStatus(courseId, userId);
+    if (!access) {
+      return res.status(404).json({ error: 'Course not found' });
+    }
+    if (!access.canViewContent) {
+      return res.status(403).json({ error: 'You are not authorized to view this course content' });
+    }
+
+    const stats = await computeCourseContentStats(courseId, userId);
+    return res.status(200).json(stats);
+  } catch (err) {
+    console.error(`Error fetching content-stats for course ${courseId}:`, err.message);
+    return res.status(500).json({ error: 'Failed to fetch content statistics' });
+  }
+});
+
 // GET /api/courses/:id - Get a single course by ID with nested structure (Optimized)
 // Restrict :id to numeric values so static routes like /favorites are not shadowed.
 router.get('/:id(\\d+)', optionalAuthenticateSession, async (req, res) => {
@@ -759,6 +964,7 @@ router.get('/:id(\\d+)', optionalAuthenticateSession, async (req, res) => {
       COALESCE(c.hours_practice, 0) as "hoursPractice",
       COALESCE(c.hours_theory, 0) as "hoursTheory",
       COALESCE((SELECT ROUND(AVG(rating)::numeric, 2) FROM course_ratings WHERE course_id = c.id), 0) as rating,
+      COALESCE((SELECT COUNT(*)::int FROM course_ratings WHERE course_id = c.id), 0) as "ratingsCount",
       (SELECT rating FROM course_ratings WHERE course_id = c.id AND user_id = $2::uuid LIMIT 1) as my_rating,
       COALESCE((SELECT COUNT(*) FROM user_enrollments ue WHERE ue.course_id = c.id), 0) as "studentsCount",
       EXISTS (
@@ -852,6 +1058,40 @@ router.get('/:id(\\d+)', optionalAuthenticateSession, async (req, res) => {
         ...ch,
         subchapters: [],
       }));
+    }
+
+    const canViewContent = Boolean(course.is_public || isAuthor || isEnrolled || hasAccess);
+    if (canViewContent) {
+      try {
+        const stats = await computeCourseContentStats(Number(id), userId);
+        course.contentStats = {
+          lectures: {
+            completed: Number(stats.lectures.completed) || 0,
+            total: Number(stats.lectures.total) || 0,
+          },
+          assignments: {
+            completed: Number(stats.assignments.completed) || 0,
+            total: Number(stats.assignments.total) || 0,
+          },
+        };
+      } catch (statsErr) {
+        console.error(`[courses] contentStats for course ${id}:`, statsErr.message);
+        course.contentStats = {
+          lectures: { completed: 0, total: 0 },
+          assignments: { completed: 0, total: 0 },
+        };
+      }
+    }
+
+    if (course.rating != null && course.rating !== '') {
+      const r = parseFloat(String(course.rating));
+      if (Number.isFinite(r)) course.rating = r;
+    }
+    if (course.ratingsCount != null) {
+      course.ratingsCount = parseInt(String(course.ratingsCount), 10) || 0;
+    }
+    if (course.studentsCount != null) {
+      course.studentsCount = parseInt(String(course.studentsCount), 10) || 0;
     }
 
     res.status(200).json(course);

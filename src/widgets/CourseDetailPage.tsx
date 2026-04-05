@@ -1,12 +1,20 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect, useState, useRef } from 'react';
-import { coursesApi, type Course, type Chapter, type Subchapter, type ContentBlock } from '@/shared/api/courses';
+import {
+  coursesApi,
+  type Course,
+  type Chapter,
+  type Subchapter,
+  type ContentBlock,
+  type CourseContentStats,
+} from '@/shared/api/courses';
 import { getCoverImageUrl, resolveProfileMediaUrl } from '@/shared/utils/courseTransform';
 import HeroHeader from "@/components/dashboard/HeroHeader";
 // import CourseProgress from "@/components/dashboard/CourseProgress";
 import CourseModules from "@/components/dashboard/CourseModules";
 import ActivitySection from "@/components/dashboard/ActivitySection";
 import AboutCourse from "@/components/dashboard/AboutCourse";
+import CourseStats from "@/components/dashboard/CourseStats";
 import ResumeSection from "@/components/dashboard/ResumeSection";
 import { Button } from "@/components/ui/button";
 import { Edit, Star } from "lucide-react";
@@ -68,7 +76,11 @@ export default function CourseDetailPage() {
   const [courseRating, setCourseRating] = useState<number | null>(null);
   const [myRating, setMyRating] = useState<number | null>(null);
   const [ratingSubmitting, setRatingSubmitting] = useState(false);
-  
+  const [contentStats, setContentStats] = useState<CourseContentStats>({
+    lectures: { completed: 0, total: 0 },
+    assignments: { completed: 0, total: 0 },
+  });
+
   // Track time spent on page
   const pageLoadTime = useRef<number>(Date.now());
   const trackingInterval = useRef<number | null>(null);
@@ -110,6 +122,12 @@ export default function CourseDetailPage() {
           totalLessons,
           totalDuration
         });
+        setContentStats(
+          courseData.contentStats ?? {
+            lectures: { completed: 0, total: 0 },
+            assignments: { completed: 0, total: 0 },
+          },
+        );
         setCourseRating(courseData.rating != null ? Number(courseData.rating) : null);
         setMyRating(courseData.my_rating != null ? Number(courseData.my_rating) : null);
       } catch (err) {
@@ -127,7 +145,7 @@ export default function CourseDetailPage() {
     };
 
     fetchCourse();
-  }, [id]);
+  }, [id, isAuthenticated]);
 
   // Загружаем прогресс по курсу из backend
   useEffect(() => {
@@ -203,23 +221,6 @@ export default function CourseDetailPage() {
     );
   }
 
-  // Count theory and practice content blocks
-  const theoryCount = course.chapters?.reduce((sum, chapter) => {
-    if (!chapter.subchapters) return sum;
-    return sum + chapter.subchapters.reduce((subSum, subchapter) => {
-      if (!subchapter.content_blocks) return subSum;
-      return subSum + subchapter.content_blocks.filter(block => block.type === 'theory').length;
-    }, 0);
-  }, 0) || 0;
-  
-  const practiceCount = course.chapters?.reduce((sum, chapter) => {
-    if (!chapter.subchapters) return sum;
-    return sum + chapter.subchapters.reduce((subSum, subchapter) => {
-      if (!subchapter.content_blocks) return subSum;
-      return subSum + subchapter.content_blocks.filter(block => block.type === 'task').length;
-    }, 0);
-  }, 0) || 0;
-
   // Convert chapters to sections format for CourseModules
   const sections = course.chapters?.map((chapter, chapterIndex) => ({
     id: String(chapter.id),
@@ -248,14 +249,6 @@ export default function CourseDetailPage() {
 //     { value: String(course.totalLessons || 0), label: "лекций", progress: 78, color: "green" as const },
 //     { value: String(course.studentsCount || 0), label: "процесс", progress: 60, color: "orange" as const },
 //   ];
-
-  // Prepare stats for HeroHeader
-  const stats = {
-    tests: String(practiceCount),
-    programs: "0/5",
-    lectures: `${theoryCount}/${course.totalLessons || 0}`,
-    progress: `${progressPercentage}%`
-  };
 
   // Prepare tags
   const tags = course.language ? [course.language, course.is_public ? 'Публичный' : 'Приватный'] : [];
@@ -288,8 +281,10 @@ export default function CourseDetailPage() {
             authorAvatar={resolveProfileMediaUrl(course.instructor_avatar) ?? null}
             coverImage={getCoverImageUrl(course.cover_image)}
             price={Number.isFinite(numericPrice) ? numericPrice : 0}
-            rating={course.rating != null ? Number(course.rating) : undefined}
-            stats={stats}
+            stats={{
+              lectures: contentStats.lectures,
+              assignments: contentStats.assignments,
+            }}
             tags={tags}
             progress={progressPercentage}
             onAuthorClick={course.author_id ? () => navigate(`/profile/${course.author_id}`) : undefined}
@@ -304,6 +299,7 @@ export default function CourseDetailPage() {
               <CourseModules
                 sections={sections}
                 canViewSubitems
+                hideChapterOverview={Boolean(isAuthor || isEnrolled || course.has_access)}
                 onStartChapter={(chapterId, subchapterId) =>
                   navigate(`/courses/${id}/learn/${chapterId}/${subchapterId}`)
                 }
@@ -324,12 +320,24 @@ export default function CourseDetailPage() {
                         disabled={ratingSubmitting}
                         onClick={async () => {
                           if (!id) return;
+                          const hadPriorRating = myRating != null && myRating > 0;
                           setRatingSubmitting(true);
                           try {
                             const res = await coursesApi.rateCourse(parseInt(id, 10), value);
                             setMyRating(value);
                             setCourseRating(res.rating);
-                            setCourse((prev) => prev ? { ...prev, rating: res.rating, my_rating: value } : null);
+                            setCourse((prev) =>
+                              prev
+                                ? {
+                                    ...prev,
+                                    rating: res.rating,
+                                    my_rating: value,
+                                    ratingsCount: hadPriorRating
+                                      ? Number(prev.ratingsCount ?? 0) || 0
+                                      : (Number(prev.ratingsCount ?? 0) || 0) + 1,
+                                  }
+                                : null,
+                            );
                           } catch (err) {
                             console.error('Failed to rate course:', err);
                           } finally {
@@ -352,6 +360,13 @@ export default function CourseDetailPage() {
                   )}
                 </div>
               )}
+              <CourseStats
+                rating={course.rating != null ? Number(course.rating) : null}
+                ratingsCount={Number(course.ratingsCount ?? 0) || 0}
+                studentsCount={Number(course.studentsCount ?? 0) || 0}
+                theoryHours={Number(course.hoursTheory ?? 0) || 0}
+                practiceHours={Number(course.hoursPractice ?? 0) || 0}
+              />
               <ActivitySection 
                 activityStats={activityData ? [
                   { value: activityData.stats.today, label: "сегодня" },

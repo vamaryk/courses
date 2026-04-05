@@ -1,4 +1,4 @@
-import { ChevronLeft, BookOpen, FileCheck, TrendingUp, User, Star } from "lucide-react";
+import { ChevronLeft, BookOpen, FileCheck, User } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import heroImage from "@/assets/hero-robot.jpg";
 
@@ -9,19 +9,16 @@ interface HeroHeaderProps {
   authorAvatar?: string | null;
   coverImage?: string | null;
   price?: number;
-  rating?: number;
   stats?: {
-    tests?: string;
-    programs?: string;
-    lectures?: string;
-    progress?: string;
+    lectures?: { completed: number; total: number };
+    assignments?: { completed: number; total: number };
   };
   tags?: string[];
   progress?: number;
   onAuthorClick?: () => void;
 }
 
-const HeroHeader = ({ 
+const HeroHeader = ({
   courseTitle = "Основы HTML и CSS",
   courseDescription = "Курс для начинающих верстальщиков сайтов на HTML и CSS. Разбираем реальные макеты, изучаем семантику языка, отрабатываем навыки в тренажере. В курсе более 190 заданий. Из них 150 – решение практических задач.",
   authorName = "Иван Иванов",
@@ -29,57 +26,50 @@ const HeroHeader = ({
   coverImage,
   price,
   stats = {
-    tests: "1/15",
-    programs: "0/5",
-    lectures: "1/40",
-    progress: "1%"
+    lectures: { completed: 0, total: 0 },
+    assignments: { completed: 0, total: 0 },
   },
   tags = ["Программирование", "HTML", "CSS"],
   progress = 1,
-  rating,
   onAuthorClick,
 }: HeroHeaderProps) => {
   const navigate = useNavigate();
   const isFreeCourse = !price || price <= 0;
-
-  const defaultStats = [
-    { icon: FileCheck, value: stats.tests || "1/15", label: "тестов" },
-    { icon: BookOpen, value: stats.lectures || "1/40", label: "лекций" },
-    { icon: TrendingUp, value: stats.progress || "1%", label: "прогресс" },
-  ];
+  const lecturePair = stats.lectures ?? { completed: 0, total: 0 };
+  const assignmentPair = stats.assignments ?? { completed: 0, total: 0 };
+  const lecDone = Number(lecturePair.completed) || 0;
+  const lecTot = Number(lecturePair.total) || 0;
+  const asgDone = Number(assignmentPair.completed) || 0;
+  const asgTot = Number(assignmentPair.total) || 0;
 
   return (
     <div className="relative rounded-xl overflow-hidden mb-4">
-      {/* Background image */}
-      <div 
+      <div
         className="absolute inset-0 bg-cover bg-center bg-no-repeat"
         style={{ backgroundImage: `url(${coverImage || heroImage})` }}
       />
-      
-      {/* Gradient overlay */}
+
       <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/60 to-transparent" />
-      
-      {/* Content */}
+
       <div className="relative z-10 p-6 md:p-8 min-h-[280px] flex flex-col justify-between">
-        {/* Top row */}
         <div className="flex flex-col md:flex-row justify-between items-start gap-6">
           <div className="flex-1">
-            <button 
+            <button
               onClick={() => navigate("/courses")}
               className="flex items-center gap-2 text-white/80 hover:text-white transition-colors text-sm mb-4 cursor-pointer"
             >
               <ChevronLeft className="w-4 h-4" />
               Все курсы
             </button>
-            
+
             <h1 className="text-2xl md:text-2xl lg:text-3xl font-Xolonium font-bold text-white mb-3">
               {courseTitle}
             </h1>
-            
+
             <p className="text-white/70 text-sm max-w-lg leading-relaxed mb-6 line-clamp-3 md:line-clamp-4">
               {courseDescription}
             </p>
-            
+
             <div className="flex items-center gap-3">
               {onAuthorClick ? (
                 <button
@@ -110,11 +100,10 @@ const HeroHeader = ({
               )}
             </div>
           </div>
-          
-          {/* Tags - only show on medium+ screens */}
+
           <div className="hidden md:block flex gap-2 flex-wrap">
             {tags.map((tag, index) => (
-              <span 
+              <span
                 key={index}
                 className="px-3 py-1.5 md:px-4 md:py-2 rounded-full bg-white/10 backdrop-blur-sm text-white text-xs md:text-sm font-medium border border-white/20"
               >
@@ -123,57 +112,58 @@ const HeroHeader = ({
             ))}
           </div>
         </div>
-        
-        {/* Stats row - responsive grid for mobile */}
-        <div className="mt-2 mb-6">
-          <div className="flex flex-wrap items-center gap-4 md:gap-8 pt-4">
-            {rating != null && rating > 0 && (
-              <div className="flex items-center gap-2">
-                <Star className="w-4 h-4 text-amber-400 fill-amber-400" />
-                <span className="text-white/60 text-xs md:text-sm">Рейтинг:</span>
-                <span className="text-white font-semibold text-sm">{rating.toFixed(1)}</span>
-              </div>
-            )}
-            {typeof price === "number" && (
-              <div className="flex items-center gap-2">
-                <span className="text-white/60 text-xs md:text-sm">Стоимость:</span>
-                <span className="text-white font-semibold text-sm md:text-base">
-                  {isFreeCourse ? "бесплатно" : `${price.toLocaleString("ru-RU")} ₽`}
-                </span>
-              </div>
-            )}
-            {defaultStats.map((stat, index) => {
-              const Icon = stat.icon;
-              return (
-                <div key={index} className="flex items-center gap-2">
-                  <Icon className="w-4 h-4 text-white/60" />
-                  <span className="text-white/60 text-xs md:text-sm">{stat.label}:</span>
-                  <span className="text-white font-semibold text-sm">{stat.value}</span>
-                </div>
-              );
-            })}
+
+        <div className="mt-2 mb-2">
+          <div className="flex flex-wrap items-center gap-6 md:gap-8 pt-2">
+            <div className="flex items-center gap-2">
+              <BookOpen className="w-4 h-4 text-white/60 shrink-0" />
+              <span className="text-white/60 text-xs md:text-sm">лекций:</span>
+              <span className="text-white font-semibold text-sm tabular-nums flex items-baseline gap-1">
+                <span className="text-emerald-300">{lecDone}</span>
+                <span className="text-white/45 font-normal">/</span>
+                <span>{lecTot}</span>
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <FileCheck className="w-4 h-4 text-white/60 shrink-0" />
+              <span className="text-white/60 text-xs md:text-sm">заданий:</span>
+              <span className="text-white font-semibold text-sm tabular-nums flex items-baseline gap-1">
+                <span className="text-emerald-300">{asgDone}</span>
+                <span className="text-white/45 font-normal">/</span>
+                <span>{asgTot}</span>
+              </span>
+            </div>
           </div>
         </div>
-        
-        {/* Progress bar */}
+
+        {typeof price === "number" && (
+          <div className="mt-2 mb-4 pt-4">
+            <div className="flex items-center gap-2">
+              <span className="text-white/60 text-xs md:text-sm">Стоимость:</span>
+              <span className="text-white font-semibold text-sm md:text-base">
+                {isFreeCourse ? "бесплатно" : `${price.toLocaleString("ru-RU")} ₽`}
+              </span>
+            </div>
+          </div>
+        )}
+
         <div>
           <div className="flex justify-between text-white/70 text-sm mb-2">
             <span>Ваш прогресс</span>
             <span>{progress}%</span>
           </div>
           <div className="h-2 bg-white/10 rounded-full overflow-hidden">
-            <div 
-              className="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-500" 
+            <div
+              className="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all duration-500"
               style={{ width: `${progress}%` }}
             />
           </div>
         </div>
       </div>
-      
-      {/* Tags for mobile - shown only on small screens */}
+
       <div className="md:hidden absolute bottom-4 right-4 flex gap-2 flex-wrap">
         {tags.map((tag, index) => (
-          <span 
+          <span
             key={index}
             className="px-3 py-1.5 rounded-full bg-white/10 backdrop-blur-sm text-white text-xs font-medium border border-white/20"
           >

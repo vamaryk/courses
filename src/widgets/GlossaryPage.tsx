@@ -237,6 +237,8 @@ const GlossaryPage = () => {
   const [activeStage, setActiveStage] = useState(1);
   const [currentCourse, setCurrentCourse] = useState<string>("");
   const [loading, setLoading] = useState(true);
+  /** После первого завершения загрузки «мои курса + прогресс» (чтобы не мигало пустое состояние). */
+  const [coursesProgressReady, setCoursesProgressReady] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -274,7 +276,8 @@ const GlossaryPage = () => {
   const [mindmapsReloadTick, setMindmapsReloadTick] = useState(0);
 
   const filteredMindmaps = useMemo(() => {
-    if (!currentCourse) return allMindmaps;
+    // Без выбранного курса не показываем «все» mindmap из API (и не открываем все лекции гостю).
+    if (!currentCourse) return [];
     const courseId = Number(currentCourse);
     const mapping = courseLectureMap[courseId];
     if (!mapping) return [];
@@ -404,7 +407,7 @@ const GlossaryPage = () => {
       } catch (e: any) {
         if (cancelled) return;
         console.error("Failed to load mindmaps", e);
-        setError("Не удалось загрузить карту знаний");
+        setError("unavailable");
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -526,6 +529,8 @@ const GlossaryPage = () => {
         setCompletedLectureIds(completedSet);
       } catch (e) {
         console.error("Failed to load courses/progress for glossary", e);
+      } finally {
+        if (!cancelled) setCoursesProgressReady(true);
       }
     };
 
@@ -829,7 +834,7 @@ const GlossaryPage = () => {
   ]);
 
   /* ─── Render ─── */
-  if (loading) {
+  if (loading || !coursesProgressReady) {
     return (
       <div className="flex items-center justify-center h-[70vh]">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -844,13 +849,20 @@ const GlossaryPage = () => {
     return (
       <div className="flex items-center justify-center h-[70vh]">
         <div className="max-w-md text-center space-y-3">
-          <p className="text-sm font-medium text-destructive">{error}</p>
+          <p className="text-sm font-medium text-foreground">
+            Глоссарий сейчас недоступен. Зайдите позже.
+          </p>
           <p className="text-xs text-muted-foreground">
-            Убедитесь, что Python-сервисы запущены:{" "}
+            Если вы администратор, проверьте сервисы Gollossary (
             <code className="bg-muted px-1 py-0.5 rounded text-xs">python run_services.py</code>
+            ).
           </p>
           <button
-            onClick={() => setMindmapsReloadTick((t) => t + 1)}
+            type="button"
+            onClick={() => {
+              setError(null);
+              setMindmapsReloadTick((t) => t + 1);
+            }}
             className="text-xs px-3 py-1.5 rounded-md border border-border hover:bg-accent transition-colors"
           >
             Повторить
@@ -876,12 +888,28 @@ const GlossaryPage = () => {
         {filteredMindmaps.length === 0 ? (
           <div className="flex-1 flex items-center justify-center min-h-[55vh] lg:min-h-0 p-6">
             <div className="max-w-md text-center">
-              <p className="text-sm text-muted-foreground">
-                Для данного курса пока нет глоссария.
-              </p>
-              <p className="mt-3 text-sm text-muted-foreground">
-                Попробуйте нажать “Создать mindmap”, если вы владелец курса.
-              </p>
+              {userCourses.length === 0 ? (
+                <p className="text-sm text-muted-foreground">
+                  У вас пока нет курсов с глоссариями. Запишитесь на курс или создайте свой — термины
+                  появятся здесь после генерации.
+                </p>
+              ) : isCourseOwner ? (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    Для этого курса ещё нет карт знаний по лекциям.
+                  </p>
+                  <p className="mt-3 text-sm text-muted-foreground">
+                    Нажмите «Создать mindmap» в боковой панели, чтобы сгенерировать глоссарий.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    Глоссарий для этого курса пока не готов.
+                  </p>
+                  <p className="mt-3 text-sm text-muted-foreground">Зайдите позже.</p>
+                </>
+              )}
             </div>
           </div>
         ) : (

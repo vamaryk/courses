@@ -1,4 +1,8 @@
 import axios from 'axios';
+import {
+  coerceCourseNumericFields,
+  mergeCourseContentStats,
+} from '@/shared/utils/courseContentStats';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
@@ -24,6 +28,8 @@ export interface Course {
   instructor_avatar?: string | null;
   price?: number;
   studentsCount?: number;
+  /** Сколько студентов поставили оценку курсу */
+  ratingsCount?: number;
   hoursPractice?: number;
   hoursTheory?: number;
   is_enrolled?: boolean;
@@ -33,6 +39,8 @@ export interface Course {
   /** из GET /api/courses/my */
   students_count?: number;
   favorites_count?: number;
+  /** GET /api/courses/:id — счётчики лекций/заданий (см. computeCourseContentStats на бэкенде) */
+  contentStats?: CourseContentStats;
 }
 
 export interface CourseAccessStatus {
@@ -69,6 +77,11 @@ export interface ContentBlock {
   content: string;
   answer?: string | null;
   order: number;
+}
+
+export interface CourseContentStats {
+  lectures: { completed: number; total: number };
+  assignments: { completed: number; total: number };
 }
 
 export interface CreateCourseData {
@@ -185,11 +198,14 @@ export const coursesApi = {
     const response = await axios.get(`${API_URL}/api/courses/${id}`, {
       withCredentials: true,
     });
-    // Ensure chapters array exists
-    const course = response.data;
+    const course = response.data as Record<string, unknown> & Course;
     if (!course.chapters) {
       course.chapters = [];
     }
+    coerceCourseNumericFields(course);
+    const rawStats =
+      course.contentStats ?? (course as { content_stats?: unknown }).content_stats;
+    course.contentStats = mergeCourseContentStats(rawStats, course.chapters);
     return course;
   },
 
@@ -377,6 +393,13 @@ export const coursesApi = {
 
   async getFavoriteStatus(courseId: number): Promise<{ isFavorite: boolean }> {
     const response = await axios.get(`${API_URL}/api/courses/${courseId}/favorite/status`, {
+      withCredentials: true,
+    });
+    return response.data;
+  },
+
+  async getCourseContentStats(courseId: number): Promise<CourseContentStats> {
+    const response = await axios.get(`${API_URL}/api/courses/${courseId}/content-stats`, {
       withCredentials: true,
     });
     return response.data;

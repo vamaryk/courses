@@ -155,7 +155,7 @@ const CrCourses = ({ profileId, authorDashboard, authorDashboardLoading }: CrCou
 
   const loading = profileId ? loadingRemote : Boolean(authorDashboardLoading);
 
-  const totalItems = 1 + courses.length;
+  const totalItems = (profileId ? 0 : 1) + courses.length;
   const showArrows = totalItems > visibleItems && (canScrollPrev || canScrollNext);
 
   if (loading) {
@@ -185,27 +185,23 @@ const CrCourses = ({ profileId, authorDashboard, authorDashboardLoading }: CrCou
   }
 
   if (courses.length === 0) {
+    if (profileId) {
+      return (
+        <section className="mb-8">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-semibold text-foreground">Созданные курсы</h2>
+          </div>
+          <p className="text-sm text-muted-foreground py-4">
+            Пользователь ещё не создавал курсы.
+          </p>
+        </section>
+      );
+    }
     return (
       <section className="mb-8">
         <div className="flex items-center justify-between mb-4">
           <h2 className="text-xl font-semibold text-foreground">Созданные курсы</h2>
         </div>
-        {!profileId && authorDashboard && (
-          <div className="flex flex-wrap gap-6 mb-4 text-sm text-muted-foreground">
-            <span>
-              Всего студентов:{' '}
-              <span className="font-semibold text-foreground">{authorDashboard.total_students}</span>
-            </span>
-            <span>
-              Средний рейтинг:{' '}
-              <span className="font-semibold text-foreground">
-                {authorDashboard.average_rating != null
-                  ? authorDashboard.average_rating.toFixed(2)
-                  : '—'}
-              </span>
-            </span>
-          </div>
-        )}
         <div className="flex items-center gap-4">
           <div className="w-1/2 lg:w-1/5">
             <CreateCourseCard />
@@ -223,22 +219,6 @@ const CrCourses = ({ profileId, authorDashboard, authorDashboardLoading }: CrCou
       <div className="flex items-center justify-between mb-4">
         <h2 className="text-xl font-semibold text-foreground">Созданные курсы</h2>
       </div>
-      {!profileId && authorDashboard && (
-        <div className="flex flex-wrap gap-6 mb-4 text-sm text-muted-foreground">
-          <span>
-            Всего студентов:{' '}
-            <span className="font-semibold text-foreground">{authorDashboard.total_students}</span>
-          </span>
-          <span>
-            Средний рейтинг:{' '}
-            <span className="font-semibold text-foreground">
-              {authorDashboard.average_rating != null
-                ? authorDashboard.average_rating.toFixed(2)
-                : '—'}
-            </span>
-          </span>
-        </div>
-      )}
       <Carousel
         opts={{
           align: "start",
@@ -248,9 +228,11 @@ const CrCourses = ({ profileId, authorDashboard, authorDashboardLoading }: CrCou
         setApi={setCarouselApi}
       >
         <CarouselContent className="-ml-1 md:-ml-2">
-          <CarouselItem className="pl-1 md:pl-2 basis-1/2 md:basis-1/3 lg:basis-1/5">
-            <CreateCourseCard />
-          </CarouselItem>
+          {!profileId && (
+            <CarouselItem className="pl-1 md:pl-2 basis-1/2 md:basis-1/3 lg:basis-1/5">
+              <CreateCourseCard />
+            </CarouselItem>
+          )}
 
           {courses.map((course) => (
             <CarouselItem 
@@ -261,8 +243,7 @@ const CrCourses = ({ profileId, authorDashboard, authorDashboardLoading }: CrCou
                 id={course.id}
                 title={course.title}
                 image={getCoverImageUrl(course.cover_image || course.image) || defaultCourseImage}
-                favoritesCount={course.favoritesCount || 0}
-                studentsCount={course.studentsCount || 0}
+                manageHref={profileId ? undefined : `/courses/${course.id}/manage`}
               />
             </CarouselItem>
           ))}

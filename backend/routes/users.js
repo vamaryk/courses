@@ -556,6 +556,9 @@ router.get('/profile/courses', authenticateSession, async (req, res) => {
         c.cover_image as image,
         ue.completion_status,
         ue.enrolled_at,
+        p.id AS author_profile_id,
+        COALESCE(p.first_name || ' ' || p.last_name, 'Преподаватель') AS author_name,
+        p.avatar_url AS author_avatar_url,
         CASE 
           WHEN ue.completion_status = 'completed' THEN 100
           ELSE COALESCE(
@@ -565,11 +568,13 @@ router.get('/profile/courses', authenticateSession, async (req, res) => {
         END as progress
       FROM user_enrollments ue
       JOIN courses c ON c.id = ue.course_id
+      LEFT JOIN profiles p ON p.id = c.author_id
       LEFT JOIN chapters ch ON ch.course_id = c.id
       LEFT JOIN subchapters sc ON sc.chapter_id = ch.id
       LEFT JOIN user_lesson_progress ulp ON ulp.lesson_id = sc.id AND ulp.user_id = $1::uuid AND ulp.is_completed = true
       WHERE ue.user_id = $1::uuid AND c.author_id IS DISTINCT FROM $1::uuid
-      GROUP BY c.id, c.title, c.description, c.cover_image, ue.completion_status, ue.enrolled_at
+      GROUP BY c.id, c.title, c.description, c.cover_image, ue.completion_status, ue.enrolled_at,
+        p.id, p.first_name, p.last_name, p.avatar_url
       ORDER BY ue.enrolled_at DESC
       LIMIT 10`,
       [userId]
@@ -580,7 +585,10 @@ router.get('/profile/courses', authenticateSession, async (req, res) => {
       title: course.title,
       image: course.image || null,
       progress: Math.round(parseFloat(course.progress) || 0),
-      isCompleted: course.completion_status === 'completed'
+      isCompleted: course.completion_status === 'completed',
+      authorName: course.author_name || null,
+      authorAvatarUrl: course.author_avatar_url || null,
+      courseAuthorId: course.author_profile_id != null ? String(course.author_profile_id) : null,
     }));
 
     res.status(200).json(courses);
@@ -609,6 +617,9 @@ router.get('/:id/courses', optionalAuthenticateSession, async (req, res) => {
         c.cover_image as image,
         ue.completion_status,
         ue.enrolled_at,
+        p.id AS author_profile_id,
+        COALESCE(p.first_name || ' ' || p.last_name, 'Преподаватель') AS author_name,
+        p.avatar_url AS author_avatar_url,
         CASE 
           WHEN ue.completion_status = 'completed' THEN 100
           ELSE COALESCE(
@@ -618,11 +629,13 @@ router.get('/:id/courses', optionalAuthenticateSession, async (req, res) => {
         END as progress
       FROM user_enrollments ue
       JOIN courses c ON c.id = ue.course_id
+      LEFT JOIN profiles p ON p.id = c.author_id
       LEFT JOIN chapters ch ON ch.course_id = c.id
       LEFT JOIN subchapters sc ON sc.chapter_id = ch.id
       LEFT JOIN user_lesson_progress ulp ON ulp.lesson_id = sc.id AND ulp.user_id = $1::uuid AND ulp.is_completed = true
       WHERE ue.user_id = $1::uuid AND c.author_id IS DISTINCT FROM $1::uuid
-      GROUP BY c.id, c.title, c.description, c.cover_image, ue.completion_status, ue.enrolled_at
+      GROUP BY c.id, c.title, c.description, c.cover_image, ue.completion_status, ue.enrolled_at,
+        p.id, p.first_name, p.last_name, p.avatar_url
       ORDER BY ue.enrolled_at DESC
       LIMIT 10`,
       [id]
@@ -633,7 +646,10 @@ router.get('/:id/courses', optionalAuthenticateSession, async (req, res) => {
       title: course.title,
       image: course.image || null,
       progress: Math.round(parseFloat(course.progress) || 0),
-      isCompleted: course.completion_status === 'completed'
+      isCompleted: course.completion_status === 'completed',
+      authorName: course.author_name || null,
+      authorAvatarUrl: course.author_avatar_url || null,
+      courseAuthorId: course.author_profile_id != null ? String(course.author_profile_id) : null,
     }));
 
     res.status(200).json(courses);

@@ -521,23 +521,33 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
   // 🔧 Извлечение кода и языка из блока
   const extractCodeFromBlock = useCallback((block: HTMLElement): { code: string; language: string } => {
-    const codeElement = block.querySelector('code');
     const language = block.getAttribute('data-language') || '';
+    const contentElements = block.querySelectorAll('.code-content');
+    if (contentElements.length > 0) {
+      const code = Array.from(contentElements)
+        .map((el) => {
+          const t = el.textContent ?? '';
+          return t === '\u00a0' || t === ' ' ? '' : t;
+        })
+        .join('\n');
+      return { code, language };
+    }
+    const codeElement = block.querySelector('code');
     if (!codeElement) return { code: '', language };
-    
+
     const clone = codeElement.cloneNode(true) as HTMLElement;
     clone.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
     clone.querySelectorAll('.code-linenum').forEach(el => el.remove());
-    const contentElements = clone.querySelectorAll('.code-content');
-    
-    const code = contentElements.length > 0 
-      ? Array.from(contentElements).map(el => el.textContent || '').join('\n')
-      : clone.textContent || '';
-      
+    const fromSpans = clone.querySelectorAll('.code-content');
+    const code =
+      fromSpans.length > 0
+        ? Array.from(fromSpans).map((el) => el.textContent || '').join('\n')
+        : clone.textContent || '';
+
     return { code, language };
   }, []);
 
-  // 🔧 Генерация КОМПАКТНОГО HTML для блока кода (убраны отступы)
+  // 🔧 HTML блока кода: строки — span.code-line внутри <code> (phrasing), не <div> — иначе HTML5 вынесет div и сломает блок
   const generateCodeBlockHtml = useCallback((code: string, blockId: string, language: string = ''): string => {
     const lines = code.split('\n');
     const maxDigits = lines.length.toString().length;
@@ -549,35 +559,10 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
-      return `<div class="code-line" style="display:flex;line-height:20px;min-height:20px;">
-        <span class="code-linenum" style="color:#6e7681;user-select:none;padding-right:8px;display:inline-block;text-align:right;width:${lineNumberWidth}px;font-variant-numeric:tabular-nums;font-size:12px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;flex-shrink:0;">${num}</span>
-        <span class="code-content" style="flex:1;min-width:0;white-space:pre-wrap;word-wrap:break-word;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:13px;">${escaped || ' '}</span>
-      </div>`;
+      return `<span class="code-line" style="display:flex;line-height:20px;min-height:20px;width:100%;box-sizing:border-box;"><span class="code-linenum" style="color:#6e7681;user-select:none;padding-right:8px;display:inline-block;text-align:right;width:${lineNumberWidth}px;font-variant-numeric:tabular-nums;font-size:12px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;flex-shrink:0;">${num}</span><span class="code-content" style="flex:1;min-width:0;white-space:pre-wrap;word-wrap:break-word;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:13px;">${escaped || ' '}</span></span>`;
     }).join('');
     
-    return `
-      <div class="code-block" contenteditable="false" data-code-block="true" data-code-id="${blockId}" data-language="${language}"
-           style="background:#1e1e1e;color:#d4d4d4;padding:0;border-radius:4px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:13px;margin:4px 0;border:1px solid #333;position:relative;max-width:100%;width:100%;overflow:hidden;">
-        <div style="position:absolute;top:6px;right:6px;opacity:0;transition:opacity 0.2s;display:flex;gap:4px;" class="code-edit-btn-wrapper">
-          <button type="button" data-copy-code="true" style="background:#333;color:#fff;border:1px solid #555;padding:2px 5px;border-radius:2px;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:2px;">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
-            <span>Копировать</span>
-          </button>
-          <button type="button" data-edit-code="true" style="background:#333;color:#fff;border:1px solid #555;padding:2px 5px;border-radius:2px;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:2px;">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-            <span>Редактировать</span>
-          </button>
-          <button type="button" data-delete-code="true" style="background:#dc2626;color:#fff;border:1px solid #b91c1c;padding:2px 5px;border-radius:2px;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:2px;">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-            <span>Удалить</span>
-          </button>
-        </div>
-        ${language ? `<div style="position:absolute;top:6px;left:10px;font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.5px;">${language}</div>` : ''}
-        <div style="overflow-x:auto;overflow-y:hidden;max-width:100%;scrollbar-gutter:stable both-edges;${language ? 'margin-top:24px' : 'margin-top:0'};">
-          <pre style="margin:0;padding:8px 10px;background:transparent;border:0;white-space:pre-wrap;word-wrap:break-word;overflow:visible;line-height:20px;"><code style="display:block;min-width:0;max-width:100%;line-height:20px;font-size:13px;">${codeRows}</code></pre>
-        </div>
-      </div>
-    `;
+    return `<div class="code-block" contenteditable="false" data-code-block="true" data-code-id="${blockId}" data-language="${language}" style="background:#1e1e1e;color:#d4d4d4;padding:0;border-radius:4px;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:13px;margin:4px 0;border:1px solid #333;position:relative;max-width:100%;width:100%;overflow:hidden;"><div style="position:absolute;top:6px;right:6px;opacity:0;transition:opacity 0.2s;display:flex;gap:4px;" class="code-edit-btn-wrapper"><button type="button" data-copy-code="true" style="background:#333;color:#fff;border:1px solid #555;padding:2px 5px;border-radius:2px;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:2px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg><span>Копировать</span></button><button type="button" data-edit-code="true" style="background:#333;color:#fff;border:1px solid #555;padding:2px 5px;border-radius:2px;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:2px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg><span>Редактировать</span></button><button type="button" data-delete-code="true" style="background:#dc2626;color:#fff;border:1px solid #b91c1c;padding:2px 5px;border-radius:2px;font-size:12px;cursor:pointer;display:inline-flex;align-items:center;gap:2px;"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg><span>Удалить</span></button></div>${language ? `<div style="position:absolute;top:6px;left:10px;font-size:10px;color:#888;text-transform:uppercase;letter-spacing:0.5px;">${language}</div>` : ''}<div style="overflow-x:auto;overflow-y:hidden;max-width:100%;scrollbar-gutter:stable both-edges;${language ? 'margin-top:20px' : 'margin-top:0'};"><pre style="margin:0;padding:6px 10px;background:transparent;border:0;white-space:pre-wrap;word-wrap:break-word;overflow:visible;line-height:20px;"><code style="display:block;min-width:0;max-width:100%;line-height:20px;font-size:13px;">${codeRows}</code></pre></div></div>`;
   }, []);
 
   // 🔧 Сохраняем позицию курсора перед открытием модального окна
@@ -1115,8 +1100,11 @@ const RichTextEditor: React.FC<RichTextEditorProps> = ({
           scrollbar-width: thin;
           scrollbar-color: #555 #2d2d2d;
         }
-        .code-block pre,
-        .code-block code {
+        .code-block pre {
+          min-width: 0;
+          max-width: 100%;
+        }
+        .code-block pre code {
           min-width: 0;
           max-width: 100%;
         }

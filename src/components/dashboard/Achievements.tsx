@@ -51,18 +51,27 @@ const AchievementCard = ({ achievement }: { achievement: Achievement }) => {
   );
 };
 
-const Achievements = () => {
+interface AchievementsProps {
+  /** Просмотр достижений другого пользователя */
+  profileUserId?: string;
+}
+
+const Achievements = ({ profileUserId }: AchievementsProps) => {
   const [achievements, setAchievements] = useState<Achievement[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showAll, setShowAll] = useState(false);
   const [columns, setColumns] = useState(1);
 
+  const heading = profileUserId ? 'Достижения' : 'Мои достижения';
+
   useEffect(() => {
     const fetchAchievements = async () => {
       try {
         setLoading(true);
-        const data = await achievementsApi.getUserAchievements();
+        const data = profileUserId
+          ? await achievementsApi.getUserAchievementsByUserId(profileUserId)
+          : await achievementsApi.getUserAchievements();
         setAchievements(data);
         setError(null);
       } catch (err) {
@@ -75,7 +84,7 @@ const Achievements = () => {
     };
 
     fetchAchievements();
-  }, []);
+  }, [profileUserId]);
 
   // Эффект для определения количества колонок в зависимости от ширины экрана
   useEffect(() => {
@@ -110,7 +119,7 @@ const Achievements = () => {
     return (
       <section className="mb-8">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold text-foreground">Мои достижения</h2>
+          <h2 className="text-xl font-semibold text-foreground">{heading}</h2>
         </div>
         <div className="flex items-center justify-center py-8">
           <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-primary"></div>
@@ -123,7 +132,7 @@ const Achievements = () => {
     return (
       <section className="mb-8">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold text-foreground">Мои достижения</h2>
+          <h2 className="text-xl font-semibold text-foreground">{heading}</h2>
         </div>
         <div className="text-sm text-muted-foreground text-center py-4">
           {error}
@@ -136,10 +145,12 @@ const Achievements = () => {
     return (
       <section className="mb-8">
         <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold text-foreground">Мои достижения</h2>
+          <h2 className="text-xl font-semibold text-foreground">{heading}</h2>
         </div>
         <div className="text-sm text-muted-foreground py-4">
-          У вас пока нет достижений. Начните обучение, чтобы получить первые награды!
+          {profileUserId
+            ? 'У пользователя пока нет достижений.'
+            : 'У вас пока нет достижений. Начните обучение, чтобы получить первые награды!'}
         </div>
       </section>
     );
@@ -148,7 +159,7 @@ const Achievements = () => {
   return (
     <section className="mb-8">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-xl font-semibold text-foreground">Мои достижения</h2>
+        <h2 className="text-xl font-semibold text-foreground">{heading}</h2>
         {showToggleButton && ( // Отображаем кнопку только если достижений больше, чем помещается в две строки
           <button
             onClick={handleToggleShowAll}

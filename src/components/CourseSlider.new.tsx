@@ -92,13 +92,16 @@ export const CourseSlider = ({
               style={{ width: `calc((100% - ${(cardsToShow - 1) * 1.5}rem) / ${cardsToShow})` }}
             >
               <CourseCard course={{
-                ...course,
-                author: course.author?.name || 'Автор не указан',
+                id: course.id,
+                title: course.title,
+                description: course.description,
+                author: course.author,
                 rating: course.rating || 0,
                 price: course.price || 0,
                 category: course.category || 'Без категории',
                 language: course.language || 'Русский',
-                authorId: course.author?.id?.toString()
+                authorId: course.author?.id?.toString(),
+                cover_image: course.cover_image,
               }} />
             </div>
           ))}

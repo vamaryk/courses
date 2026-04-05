@@ -27,6 +27,8 @@ interface CourseModulesProps {
   sections?: Section[];
   onStartChapter?: (chapterId: number, subchapterId: number) => void;
   canViewSubitems?: boolean;
+  /** Не показывать блок «Краткая информация о главе» внутри раскрытой главы (записан / доступ / автор) */
+  hideChapterOverview?: boolean;
 }
 
 const defaultSections: Section[] = [
@@ -95,6 +97,7 @@ const CourseModules = ({
   sections = defaultSections,
   onStartChapter,
   canViewSubitems = true,
+  hideChapterOverview = false,
 }: CourseModulesProps) => {
   const [expandedModules, setExpandedModules] = useState<string[]>(["2-1"]);
   const [showMore, setShowMore] = useState(false);
@@ -176,7 +179,7 @@ const CourseModules = ({
                 )}
               >
                 <div className="pt-3 space-y-2">
-                  {renderSectionMeta(section)}
+                  {!hideChapterOverview ? renderSectionMeta(section) : null}
                   {section.modules.map((module) => {
                     const isExpanded = expandedModules.includes(module.id);
 

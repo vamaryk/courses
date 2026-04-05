@@ -1,25 +1,29 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { SearchBar } from "@/components/courses/SearchBar";
-import { CategoryPills } from "@/components/courses/CategoryPills";
+import { Search, ChevronDown, X, Plus } from "lucide-react";
 import { CourseCard, Course } from "@/components/courses/CourseCard";
-import { FilterPanel } from "@/components/courses/FilterPanel";
+import FilterContent from "@/components/courses/FilterContent";
 import { coursesApi } from "@/shared/api/courses";
 import { transformCoursesToCardCourses } from "@/shared/utils/courseTransform";
 import { Button } from "@/components/ui/button";
-import { Plus } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { useAuth } from "@/app/providers/AuthProvider";
+import {
+  COURSE_DIRECTION_CATEGORIES,
+  DURATION_MIN,
+  DURATION_MAX_DEFAULT,
+  matchesDirectionFilters,
+  roundPriceToTenThousand,
+} from "@/shared/courseCatalogFilters";
 
-const baseCategories = [
-  "Все курсы",
-  "Избранное",
-  "Программирование",
-  "Анализ данных",
-  "Дизайн",
-  "Маркетинг",
+const sortOptionsList = [
+  { value: "popularity", label: "По популярности" },
+  { value: "price", label: "По цене" },
+  { value: "rating", label: "По рейтингу" },
 ];
 
-// Extended course type with original API data for filtering
+type ScopeTab = "all" | "favorites" | "mine";
+
 interface CourseWithApiData extends Course {
   apiData?: {
     id: number;
@@ -30,105 +34,174 @@ interface CourseWithApiData extends Course {
     target_audience?: string;
     about_course?: string;
   };
+  rating?: number;
+  studentsCount?: number;
+  /** из API, часто null в списке */
+  language?: string | null;
+}
+
+function mapHoursToLevelLabel(course: Course): "Начинающий" | "Средний" | "Продвинутый" {
+  const totalHours = course.hoursPractice + course.hoursTheory;
+  if (totalHours <= 20) return "Начинающий";
+  if (totalHours <= 60) return "Средний";
+  return "Продвинутый";
 }
 
 export default function CoursesPage() {
   const navigate = useNavigate();
-  const { isAuthenticated, user } = useAuth();
-  const [activeNavItem, setActiveNavItem] = useState("home");
+  const { isAuthenticated } = useAuth();
+  const sortRef = useRef<HTMLDivElement>(null);
+
   const [searchQuery, setSearchQuery] = useState("");
-  const [activeCategory, setActiveCategory] = useState("Все курсы");
+  const [isMobileFilterOpen, setIsMobileFilterOpen] = useState(false);
+  const [scopeTab, setScopeTab] = useState<ScopeTab>("all");
+
+  const [priceMax, setPriceMax] = useState<number>(100_000);
+  const [durationMax, setDurationMax] = useState<number>(DURATION_MAX_DEFAULT);
+
+  const [selectedLevels, setSelectedLevels] = useState<string[]>([]);
+  const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
+  const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [selectedSubcategories, setSelectedSubcategories] = useState<string[]>([]);
+
+  const [priceRange, setPriceRange] = useState<[number, number]>([0, 100_000]);
+  const [durationRange, setDurationRange] = useState<[number, number]>([
+    DURATION_MIN,
+    DURATION_MAX_DEFAULT,
+  ]);
+
+  const [sortOption, setSortOption] = useState("popularity");
+  const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
+
   const [courses, setCourses] = useState<CourseWithApiData[]>([]);
-  const [apiCoursesData, setApiCoursesData] = useState<Map<number, any>>(new Map());
   const [myCourseIds, setMyCourseIds] = useState<Set<number>>(new Set());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  
-  // Filter state
-  const [difficulty, setDifficulty] = useState("all"); // Changed default to "all"
-  // Диапазон по умолчанию: до 100 млн ₽, чтобы не скрывать дорогие курсы
-  const [priceRange, setPriceRange] = useState<[number, number]>([0, 100_000_000]);
-  const [durationRange, setDurationRange] = useState<[number, number]>([0, 240]);
-  const [documentTypes, setDocumentTypes] = useState<string[]>([]);
-  const [skills, setSkills] = useState<string[]>([]);
 
-  // Build categories list with "Мои курсы" if authenticated
-  const categories = isAuthenticated 
-    ? [...baseCategories, "Мои курсы"]
-    : baseCategories;
+  const [currentPage, setCurrentPage] = useState(1);
+  const COURSES_PER_PAGE = 12;
 
-  // Load courses from API
+  useEffect(() => {
+    const onDocClick = (e: MouseEvent) => {
+      if (sortRef.current && !sortRef.current.contains(e.target as Node)) {
+        setIsSortDropdownOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onDocClick);
+    return () => document.removeEventListener("mousedown", onDocClick);
+  }, []);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [
+    searchQuery,
+    scopeTab,
+    selectedLevels,
+    selectedLanguages,
+    selectedCategories,
+    selectedSubcategories,
+    priceRange,
+    durationRange,
+    sortOption,
+  ]);
+
   useEffect(() => {
     const fetchCourses = async () => {
       try {
         setLoading(true);
         setError(null);
-        
-        // Fetch all courses (public + user's courses if authenticated)
+
         const apiCourses = await coursesApi.getAllCourses();
-        
-        // Store API data for filtering
-        const apiDataMap = new Map();
-        apiCourses.forEach(course => {
+
+        const apiDataMap = new Map<number, CourseWithApiData["apiData"]>();
+        apiCourses.forEach((course) => {
           apiDataMap.set(course.id, {
             id: course.id,
             title: course.title,
             description: course.description,
             tags: course.tags || [],
-            specialty: course.specialty,
-            target_audience: course.target_audience,
-            about_course: course.about_course,
+            specialty: course.specialty ?? undefined,
+            target_audience: course.target_audience ?? undefined,
+            about_course: course.about_course ?? undefined,
           });
         });
-        setApiCoursesData(apiDataMap);
-        
-        // Transform to CourseCard format
+
         const transformedCourses = transformCoursesToCardCourses(apiCourses);
-        
-        // If authenticated, fetch user's courses and favorites
+
+        const merged: CourseWithApiData[] = transformedCourses.map((course) => {
+          const raw = apiCourses.find((c) => c.id === Number(course.id));
+          const ad = apiDataMap.get(Number(course.id));
+          return {
+            ...course,
+            description: ad?.description,
+            apiData: ad,
+            rating: Number(raw?.rating) || 0,
+            studentsCount: Number((raw as { studentsCount?: number })?.studentsCount) || 0,
+            language: (raw as { language?: string | null })?.language ?? null,
+          };
+        });
+
         if (isAuthenticated) {
           try {
             const [myCourses, favorites] = await Promise.all([
               coursesApi.getMyCourses(),
-              coursesApi.getFavorites()
+              coursesApi.getFavorites(),
             ]);
-            
-            const myIds = new Set(myCourses.map(c => c.id));
+
+            const myIds = new Set(myCourses.map((c) => c.id));
             setMyCourseIds(myIds);
-            
-            const favoriteIds = new Set(favorites.map(c => c.id));
-            
-            // Update courses with favorite status and API data
-            const coursesWithFavorites = transformedCourses.map(course => ({
-              ...course,
-              isFavorite: favoriteIds.has(Number(course.id)),
-              apiData: apiDataMap.get(Number(course.id)),
-            }));
-            
-            setCourses(coursesWithFavorites);
-          } catch (err) {
-            console.error('Error fetching my courses or favorites:', err);
-            // Continue without my courses/favorites filter if it fails
-            const coursesWithApiData = transformedCourses.map(course => ({
-              ...course,
-              isFavorite: false,
-              apiData: apiDataMap.get(Number(course.id)),
-            }));
-            setCourses(coursesWithApiData);
+
+            const favoriteIds = new Set(favorites.map((c) => c.id));
+
+            setCourses(
+              merged.map((course) => ({
+                ...course,
+                isFavorite: favoriteIds.has(Number(course.id)),
+              })),
+            );
+          } catch {
+            setCourses(
+              merged.map((course) => ({
+                ...course,
+                isFavorite: false,
+              })),
+            );
           }
         } else {
-          // For non-authenticated users, use localStorage for favorites
-          const favorites = JSON.parse(localStorage.getItem('courseFavorites') || '[]');
-          const coursesWithFavorites = transformedCourses.map(course => ({
-            ...course,
-            isFavorite: favorites.includes(course.id),
-            apiData: apiDataMap.get(Number(course.id)),
-          }));
-          setCourses(coursesWithFavorites);
+          const favorites = JSON.parse(
+            localStorage.getItem("courseFavorites") || "[]",
+          ) as string[];
+          setCourses(
+            merged.map((course) => ({
+              ...course,
+              isFavorite: favorites.includes(course.id),
+            })),
+          );
         }
+
+        const publicForRanges = apiCourses.filter((c) => c && c.is_public);
+        const maxPrice = publicForRanges.reduce((max, course) => {
+          const price = Number(course.price) || 0;
+          return price > max ? price : max;
+        }, 0);
+        const calculatedPriceMax =
+          maxPrice > 0 ? roundPriceToTenThousand(maxPrice) : 100_000;
+        setPriceMax(calculatedPriceMax);
+        setPriceRange([0, calculatedPriceMax]);
+
+        const maxDuration = publicForRanges.reduce((max, course) => {
+          const hp = Number((course as { hoursPractice?: number }).hoursPractice) || 0;
+          const ht = Number((course as { hoursTheory?: number }).hoursTheory) || 0;
+          const total = hp + ht;
+          return total > max ? total : max;
+        }, 0);
+        const calculatedDurationMax =
+          maxDuration > 0 ? Math.ceil(maxDuration) : DURATION_MAX_DEFAULT;
+        setDurationMax(calculatedDurationMax);
+        setDurationRange([DURATION_MIN, calculatedDurationMax]);
       } catch (err) {
-        console.error('Error fetching courses:', err);
-        setError('Не удалось загрузить курсы. Попробуйте обновить страницу.');
+        console.error("Error fetching courses:", err);
+        setError("Не удалось загрузить курсы. Попробуйте обновить страницу.");
       } finally {
         setLoading(false);
       }
@@ -139,19 +212,15 @@ export default function CoursesPage() {
 
   const handleFavoriteToggle = async (id: string) => {
     const courseId = Number(id);
-    const currentCourse = courses.find(c => c.id === id);
+    const currentCourse = courses.find((c) => c.id === id);
     const newFavoriteStatus = !currentCourse?.isFavorite;
-    
-    // Optimistically update UI
-    setCourses((prev) => {
-      return prev.map((course) =>
-        course.id === id
-          ? { ...course, isFavorite: newFavoriteStatus }
-          : course
-      );
-    });
-    
-    // Update backend if authenticated, otherwise use localStorage
+
+    setCourses((prev) =>
+      prev.map((course) =>
+        course.id === id ? { ...course, isFavorite: newFavoriteStatus } : course,
+      ),
+    );
+
     if (isAuthenticated) {
       try {
         if (newFavoriteStatus) {
@@ -160,264 +229,407 @@ export default function CoursesPage() {
           await coursesApi.removeFromFavorites(courseId);
         }
       } catch (err) {
-        console.error('Error updating favorite:', err);
-        // Revert on error
-        setCourses((prev) => {
-          return prev.map((course) =>
+        console.error("Error updating favorite:", err);
+        setCourses((prev) =>
+          prev.map((course) =>
             course.id === id
               ? { ...course, isFavorite: !newFavoriteStatus }
-              : course
-          );
-        });
+              : course,
+          ),
+        );
       }
     } else {
-      // For non-authenticated users, use localStorage
       const updated = courses.map((course) =>
         course.id === id
           ? { ...course, isFavorite: newFavoriteStatus }
-          : course
+          : course,
       );
       const favorites = updated
-        .filter(course => course.isFavorite)
-        .map(course => course.id);
-      localStorage.setItem('courseFavorites', JSON.stringify(favorites));
+        .filter((course) => course.isFavorite)
+        .map((course) => course.id);
+      localStorage.setItem("courseFavorites", JSON.stringify(favorites));
     }
   };
 
-  // Helper function to determine course category from tags/specialty
-  const getCourseCategory = (course: CourseWithApiData): string => {
-    if (!course.apiData) return "";
-    
-    const tags = (course.apiData.tags || []).map(t => t.toLowerCase());
-    const specialty = (course.apiData.specialty || "").toLowerCase();
-    const title = (course.apiData.title || "").toLowerCase();
-    const description = (course.apiData.description || "").toLowerCase();
-    
-    const allText = `${title} ${description} ${specialty} ${tags.join(" ")}`.toLowerCase();
-    
-    if (allText.includes("программир") || allText.includes("python") || allText.includes("javascript") || 
-        allText.includes("java") || allText.includes("react") || allText.includes("разработк")) {
-      return "Программирование";
-    }
-    if (allText.includes("анализ") || allText.includes("data") || allText.includes("аналитик") || 
-        allText.includes("sql") || allText.includes("bi")) {
-      return "Анализ данных";
-    }
-    if (allText.includes("дизайн") || allText.includes("design") || allText.includes("ux") || 
-        allText.includes("ui") || allText.includes("figma")) {
-      return "Дизайн";
-    }
-    if (allText.includes("маркетинг") || allText.includes("marketing") || allText.includes("продвижен")) {
-      return "Маркетинг";
-    }
-    
-    return "";
-  };
-
-  // Helper function to determine difficulty from course data
-  const getCourseDifficulty = (course: CourseWithApiData): string => {
-    const totalHours = course.hoursPractice + course.hoursTheory;
-    const contentBlocks = totalHours; // Approximate based on hours
-    
-    if (contentBlocks <= 20) {
-      return "beginner";
-    } else if (contentBlocks <= 60) {
-      return "intermediate";
-    } else {
-      return "pro";
-    }
-  };
-
-  // Helper function to check if course matches skills filter
-  const matchesSkills = (course: CourseWithApiData, selectedSkills: string[]): boolean => {
-    if (selectedSkills.length === 0) return true;
-    
-    if (!course.apiData) return false;
-    
-    const tags = (course.apiData.tags || []).map(t => t.toLowerCase());
-    const title = (course.apiData.title || "").toLowerCase();
-    const description = (course.apiData.description || "").toLowerCase();
-    const specialty = (course.apiData.specialty || "").toLowerCase();
-    
-    const allText = `${title} ${description} ${specialty} ${tags.join(" ")}`.toLowerCase();
-    
-    // Map skill filter values to search terms
-    const skillMap: Record<string, string[]> = {
-      "python": ["python", "питон"],
-      "sql": ["sql"],
-      "data-science": ["data science", "машинное обучение", "ml", "ai"],
-      "bi-analytics": ["bi", "аналитик", "анализ"],
-      "figma": ["figma"],
-      "copywriting": ["копирайтинг", "copywriting"],
-      "marketing": ["маркетинг", "marketing", "продвижен"],
-      "testing": ["тестирование", "testing", "qa"],
-      "marketing-analyst": ["маркетолог", "аналитик"],
-    };
-    
-    return selectedSkills.some(skill => {
-      const searchTerms = skillMap[skill] || [skill];
-      return searchTerms.some(term => allText.includes(term));
+  const toggleCategory = (id: string) => {
+    setSelectedCategories((prev) => {
+      const isCurrentlySelected = prev.includes(id);
+      if (id === "development" && isCurrentlySelected) {
+        setSelectedSubcategories([]);
+        return prev.filter((c) => c !== id);
+      }
+      return isCurrentlySelected ? prev.filter((c) => c !== id) : [...prev, id];
     });
   };
 
+  const toggleSubcategory = (sub: string) => {
+    setSelectedSubcategories((prev) =>
+      prev.includes(sub) ? prev.filter((s) => s !== sub) : [...prev, sub],
+    );
+  };
+
+  const handlePriceInput = (index: 0 | 1, value: string) => {
+    let numValue = parseInt(value, 10);
+    if (Number.isNaN(numValue)) numValue = index === 0 ? 0 : priceMax;
+    let newMin = priceRange[0];
+    let newMax = priceRange[1];
+    if (index === 0) newMin = Math.max(0, Math.min(numValue, newMax));
+    else newMax = Math.min(priceMax, Math.max(numValue, newMin));
+    setPriceRange([newMin, newMax]);
+  };
+
+  const handleDurationInput = (index: 0 | 1, value: string) => {
+    let numValue = parseInt(value, 10);
+    if (Number.isNaN(numValue))
+      numValue = index === 0 ? DURATION_MIN : durationMax;
+    let newMin = durationRange[0];
+    let newMax = durationRange[1];
+    if (index === 0)
+      newMin = Math.max(DURATION_MIN, Math.min(numValue, newMax));
+    else newMax = Math.min(durationMax, Math.max(numValue, newMin));
+    setDurationRange([newMin, newMax]);
+  };
+
+  const isDevelopmentSelected = selectedCategories.includes("development");
+
+  const filterProps = {
+    selectedLevels,
+    setSelectedLevels,
+    selectedLanguages,
+    setSelectedLanguages,
+    selectedCategories,
+    toggleCategory,
+    selectedSubcategories,
+    toggleSubcategory,
+    priceRange,
+    setPriceRange,
+    durationRange,
+    setDurationRange,
+    isDevelopmentSelected,
+    handlePriceInput,
+    handleDurationInput,
+    priceMax,
+    durationMax,
+    categories: COURSE_DIRECTION_CATEGORIES,
+  };
+
   const filteredCourses = courses.filter((course) => {
-    // Search filter - search in title and description
-    if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      const titleMatch = course.title.toLowerCase().includes(query);
-      const descriptionMatch = course.apiData?.description?.toLowerCase().includes(query) || false;
-      const tagsMatch = (course.apiData?.tags || []).some(tag => 
-        tag.toLowerCase().includes(query)
-      );
-      
-      if (!titleMatch && !descriptionMatch && !tagsMatch) {
-        return false;
-      }
-    }
-    
-    // Category filter
-    if (activeCategory === "Избранное") {
-      if (!course.isFavorite) {
-        return false;
-      }
-    } else if (activeCategory === "Мои курсы") {
-      // Filter to show only courses created by the user
-      if (!myCourseIds.has(Number(course.id))) {
-        return false;
-      }
-    } else if (activeCategory !== "Все курсы") {
-      // Filter by category (Программирование, Анализ данных, Дизайн, Маркетинг)
-      const courseCategory = getCourseCategory(course);
-      if (courseCategory !== activeCategory) {
-        return false;
-      }
-    }
-    
-    // Difficulty filter
-    if (difficulty !== "all") {
-      const courseDifficulty = getCourseDifficulty(course);
-      if (courseDifficulty !== difficulty) {
-        return false;
-      }
-    }
-    
-    // Skills filter
-    if (skills.length > 0 && !matchesSkills(course, skills)) {
-      return false;
-    }
-    
-    // Price filter
-    if (course.price < priceRange[0] || course.price > priceRange[1]) {
-      return false;
-    }
-    
-    // Duration filter (total hours = practice + theory)
+    if (scopeTab === "favorites" && !course.isFavorite) return false;
+    if (scopeTab === "mine" && !myCourseIds.has(Number(course.id))) return false;
+
+    const searchLower = searchQuery.toLowerCase();
+    const titleLower = course.title.toLowerCase();
+    const descLower = (course.apiData?.description || "").toLowerCase();
+    const tagsLower = (course.apiData?.tags || []).join(" ").toLowerCase();
+    const specLower = (course.apiData?.specialty || "").toLowerCase();
+    const aboutLower = (course.apiData?.about_course || "").toLowerCase();
+    const combinedForSearch = `${titleLower} ${descLower} ${tagsLower} ${specLower} ${aboutLower}`;
+
+    const matchesSearch =
+      searchQuery === "" ||
+      titleLower.includes(searchLower) ||
+      descLower.includes(searchLower) ||
+      tagsLower.includes(searchLower) ||
+      combinedForSearch.includes(searchLower);
+
+    const levelLabel = mapHoursToLevelLabel(course);
+    const matchesLevel =
+      selectedLevels.length === 0 || selectedLevels.includes(levelLabel);
+
+    const lang = course.language;
+    const matchesLanguage =
+      selectedLanguages.length === 0 ||
+      (lang != null && lang !== "" && selectedLanguages.includes(lang)) ||
+      ((lang == null || lang === "") && selectedLanguages.includes("Русский"));
+
+    const coursePrice = course.price || 0;
+    const matchesPrice =
+      coursePrice >= priceRange[0] && coursePrice <= priceRange[1];
+
     const totalHours = course.hoursPractice + course.hoursTheory;
-    if (totalHours < durationRange[0] || totalHours > durationRange[1]) {
-      return false;
-    }
-    
-    // Document types filter - this is a placeholder as we don't have this data yet
-    // You can extend this when document types are added to the database
-    if (documentTypes.length > 0) {
-      // For now, we'll skip this filter as we don't have document type data
-      // You can add logic here when document types are available in the API
-    }
-    
-    return true;
+    const matchesDuration =
+      totalHours >= durationRange[0] && totalHours <= durationRange[1];
+
+    const matchesCategory = matchesDirectionFilters(
+      titleLower,
+      `${descLower} ${tagsLower} ${specLower} ${aboutLower}`,
+      selectedCategories,
+      selectedSubcategories,
+    );
+
+    return (
+      matchesSearch &&
+      matchesLevel &&
+      matchesLanguage &&
+      matchesPrice &&
+      matchesDuration &&
+      matchesCategory
+    );
   });
 
+  const sortedCourses = [...filteredCourses].sort((a, b) => {
+    switch (sortOption) {
+      case "price":
+        return (a.price || 0) - (b.price || 0);
+      case "rating":
+        return (b.rating || 0) - (a.rating || 0);
+      case "popularity":
+      default:
+        return (b.studentsCount || 0) - (a.studentsCount || 0);
+    }
+  });
+
+  const totalPages = Math.ceil(sortedCourses.length / COURSES_PER_PAGE) || 1;
+  const paginatedCourses = sortedCourses.slice(
+    (currentPage - 1) * COURSES_PER_PAGE,
+    currentPage * COURSES_PER_PAGE,
+  );
+
+  const selectedSortLabel =
+    sortOptionsList.find((opt) => opt.value === sortOption)?.label ||
+    "По популярности";
+
+  const resetFilters = () => {
+    setSearchQuery("");
+    setSelectedLevels([]);
+    setSelectedLanguages([]);
+    setSelectedCategories([]);
+    setSelectedSubcategories([]);
+    setPriceRange([0, priceMax]);
+    setDurationRange([DURATION_MIN, durationMax]);
+    setScopeTab("all");
+  };
+
+  const scopePills: { id: ScopeTab; label: string }[] = [
+    { id: "all", label: "Все курсы" },
+    { id: "favorites", label: "Избранное" },
+    ...(isAuthenticated ? [{ id: "mine" as const, label: "Мои курсы" }] : []),
+  ];
+
+  const goToPage = (page: number) => {
+    if (page >= 1 && page <= totalPages) setCurrentPage(page);
+  };
+
   return (
-    <div className="bg-background">
-      <main className="mt-[4em] lg:ml-[100px] md:ml-[100px] sm:ml-0 pb-8 px-6">
-        <div className="flex gap-6">
-          {/* Main content */}
-          <div className="flex-1 min-w-0">
-            {/* Header with Create Course button */}
-            <div className="flex items-center justify-between mb-6">
-              <h1 className="text-3xl font-bold text-foreground">Курсы</h1>
-              {isAuthenticated && (
-                <Button
-                  onClick={() => navigate('/courses/create')}
-                  className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground"
-                >
-                  <Plus className="w-4 h-4" />
-                  Создать свой курс
-                </Button>
-              )}
-            </div>
-
-            {/* Search and categories */}
-            <div className="space-y-4 mb-8">
-              <SearchBar
-                value={searchQuery}
-                onChange={setSearchQuery}
-                placeholder="Поиск по курсам"
-              />
-              <CategoryPills
-                categories={categories}
-                activeCategory={activeCategory}
-                onCategoryChange={setActiveCategory}
-              />
-            </div>
-            
-            {/* Loading state */}
-            {loading && (
-              <div className="flex justify-center items-center py-16">
-                <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary"></div>
-              </div>
-            )}
-
-            {/* Error state */}
-            {error && !loading && (
-              <div className="text-center py-16">
-                <p className="text-destructive mb-4">{error}</p>
-                <button
-                  onClick={() => window.location.reload()}
-                  className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-purple-dark transition-colors"
-                >
-                  Обновить страницу
-                </button>
-              </div>
-            )}
-
-            {/* Course grid */}
-            {!loading && !error && (
-              <>
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {filteredCourses.map((course) => (
-                    <CourseCard
-                      key={course.id}
-                      course={course}
-                      onFavoriteToggle={handleFavoriteToggle}
-                    />
-                  ))}
-                </div>
-                
-                {filteredCourses.length === 0 && (
-                  <div className="text-center py-16">
-                    <p className="text-muted-foreground">Курсы не найдены</p>
-                  </div>
-                )}
-              </>
+    <div className="bg-background w-full min-w-0 overflow-x-clip">
+      <div className="pb-8 px-4 sm:px-6 md:px-8 2xl:px-10">
+        <div className="max-w-[min(1920px,100%)] mx-auto w-full">
+          <div className="flex items-center justify-between mb-6 gap-4 flex-wrap">
+            <h1 className="text-2xl sm:text-3xl font-bold font-Xolonium text-foreground">
+              Курсы
+            </h1>
+            {isAuthenticated && (
+              <Button
+                onClick={() => navigate("/courses/create")}
+                className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground"
+              >
+                <Plus className="w-4 h-4" />
+                Создать свой курс
+              </Button>
             )}
           </div>
-          
-          {/* Filter panel */}
-          <FilterPanel
-            difficulty={difficulty}
-            onDifficultyChange={setDifficulty}
-            priceRange={priceRange}
-            onPriceRangeChange={setPriceRange}
-            durationRange={durationRange}
-            onDurationRangeChange={setDurationRange}
-            documentTypes={documentTypes}
-            onDocumentTypesChange={setDocumentTypes}
-            skills={skills}
-            onSkillsChange={setSkills}
-          />
+
+          <div className="flex flex-col min-[1200px]:flex-row gap-6 min-[1200px]:gap-8">
+            <div className="w-full min-[1200px]:w-64 flex-shrink-0 hidden min-[1200px]:block">
+              <div className="sticky top-[calc(6rem+env(safe-area-inset-top,0px))] rounded-2xl border border-border/60 bg-card/80 backdrop-blur-sm p-5 shadow-soft-xl">
+                <h3 className="text-lg font-semibold mb-4 font-Xolonium text-foreground">
+                  Фильтры
+                </h3>
+                <FilterContent {...filterProps} />
+              </div>
+            </div>
+
+            <div className="flex-1 min-w-0">
+              <div className="flex flex-col gap-4 mb-6 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex gap-3 w-full sm:w-auto">
+                  <div className="relative flex-1 sm:w-[220px]" ref={sortRef}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setIsSortDropdownOpen(!isSortDropdownOpen)
+                      }
+                      className="appearance-none flex items-center justify-between pl-3 pr-10 py-2.5 border border-border rounded-xl text-sm w-full text-left bg-card hover:bg-muted/40 transition-colors"
+                    >
+                      {selectedSortLabel}
+                      <ChevronDown
+                        className={`absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground transition-transform ${isSortDropdownOpen ? "rotate-180" : ""}`}
+                      />
+                    </button>
+                    {isSortDropdownOpen && (
+                      <div className="absolute z-20 mt-1 w-full bg-popover border border-border shadow-lg rounded-xl overflow-hidden">
+                        {sortOptionsList.map((option) => (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => {
+                              setSortOption(option.value);
+                              setIsSortDropdownOpen(false);
+                            }}
+                            className={`block w-full text-left py-2.5 px-4 text-sm hover:bg-muted ${option.value === sortOption ? "bg-muted/60 font-medium" : ""}`}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    className="flex-1 min-[1200px]:hidden appearance-none flex items-center justify-center px-4 py-2.5 border border-border rounded-xl text-sm bg-card"
+                    onClick={() => setIsMobileFilterOpen(true)}
+                  >
+                    Фильтры
+                  </button>
+                </div>
+                <div className="relative w-full sm:flex-1 sm:max-w-xl">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
+                  <Input
+                    type="text"
+                    placeholder="Поиск курсов..."
+                    className="pl-10 h-11 rounded-xl border-border bg-card"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap gap-2 mb-6">
+                {scopePills.map((pill) => (
+                  <button
+                    key={pill.id}
+                    type="button"
+                    onClick={() => setScopeTab(pill.id)}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
+                      scopeTab === pill.id
+                        ? "bg-primary text-primary-foreground border-primary shadow-soft"
+                        : "bg-card border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                    }`}
+                  >
+                    {pill.label}
+                  </button>
+                ))}
+              </div>
+
+              {loading && (
+                <div className="flex justify-center items-center py-16">
+                  <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary" />
+                </div>
+              )}
+
+              {error && !loading && (
+                <div className="text-center py-16">
+                  <p className="text-destructive mb-4">{error}</p>
+                  <button
+                    type="button"
+                    onClick={() => window.location.reload()}
+                    className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+                  >
+                    Обновить страницу
+                  </button>
+                </div>
+              )}
+
+              {!loading && !error && (
+                <>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 min-[1200px]:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-6">
+                    {paginatedCourses.map((course) => (
+                      <CourseCard
+                        key={course.id}
+                        course={course}
+                        onFavoriteToggle={handleFavoriteToggle}
+                        size="default"
+                      />
+                    ))}
+                  </div>
+
+                  {sortedCourses.length === 0 && (
+                    <div className="text-center py-16">
+                      <p className="text-muted-foreground mb-4">
+                        Курсы не найдены
+                      </p>
+                      <Button variant="outline" onClick={resetFilters}>
+                        Сбросить фильтры
+                      </Button>
+                    </div>
+                  )}
+
+                  {sortedCourses.length > 0 && totalPages > 1 && (
+                    <div className="flex items-center justify-center mt-10 gap-2 flex-wrap">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={currentPage === 1}
+                        onClick={() => goToPage(currentPage - 1)}
+                      >
+                        Назад
+                      </Button>
+                      {Array.from({ length: totalPages }, (_, i) => i + 1).map(
+                        (p) => (
+                          <button
+                            key={p}
+                            type="button"
+                            onClick={() => goToPage(p)}
+                            className={`min-w-[2.25rem] px-3 py-1.5 rounded-lg text-sm font-medium ${
+                              currentPage === p
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-card border border-border hover:bg-muted"
+                            }`}
+                          >
+                            {p}
+                          </button>
+                        ),
+                      )}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={currentPage === totalPages}
+                        onClick={() => goToPage(currentPage + 1)}
+                      >
+                        Далее
+                      </Button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
         </div>
-      </main>
+      </div>
+
+      {isMobileFilterOpen && (
+        <div className="fixed inset-0 z-[102] flex items-end justify-center min-[1200px]:hidden pb-[env(safe-area-inset-bottom,0px)]">
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setIsMobileFilterOpen(false)}
+            aria-hidden
+          />
+          <div className="relative bg-background w-full max-w-lg p-6 rounded-t-2xl shadow-2xl max-h-[90vh] flex flex-col">
+            <div className="flex justify-end items-center pb-2 border-b border-border">
+              <button
+                type="button"
+                onClick={() => setIsMobileFilterOpen(false)}
+                className="text-muted-foreground hover:text-foreground"
+                aria-label="Закрыть"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="mt-4 overflow-y-auto flex-1 pr-1">
+              <FilterContent {...filterProps} />
+            </div>
+            <div className="pt-4 border-t border-border mt-4">
+              <Button
+                className="w-full bg-primary text-primary-foreground"
+                onClick={() => setIsMobileFilterOpen(false)}
+              >
+                Применить фильтры
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

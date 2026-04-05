@@ -4,8 +4,7 @@ import { ChevronDown, Clock, BookOpen, Trophy, Users, X } from "lucide-react";
 import { friendsApi, type FriendProfile } from "@/shared/api/friends";
 import { resolveProfileMediaUrl } from "@/shared/utils/media";
 
-// Предполагаем, что API_URL определен глобально или импортирован
-declare const API_URL: string;
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 interface StatsData {
   hoursOnPlatform: number;
@@ -15,7 +14,23 @@ interface StatsData {
   friendsCount?: number;
 }
 
-const StatsCards = () => {
+export interface StatsCardsProps {
+  /** Режим просмотра чужого профиля: данные приходят снаружи */
+  external?: boolean;
+  externalStats?: StatsData | null;
+  externalLoading?: boolean;
+  /** Загрузка списка друзей для выпадающего списка (иначе — текущий пользователь) */
+  friendsUserId?: string;
+  friendsDropdownHeading?: string;
+}
+
+const StatsCards = ({
+  external = false,
+  externalStats = null,
+  externalLoading = false,
+  friendsUserId,
+  friendsDropdownHeading = "Мои друзья",
+}: StatsCardsProps) => {
   const navigate = useNavigate();
   const [stats, setStats] = useState<StatsData>({
     hoursOnPlatform: 0,
@@ -25,11 +40,15 @@ const StatsCards = () => {
     friendsCount: 0
   });
   const [friends, setFriends] = useState<FriendProfile[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!external);
   const [loadingFriends, setLoadingFriends] = useState(false);
   const [showFriendsMenu, setShowFriendsMenu] = useState(false);
 
   useEffect(() => {
+    if (external) {
+      setLoading(false);
+      return;
+    }
     const fetchStats = async () => {
       try {
         const response = await fetch(`${API_URL}/api/users/profile/stats`, {
@@ -47,19 +66,37 @@ const StatsCards = () => {
     };
 
     fetchStats();
-  }, []);
+  }, [external]);
+
+  const displayStats: StatsData = external
+    ? {
+        hoursOnPlatform: externalStats?.hoursOnPlatform ?? 0,
+        coursesCompleted: externalStats?.coursesCompleted ?? 0,
+        achievementsCount: externalStats?.achievementsCount ?? 0,
+        subscriptionsCount: externalStats?.subscriptionsCount ?? 0,
+        friendsCount: externalStats?.friendsCount ?? externalStats?.subscriptionsCount ?? 0,
+      }
+    : stats;
+
+  const statsLoading = external ? Boolean(externalLoading) : loading;
+
+  useEffect(() => {
+    setFriends([]);
+    setShowFriendsMenu(false);
+  }, [friendsUserId]);
 
   const fetchFriends = async () => {
-    if (friends.length === 0 && !loadingFriends) {
-      setLoadingFriends(true);
-      try {
-        const list = await friendsApi.getFriends();
-        setFriends(list);
-      } catch (error) {
-        console.error('Error fetching friends:', error);
-      } finally {
-        setLoadingFriends(false);
-      }
+    if (friends.length > 0 || loadingFriends) return;
+    setLoadingFriends(true);
+    try {
+      const list = friendsUserId
+        ? await friendsApi.getFriendsByUserId(friendsUserId)
+        : await friendsApi.getFriends();
+      setFriends(list);
+    } catch (error) {
+      console.error('Error fetching friends:', error);
+    } finally {
+      setLoadingFriends(false);
     }
   };
 
@@ -67,32 +104,32 @@ const StatsCards = () => {
     { 
       icon: Clock, 
       label: "Часов на платформе", 
-      value: stats.hoursOnPlatform.toString(),
+      value: displayStats.hoursOnPlatform.toString(),
       hasDropdown: false
     },
     { 
       icon: BookOpen, 
       label: "Пройдено курсов", 
-      value: stats.coursesCompleted.toString(),
+      value: displayStats.coursesCompleted.toString(),
       hasDropdown: false
     },
     { 
       icon: Trophy, 
       label: "Достижения", 
-      value: stats.achievementsCount.toString(),
+      value: displayStats.achievementsCount.toString(),
       hasDropdown: false
     },
     { 
       icon: Users, 
       label: "Друзья", 
-      value: (stats.friendsCount ?? stats.subscriptionsCount ?? 0).toString(),
+      value: (displayStats.friendsCount ?? displayStats.subscriptionsCount ?? 0).toString(),
       hasDropdown: true
     },
   ];
 
   const toggleFriendsMenu = () => {
     if (!showFriendsMenu) {
-      fetchFriends();
+      void fetchFriends();
     }
     setShowFriendsMenu(!showFriendsMenu);
   };
@@ -118,7 +155,7 @@ const StatsCards = () => {
           {/* Число с кнопкой (если есть) */}
           <div className="flex items-center justify-between mt-auto">
             <span className="text-xl sm:text-2xl font-bold">
-              {loading ? '...' : stat.value}
+              {statsLoading ? '...' : stat.value}
             </span>
             {stat.hasDropdown && (
               <button 
@@ -140,7 +177,7 @@ const StatsCards = () => {
             <div className="absolute top-full left-0 w-full mt-2 bg-white rounded-xl shadow-lg z-50 border border-gray-200 overflow-hidden animate-fade-in">
               <div className="p-3 border-b border-gray-100 bg-gray-50">
                 <h4 className="text-sm font-semibold text-gray-700 text-center">
-                  Мои друзья ({friends.length})
+                  {friendsDropdownHeading} ({friends.length})
                 </h4>
               </div>
               <div className="max-h-96 overflow-y-auto p-2 bg-white">

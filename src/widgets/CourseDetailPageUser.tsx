@@ -1,6 +1,13 @@
 import { useParams, useNavigate } from 'react-router-dom';
 import { useEffect, useState } from 'react';
-import { coursesApi, type Course, type Chapter, type Subchapter, type ContentBlock } from '@/shared/api/courses';
+import {
+  coursesApi,
+  type Course,
+  type Chapter,
+  type Subchapter,
+  type ContentBlock,
+  type CourseContentStats,
+} from '@/shared/api/courses';
 import { getCoverImageUrl, resolveProfileMediaUrl } from '@/shared/utils/courseTransform';
 import HeroHeaderUser from "@/components/dashboard/HeroHeaderUser";
 import CourseModulesUser from "@/components/dashboard/CourseModulesUser";
@@ -63,7 +70,11 @@ export default function CourseDetailPageUser({ onEnrolled }: CourseDetailPageUse
   const [isFavorite, setIsFavorite] = useState(false);
   const [favoriteLoading, setFavoriteLoading] = useState(false);
   const [buyLoading, setBuyLoading] = useState(false);
-  
+  const [contentStats, setContentStats] = useState<CourseContentStats>({
+    lectures: { completed: 0, total: 0 },
+    assignments: { completed: 0, total: 0 },
+  });
+
   // Check if current user is the author of the course
   const isAuthor = course && user && course.author_id && user.id && course.author_id === user.id;
 
@@ -101,6 +112,12 @@ export default function CourseDetailPageUser({ onEnrolled }: CourseDetailPageUse
         };
 
         setCourse(mappedCourse);
+        setContentStats(
+          courseData.contentStats ?? {
+            lectures: { completed: 0, total: 0 },
+            assignments: { completed: 0, total: 0 },
+          },
+        );
 
         if (isAuthenticated) {
           try {
@@ -195,23 +212,6 @@ export default function CourseDetailPageUser({ onEnrolled }: CourseDetailPageUse
     );
   }
 
-  // Count theory and practice content blocks
-  const theoryCount = course.chapters?.reduce((sum, chapter) => {
-    if (!chapter.subchapters) return sum;
-    return sum + chapter.subchapters.reduce((subSum, subchapter) => {
-      if (!subchapter.content_blocks) return subSum;
-      return subSum + subchapter.content_blocks.filter(block => block.type === 'theory').length;
-    }, 0);
-  }, 0) || 0;
-  
-  const practiceCount = course.chapters?.reduce((sum, chapter) => {
-    if (!chapter.subchapters) return sum;
-    return sum + chapter.subchapters.reduce((subSum, subchapter) => {
-      if (!subchapter.content_blocks) return subSum;
-      return subSum + subchapter.content_blocks.filter(block => block.type === 'task').length;
-    }, 0);
-  }, 0) || 0;
-
   // Convert chapters to sections format for CourseModules
   const sections = course.chapters?.map((chapter, chapterIndex) => ({
     id: String(chapter.id),
@@ -263,9 +263,8 @@ export default function CourseDetailPageUser({ onEnrolled }: CourseDetailPageUse
             authorAvatar={resolveProfileMediaUrl(course.instructor_avatar) ?? null}
             coverImage={getCoverImageUrl(course.cover_image)}
             stats={{
-              totalLectures: theoryCount,
-              totalPrograms: 0,
-              totalTests: practiceCount
+              lectures: contentStats.lectures,
+              assignments: contentStats.assignments,
             }}
             tags={tags}
             price={Number((course as CourseWithChapters & { price?: number }).price || 0)}
@@ -286,6 +285,7 @@ export default function CourseDetailPageUser({ onEnrolled }: CourseDetailPageUse
                 <CourseModulesUser
                   sections={sections}
                   canViewSubitems={Boolean(course.is_enrolled) || Boolean(isAuthor)}
+                  hideChapterOverview={Boolean(isAuthor || course.is_enrolled || course.has_access)}
                   onStartChapter={(chapterId, subchapterId) =>
                     navigate(`/courses/${id}/learn/${chapterId}/${subchapterId}`)
                   }
@@ -294,7 +294,13 @@ export default function CourseDetailPageUser({ onEnrolled }: CourseDetailPageUse
             
             {/* Right column - Stats & About */}
             <div className="lg:col-span-2 space-y-6">
-                <CourseStats />
+                <CourseStats
+                  rating={course.rating != null ? Number(course.rating) : null}
+                  ratingsCount={Number(course.ratingsCount ?? 0) || 0}
+                  studentsCount={Number(course.studentsCount ?? 0) || 0}
+                  theoryHours={Number(course.hoursTheory ?? 0) || 0}
+                  practiceHours={Number(course.hoursPractice ?? 0) || 0}
+                />
                 <AboutCourse 
                 aboutText={course.about_course || course.description || ''}
                 />

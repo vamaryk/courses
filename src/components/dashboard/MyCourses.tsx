@@ -19,6 +19,41 @@ interface Course {
   image: string | null;
   progress: number;
   isCompleted?: boolean;
+  authorName?: string | null;
+  authorAvatarUrl?: string | null;
+  courseAuthorId?: string | null;
+}
+
+function asRecord(x: unknown): Record<string, unknown> {
+  return x != null && typeof x === "object" ? (x as Record<string, unknown>) : {};
+}
+
+/** Ответ API: camelCase или snake_case */
+function normalizeProfileCourse(raw: unknown): Course {
+  const r = asRecord(raw);
+  const authorName =
+    (r.authorName as string | undefined) ??
+    (r.author_name as string | undefined) ??
+    null;
+  const authorAvatarUrl =
+    (r.authorAvatarUrl as string | undefined) ??
+    (r.author_avatar_url as string | undefined) ??
+    null;
+  const courseAuthorIdRaw =
+    r.courseAuthorId ?? r.course_author_id ?? r.author_profile_id;
+  return {
+    id: r.id as number | string,
+    title: String(r.title ?? ""),
+    image: (r.image as string | null) ?? null,
+    progress: Number(r.progress) || 0,
+    isCompleted: Boolean(r.isCompleted ?? r.is_completed),
+    authorName,
+    authorAvatarUrl,
+    courseAuthorId:
+      courseAuthorIdRaw != null && courseAuthorIdRaw !== ""
+        ? String(courseAuthorIdRaw)
+        : null,
+  };
 }
 
 interface MyCoursesProps {
@@ -86,8 +121,10 @@ const MyCourses = ({ profileId }: MyCoursesProps) => {
           credentials: 'include',
         });
         if (response.ok) {
-          const data = await response.json();
-          setCourses(data);
+          const data: unknown = await response.json();
+          setCourses(
+            Array.isArray(data) ? data.map(normalizeProfileCourse) : [],
+          );
         }
       } catch (error) {
         console.error('Error fetching courses:', error);
@@ -121,7 +158,9 @@ const MyCourses = ({ profileId }: MyCoursesProps) => {
           <h2 className="text-xl font-semibold text-foreground">Обучение</h2>
         </div>
         <div className="text-sm text-muted-foreground py-4">
-          У вас пока нет записанных курсов
+          {profileId
+            ? 'Пользователь пока не записан ни на один курс.'
+            : 'У вас пока нет записанных курсов'}
         </div>
       </section>
     );
@@ -149,6 +188,9 @@ const MyCourses = ({ profileId }: MyCoursesProps) => {
                 image={getCoverImageUrl(course.image) || defaultCourseImage}
                 progress={course.progress}
                 isCompleted={course.isCompleted}
+                authorName={course.authorName}
+                authorAvatarUrl={course.authorAvatarUrl}
+                courseAuthorId={course.courseAuthorId}
               />
             </CarouselItem>
           ))}

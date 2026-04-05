@@ -73,8 +73,8 @@ export default function Header() {
     : '';
 
   return (
-    <nav className="bg-header flex fixed top-0 left-0 w-full justify-between items-center h-[4em] px-4 z-[100]">
-      <div className="pl-[60px] min-[1200px]:pl-6">
+    <nav className="bg-header flex fixed top-0 left-0 w-full justify-between items-center min-h-[4em] z-[100] ps-[max(1rem,env(safe-area-inset-left))] pe-[max(1rem,env(safe-area-inset-right))] pt-[max(0px,env(safe-area-inset-top))]">
+      <div className="ps-[max(3.75rem,calc(env(safe-area-inset-left)+3.25rem))] min-[1200px]:ps-6">
         <Link to={Path.Home}>
           <GraduationCap size={24} className="text-purple" />
         </Link>
@@ -99,7 +99,7 @@ export default function Header() {
 
             <div
               ref={notifRef}
-              className={`absolute right-0 top-12 z-50 w-80 rounded-2xl bg-white shadow-xl border border-gray-100 transition-all duration-150 ${
+              className={`absolute right-0 top-12 z-50 w-[min(20rem,calc(100vw-2rem))] sm:w-80 rounded-2xl bg-white shadow-xl border border-gray-100 transition-all duration-150 ${
                 isNotifOpen
                   ? 'opacity-100 translate-y-0 pointer-events-auto'
                   : 'opacity-0 -translate-y-2 pointer-events-none'

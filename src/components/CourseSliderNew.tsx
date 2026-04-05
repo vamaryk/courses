@@ -20,6 +20,7 @@ interface Course {
   price?: number;
   category?: string;
   language?: string;
+  cover_image?: string | null;
 }
 
 interface CourseSliderProps {
@@ -119,7 +120,8 @@ export const CourseSlider = ({
                 price: course.price || 0,
                 category: course.category || 'Без категории',
                 language: course.language || 'Русский',
-                authorId: course.author?.id?.toString()
+                authorId: course.author?.id?.toString(),
+                cover_image: course.cover_image,
               }} />
             </div>
           ))}

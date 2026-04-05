@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronDown, Users, X } from 'lucide-react';
 import StatsCards from '@/components/dashboard/StatsCards';
 import MyCourses from '@/components/dashboard/MyCourses';
 import CrCourse from '@/components/dashboard/CrCourses';
@@ -13,10 +12,9 @@ import ProgressRings from '@/components/dashboard/ProgressRings';
 import { SideCalendar } from '@/widgets/calendar/components/SideCalendar';
 import { Task } from '@/widgets/calendar/types';
 import { calendarApi } from '@/shared/api/calendar';
-import { friendsApi, type FriendStatus, type FriendProfile } from '@/shared/api/friends';
+import { friendsApi, type FriendStatus } from '@/shared/api/friends';
 import { Path } from '@/shared/routing/path';
-import { getCoverImageUrl } from '@/shared/utils/courseTransform';
-import { resolveAchievementMediaUrl, resolveProfileMediaUrl } from '@/shared/utils/media';
+import { resolveProfileMediaUrl } from '@/shared/utils/media';
 import type { AuthorDashboard } from '@/shared/api/authorDashboard';
 
 interface UserProfile {
@@ -50,38 +48,6 @@ interface PublicStats {
   friendsCount?: number;
 }
 
-interface PublicCourse {
-  id: number;
-  title: string;
-  image: string | null;
-  progress: number;
-  isCompleted: boolean;
-}
-
-interface AuthoredCourse {
-  id: number;
-  title: string;
-  description: string;
-  cover_image: string | null;
-  is_public: boolean;
-  students_count: number;
-  created_at: string;
-  rating?: number;
-}
-
-interface AuthoredStats {
-  total_students: number;
-  average_rating: number | null;
-}
-
-interface PublicAchievement {
-  id: string;
-  name: string;
-  description: string | null;
-  icon_url: string | null;
-  unlocked_at: string;
-}
-
 export default function ProfilePage() {
   const { id: routeProfileId } = useParams();
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -102,15 +68,9 @@ export default function ProfilePage() {
   const [friendStatus, setFriendStatus] = useState<FriendStatus | null>(null);
   const [friendStatusLoading, setFriendStatusLoading] = useState(false);
   const [publicStats, setPublicStats] = useState<PublicStats | null>(null);
-  const [publicCourses, setPublicCourses] = useState<PublicCourse[]>([]);
-  const [authoredCourses, setAuthoredCourses] = useState<AuthoredCourse[]>([]);
-  const [authoredStats, setAuthoredStats] = useState<AuthoredStats | null>(null);
+  const [publicStatsLoading, setPublicStatsLoading] = useState(false);
   const [authorDashboard, setAuthorDashboard] = useState<AuthorDashboard | null>(null);
   const [authorDashboardLoading, setAuthorDashboardLoading] = useState(true);
-  const [publicAchievements, setPublicAchievements] = useState<PublicAchievement[]>([]);
-  const [profileFriends, setProfileFriends] = useState<FriendProfile[] | null>(null);
-  const [profileFriendsLoading, setProfileFriendsLoading] = useState(false);
-  const [friendsBlockOpen, setFriendsBlockOpen] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -254,10 +214,7 @@ export default function ProfilePage() {
     const loadPublicData = async () => {
       if (!user || isOwnProfile || !user.id) {
         setPublicStats(null);
-        setPublicCourses([]);
-        setAuthoredCourses([]);
-        setAuthoredStats(null);
-        setPublicAchievements([]);
+        setPublicStatsLoading(false);
         return;
       }
 
@@ -266,67 +223,31 @@ export default function ProfilePage() {
 
       if (!detailsOk) {
         setPublicStats(null);
-        setPublicCourses([]);
-        setAuthoredCourses([]);
-        setAuthoredStats(null);
-        setPublicAchievements([]);
+        setPublicStatsLoading(false);
         return;
       }
 
+      setPublicStatsLoading(true);
       try {
         const apiUrl = import.meta.env.VITE_API_URL || '';
 
-        let statsRes: Response = { ok: false } as Response;
-        let coursesRes: Response = { ok: false } as Response;
         if (progressOk) {
-          [statsRes, coursesRes] = await Promise.all([
-            fetch(`${apiUrl}/api/users/${user.id}/stats`),
-            fetch(`${apiUrl}/api/users/${user.id}/courses`),
-          ]);
-        }
-
-        const [authoredRes, authoredStatsRes, achievementsRes] = await Promise.all([
-          fetch(`${apiUrl}/api/users/${user.id}/courses/authored`),
-          fetch(`${apiUrl}/api/users/${user.id}/courses/authored-stats`),
-          fetch(`${apiUrl}/api/users/${user.id}/achievements`),
-        ]);
-
-        if (statsRes.ok) {
-          setPublicStats(await statsRes.json());
+          const statsRes = await fetch(`${apiUrl}/api/users/${user.id}/stats`, {
+            credentials: 'include',
+          });
+          if (statsRes.ok) {
+            setPublicStats(await statsRes.json());
+          } else {
+            setPublicStats(null);
+          }
         } else {
           setPublicStats(null);
-        }
-
-        if (coursesRes.ok) {
-          setPublicCourses(await coursesRes.json());
-        } else {
-          setPublicCourses([]);
-        }
-
-        if (authoredRes.ok) {
-          setAuthoredCourses(await authoredRes.json());
-        } else {
-          setAuthoredCourses([]);
-        }
-
-        if (authoredStatsRes.ok) {
-          setAuthoredStats(await authoredStatsRes.json());
-        } else {
-          setAuthoredStats(null);
-        }
-
-        if (achievementsRes.ok) {
-          setPublicAchievements(await achievementsRes.json());
-        } else {
-          setPublicAchievements([]);
         }
       } catch (error) {
         console.error('Error fetching public profile ', error);
         setPublicStats(null);
-        setPublicCourses([]);
-        setAuthoredCourses([]);
-        setAuthoredStats(null);
-        setPublicAchievements([]);
+      } finally {
+        setPublicStatsLoading(false);
       }
     };
 
@@ -364,11 +285,6 @@ export default function ProfilePage() {
       cancelled = true;
     };
   }, [isOwnProfile, user?.id]);
-
-  useEffect(() => {
-    setProfileFriends(null);
-    setFriendsBlockOpen(false);
-  }, [user?.id]);
 
   const refreshFriendStatusSafely = async () => {
     if (!user || isOwnProfile || !user.id) return;
@@ -427,28 +343,6 @@ export default function ProfilePage() {
   const handleStartChat = () => {
     if (!user) return;
     navigate(`${Path.VirtualClass}?friendId=${user.id}`);
-  };
-
-  const loadProfileFriends = async () => {
-    if (!user?.id) return;
-    setProfileFriendsLoading(true);
-    try {
-      const list = isOwnProfile ? await friendsApi.getFriends() : await friendsApi.getFriendsByUserId(user.id);
-      setProfileFriends(list);
-    } catch (err) {
-      console.error('Error loading profile friends:', err);
-      setProfileFriends(null);
-    } finally {
-      setProfileFriendsLoading(false);
-    }
-  };
-
-  const handleToggleFriendsBlock = () => {
-    const nextOpen = !friendsBlockOpen;
-    setFriendsBlockOpen(nextOpen);
-    if (nextOpen && profileFriends === null && !profileFriendsLoading) {
-      loadProfileFriends();
-    }
   };
 
   const handleSaveProfile = async () => {
@@ -546,9 +440,9 @@ export default function ProfilePage() {
     : null;
 
   return (
-    <div className="bg-background">
-      <div className="flex flex-col lg:flex-row">
-        <main className="flex-1 mx-3 md:mx-5 mb-5">
+    <div className="bg-background w-full min-w-0 overflow-x-clip">
+      <div className="max-w-[1920px] mx-auto w-full flex flex-col min-[1200px]:flex-row">
+        <div className="flex-1 min-w-0 mx-3 md:mx-5 mb-5">
           <div className="bg-white rounded-xl shadow overflow-hidden">
             {/* Профильный баннер и аватар + кнопка редактирования */}
             <div className="mb-4 md:mb-10">
@@ -712,296 +606,39 @@ export default function ProfilePage() {
                       </p>
                     </div>
                   )}
-                  {showPublicDetails && showPublicProgress && publicStats && (
-                <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-1.5 mb-8">
-                    <div className="stat-card rounded-xl flex flex-col gap-2">
-                    <span className="text-xs text-white/60 font-medium min-h-[32px] line-clamp-2">
-                        Часов на платформе
-                    </span>
-                    <span className="text-xl sm:text-2xl font-bold">
-                        {publicStats.hoursOnPlatform}
-                    </span>
-                    </div>
-                    <div className="stat-card rounded-xl flex flex-col gap-2">
-                    <span className="text-xs text-white/60 font-medium min-h-[32px] line-clamp-2">
-                        Пройдено курсов
-                    </span>
-                    <span className="text-xl sm:text-2xl font-bold">
-                        {publicStats.coursesCompleted}
-                    </span>
-                    </div>
-                    <div className="stat-card rounded-xl flex flex-col gap-2">
-                    <span className="text-xs text-white/60 font-medium min-h-[32px] line-clamp-2">
-                        Достижения
-                    </span>
-                    <span className="text-xl sm:text-2xl font-bold">
-                        {publicStats.achievementsCount}
-                    </span>
-                    </div>
-                    {(publicStats.friendsCount ?? 0) > 0 && (
-                    <div className="stat-card rounded-xl flex flex-col gap-2 relative">
-                    <div className="flex items-start gap-2 text-white/60">
-                      <Users className="w-4 h-4 flex-shrink-0 mt-[2px]" />
-                      <span className="text-xs font-medium min-h-[32px] line-clamp-2 leading-tight">Друзей</span>
-                    </div>
-                    <div className="flex items-center justify-between mt-auto">
-                      <span className="text-xl sm:text-2xl font-bold">{publicStats.friendsCount ?? 0}</span>
-                      {(publicStats.friendsCount ?? 0) > 0 && (
-                      <button
-                        type="button"
-                        onClick={handleToggleFriendsBlock}
-                        className="w-6 h-6 rounded-lg bg-white/10 flex items-center justify-center hover:bg-white/20 transition-colors flex-shrink-0"
-                        aria-label="Показать друзей"
-                      >
-                        {friendsBlockOpen ? <X className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
-                      </button>
-                      )}
-                    </div>
-                    {(publicStats.friendsCount ?? 0) > 0 && friendsBlockOpen && (
-                      <div className="absolute top-full left-0 right-0 mt-2 bg-white rounded-xl shadow-lg z-50 border border-gray-200 overflow-hidden min-w-[240px]">
-                        <div className="p-3 border-b border-gray-100">
-                          <h4 className="text-sm font-semibold text-gray-700">Друзья ({profileFriends?.length ?? 0})</h4>
-                        </div>
-                        <div className="max-h-96 overflow-y-auto p-2">
-                          {profileFriendsLoading ? (
-                            <div className="p-4 text-center text-gray-500 text-sm">Загрузка...</div>
-                          ) : profileFriends && profileFriends.length > 0 ? (
-                            <div className="space-y-2">
-                              {profileFriends.map((friend) => {
-                                const avatarSrc = resolveProfileMediaUrl(friend.avatar_url);
-                                return (
-                                  <button
-                                    key={friend.id}
-                                    type="button"
-                                    onClick={() => { setFriendsBlockOpen(false); navigate(`/profile/${friend.id}`); }}
-                                    className="w-full flex items-center gap-3 rounded-xl border border-gray-100 bg-gray-50/50 p-3 text-left hover:bg-gray-100 transition-colors cursor-pointer"
-                                  >
-                                    <div className="w-10 h-10 rounded-full overflow-hidden flex-shrink-0 bg-gray-200">
-                                      {avatarSrc ? (
-                                        <img src={avatarSrc} alt="" className="w-full h-full object-cover" />
-                                      ) : (
-                                        <div className="w-full h-full flex items-center justify-center text-sm font-semibold text-gray-500">
-                                          {(friend.first_name?.charAt(0) || '') + (friend.last_name?.charAt(0) || '') || '?'}
-                                        </div>
-                                      )}
-                                    </div>
-                                    <div className="min-w-0 flex-1">
-                                      <p className="text-sm font-medium text-gray-900 truncate">{friend.first_name} {friend.last_name}</p>
-                                    </div>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <div className="p-4 text-center text-gray-500 text-sm">Нет друзей</div>
+                  {showPublicDetails && user && (
+                    <>
+                      {showPublicProgress && (
+                        <>
+                          {(publicStatsLoading || publicStats) && (
+                            <StatsCards
+                              external
+                              externalStats={publicStats}
+                              externalLoading={publicStatsLoading && !publicStats}
+                              friendsUserId={user.id}
+                              friendsDropdownHeading="Друзья"
+                            />
                           )}
-                        </div>
-                      </div>
-                    )}
-                    </div>
-                    )}
-                </div>
-                )}
-
-                  {showPublicDetails && showPublicProgress && (
-                  <section className="mb-8">
-                    <div className="flex items-center justify-between mb-4">
-                      <h2 className="text-xl font-semibold text-foreground">
-                        Курсы, которые проходит пользователь
-                      </h2>
-                    </div>
-                    {publicCourses.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        Пользователь пока не записан ни на один курс.
-                      </p>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {publicCourses.map((course) => {
-                          const coverUrl = getCoverImageUrl(course.image);
-                          return (
-                            <div
-                              key={course.id}
-                              role="link"
-                              tabIndex={0}
-                              onClick={() => navigate(`/courses/${course.id}`)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter" || e.key === " ") {
-                                  e.preventDefault();
-                                  navigate(`/courses/${course.id}`);
-                                }
-                              }}
-                              className="group relative bg-card rounded-2xl overflow-hidden shadow-card hover:shadow-soft-xl transition-all duration-300 cursor-pointer"
-                            >
-                              <div className="relative h-44 overflow-hidden">
-                                {coverUrl ? (
-                                  <img
-                                    src={coverUrl}
-                                    alt={course.title}
-                                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                                  />
-                                ) : (
-                                  <div className="w-full h-full bg-muted" />
-                                )}
-                                <div className="absolute inset-0 bg-gradient-to-t from-foreground/80 via-foreground/20 to-transparent" />
-                                <h3 className="absolute bottom-3 left-4 right-4 text-lg font-semibold text-primary-foreground leading-tight">
-                                  {course.title}
-                                </h3>
-                              </div>
-                              <div className="p-4">
-                                <div className="flex items-center justify-between text-xs text-muted-foreground mb-2">
-                                  <span>
-                                    {course.isCompleted ? 'Завершён' : 'В процессе'}
-                                  </span>
-                                  <span>{course.progress}%</span>
-                                </div>
-                                <div className="w-full bg-secondary rounded-full h-1.5 overflow-hidden">
-                                  <div
-                                    className="h-1.5 bg-primary rounded-full transition-all"
-                                    style={{ width: `${course.progress}%` }}
-                                  />
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </section>
+                          <MyCourses profileId={user.id} />
+                        </>
+                      )}
+                      <CrCourse
+                        profileId={user.id}
+                        authorDashboard={null}
+                        authorDashboardLoading={false}
+                      />
+                      <Achievements profileUserId={user.id} />
+                    </>
                   )}
-
-                  {showPublicDetails && (
-                  <>
-                  <section className="mb-8">
-                    <div className="flex items-center justify-between mb-4">
-                      <h2 className="text-xl font-semibold text-foreground">
-                        Созданные курсы
-                      </h2>
-                    </div>
-                    {authoredStats && (
-                      <div className="flex flex-wrap gap-4 mb-4 text-sm text-muted-foreground">
-                        <span>
-                          Всего студентов:{' '}
-                          <span className="font-semibold text-foreground">{authoredStats.total_students}</span>
-                        </span>
-                        <span>
-                          Средний рейтинг:{' '}
-                          <span className="font-semibold text-foreground">
-                            {authoredStats.average_rating != null ? authoredStats.average_rating.toFixed(2) : '—'}
-                          </span>
-                        </span>
-                      </div>
-                    )}
-                    {authoredCourses.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        Пользователь ещё не создавал курсы.
-                      </p>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                        {authoredCourses.map((course) => {
-                          const coverUrl = getCoverImageUrl(course.cover_image);
-                          return (
-                            <div
-                              key={course.id}
-                              onClick={() => navigate(`/courses/${course.id}`)}
-                              className="group relative bg-card rounded-2xl overflow-hidden shadow-card hover:shadow-soft-xl transition-all duration-300 cursor-pointer"
-                            >
-                              <div className="relative h-44 overflow-hidden">
-                                {coverUrl ? (
-                                  <img
-                                    src={coverUrl}
-                                    alt={course.title}
-                                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                                  />
-                                ) : (
-                                  <div className="w-full h-full bg-muted" />
-                                )}
-                                <div className="absolute inset-0 bg-gradient-to-t from-foreground/80 via-foreground/20 to-transparent" />
-                                <h3 className="absolute bottom-3 left-4 right-4 text-lg font-semibold text-primary-foreground leading-tight">
-                                  {course.title}
-                                </h3>
-                              </div>
-                              <div className="p-4">
-                                {course.description && (
-                                  <p className="text-sm text-muted-foreground line-clamp-2 mb-3 break-words">
-                                    {course.description}
-                                  </p>
-                                )}
-                                <div className="flex items-center justify-between text-xs text-muted-foreground flex-wrap gap-2">
-                                  <span>
-                                    {course.is_public ? 'Публичный курс' : 'Приватный курс'}
-                                  </span>
-                                  <span>
-                                    {course.students_count} ученик(ов)
-                                    {course.rating != null && Number(course.rating) > 0 && (
-                                      <> · рейтинг {Number(course.rating).toFixed(1)}</>
-                                    )}
-                                  </span>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </section>
-
-                  <section className="mb-4">
-                    <div className="flex items-center justify-between mb-4">
-                      <h2 className="text-xl font-semibold text-foreground">
-                        Достижения пользователя
-                      </h2>
-                    </div>
-                    {publicAchievements.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">
-                        У пользователя пока нет достижений.
-                      </p>
-                    ) : (
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
-                        {publicAchievements.map((a) => {
-                          const iconSrc = resolveAchievementMediaUrl(a.icon_url);
-                          return (
-                            <div
-                              key={a.id}
-                              className="flex items-center gap-3 bg-white/70 backdrop-blur-xl border border-muted-foreground/20 rounded-2xl px-4 py-3"
-                            >
-                              {iconSrc ? (
-                                <img
-                                  src={iconSrc}
-                                  alt={a.name}
-                                  className="w-10 h-10 rounded-full object-cover flex-shrink-0"
-                                />
-                              ) : (
-                                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-purple-400 to-pink-400 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                                  {a.name.charAt(0)}
-                                </div>
-                              )}
-                              <div className="flex flex-col min-w-0 flex-1">
-                                <span className="text-xs font-medium text-foreground leading-tight truncate">
-                                  {a.name}
-                                </span>
-                                {a.description && (
-                                  <span className="text-[11px] text-muted-foreground leading-tight mt-1 line-clamp-2">
-                                    {a.description}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </section>
-                </>
-              )}
                 </>
               )}
             </div>
           </div>
-        </main>
+        </div>
 
         {/* Календарь */}
         <aside className="hidden min-[1200px]:block w-[300px] mr-[20px] ml-0 flex-shrink-0">
-        <div className="sticky top-[4em] rounded-xl shadow p-6 h-fit bg-white">
+        <div className="sticky top-[calc(4em+env(safe-area-inset-top,0px))] rounded-xl shadow p-6 h-fit bg-white">
             <SideCalendar
             currentDate={currentDate}
             onDateChange={setCurrentDate}

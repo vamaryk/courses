@@ -17,4 +17,11 @@ export const achievementsApi = {
     });
     return response.data;
   },
+
+  async getUserAchievementsByUserId(userId: string): Promise<Achievement[]> {
+    const response = await axios.get(`${API_URL}/api/users/${userId}/achievements`, {
+      withCredentials: true,
+    });
+    return response.data;
+  },
 };

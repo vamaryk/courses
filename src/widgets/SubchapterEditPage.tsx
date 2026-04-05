@@ -23,9 +23,11 @@ import {
 } from '@/components/ui/tooltip';
 import {
   type CodeTaskConfig,
+  type CodeTaskLanguage,
   createDefaultCodeTaskConfig,
   parseCodeTaskConfig,
   serializeCodeTaskConfig,
+  LANGUAGE_LABELS,
 } from '@/shared/codeTasks';
 
 type QuizSelectionType = 'single' | 'multiple';
@@ -430,18 +432,21 @@ function SubchapterEditPage() {
           toast.error('Настройте параметры проверяемой задачи');
           return;
         }
-        if (!config.testCases.length) {
-          toast.error('Добавьте хотя бы один тест-кейс для проверяемой задачи');
-          return;
-        }
-        const invalidCase = config.testCases.find(
-          (tc) =>
-            !tc.input.trim() ||
-            !tc.expectedOutputs.some((out) => out.trim().length > 0),
-        );
-        if (invalidCase) {
-          toast.error('Каждый тест-кейс должен содержать input и хотя бы один ожидаемый вывод');
-          return;
+        // html_css and cpp tasks don't require test cases
+        if (config.language !== 'html_css' && config.language !== 'cpp') {
+          if (!config.testCases.length) {
+            toast.error('Добавьте хотя бы один тест-кейс для проверяемой задачи');
+            return;
+          }
+          const invalidCase = config.testCases.find(
+            (tc) =>
+              !tc.input.trim() ||
+              !tc.expectedOutputs.some((out) => out.trim().length > 0),
+          );
+          if (invalidCase) {
+            toast.error('Каждый тест-кейс должен содержать input и хотя бы один ожидаемый вывод');
+            return;
+          }
         }
       }
       if (currentBlock.type === 'task') {
@@ -1116,14 +1121,22 @@ function SubchapterEditPage() {
                                           </Label>
                                           <Select
                                             value={config.language}
-                                            onValueChange={(value: 'javascript' | 'python') =>
+                                            onValueChange={(value: CodeTaskLanguage) =>
                                               updateCodeTaskConfig(
                                                 block.id,
                                                 selectedSubchapter.id,
-                                                (prev) => ({
-                                                  ...prev,
-                                                  language: value,
-                                                }),
+                                                (prev) => {
+                                                  const next: CodeTaskConfig = { ...prev, language: value };
+                                                  if (value === 'html_css') {
+                                                    if (!next.starterHtml) next.starterHtml = '<h1>Заголовок</h1>\n<p>Текст страницы</p>\n';
+                                                    if (!next.starterCss) next.starterCss = 'body {\n  font-family: sans-serif;\n}\nh1 {\n  color: #333;\n}\n';
+                                                    next.testCases = [];
+                                                  }
+                                                  if (value === 'cpp' && !next.starterCode) {
+                                                    next.starterCode = '#include <iostream>\nusing namespace std;\n\nint main() {\n  // TODO: напишите решение\n  return 0;\n}\n';
+                                                  }
+                                                  return next;
+                                                },
                                               )
                                             }
                                           >
@@ -1131,12 +1144,10 @@ function SubchapterEditPage() {
                                               <SelectValue />
                                             </SelectTrigger>
                                             <SelectContent className="bg-white">
-                                              <SelectItem value="javascript" className="cursor-pointer">
-                                                JavaScript
-                                              </SelectItem>
-                                              <SelectItem value="python" className="cursor-pointer">
-                                                Python
-                                              </SelectItem>
+                                              <SelectItem value="javascript" className="cursor-pointer">JavaScript</SelectItem>
+                                              <SelectItem value="python" className="cursor-pointer">Python</SelectItem>
+                                              <SelectItem value="cpp" className="cursor-pointer">C++</SelectItem>
+                                              <SelectItem value="html_css" className="cursor-pointer">HTML + CSS</SelectItem>
                                             </SelectContent>
                                           </Select>
                                         </div>
@@ -1144,11 +1155,115 @@ function SubchapterEditPage() {
                                           Условие задачи задаётся в поле
                                           &nbsp;
                                           <span className="font-medium">«Содержание»</span>
-                                          &nbsp;выше. Ниже настройте тестовые кейсы.
+                                          &nbsp;выше.{' '}
+                                          {config.language === 'html_css'
+                                            ? 'Укажите стартовый HTML/CSS и ожидаемый ответ ниже.'
+                                            : config.language === 'cpp'
+                                            ? 'Укажите стартовый код и ожидаемый ответ ниже.'
+                                            : 'Ниже настройте тестовые кейсы.'}
                                         </div>
                                       </div>
 
-                                      <div className="space-y-3">
+                                      {/* HTML+CSS specific fields */}
+                                      {config.language === 'html_css' && (
+                                        <div className="space-y-3">
+                                          <div className="grid gap-3 md:grid-cols-2">
+                                            <div>
+                                              <Label className="text-sm mb-1 block">Стартовый HTML</Label>
+                                              <Textarea
+                                                value={config.starterHtml ?? ''}
+                                                onChange={(e) =>
+                                                  updateCodeTaskConfig(block.id, selectedSubchapter.id, (prev) => ({
+                                                    ...prev,
+                                                    starterHtml: e.target.value,
+                                                  }))
+                                                }
+                                                placeholder="<h1>Заголовок</h1>"
+                                                className="font-mono text-xs bg-white min-h-[120px]"
+                                                rows={6}
+                                              />
+                                            </div>
+                                            <div>
+                                              <Label className="text-sm mb-1 block">Стартовый CSS</Label>
+                                              <Textarea
+                                                value={config.starterCss ?? ''}
+                                                onChange={(e) =>
+                                                  updateCodeTaskConfig(block.id, selectedSubchapter.id, (prev) => ({
+                                                    ...prev,
+                                                    starterCss: e.target.value,
+                                                  }))
+                                                }
+                                                placeholder="h1 { color: blue; }"
+                                                className="font-mono text-xs bg-white min-h-[120px]"
+                                                rows={6}
+                                              />
+                                            </div>
+                                          </div>
+                                          <div className="text-xs text-muted-foreground font-medium">
+                                            Ожидаемый ответ (необязательно — если заполнить, код ученика будет сверяться с ним)
+                                          </div>
+                                          <div className="grid gap-3 md:grid-cols-2">
+                                            <div>
+                                              <Label className="text-xs mb-1 block">Ожидаемый HTML</Label>
+                                              <Textarea
+                                                value={config.expectedHtml ?? ''}
+                                                onChange={(e) =>
+                                                  updateCodeTaskConfig(block.id, selectedSubchapter.id, (prev) => ({
+                                                    ...prev,
+                                                    expectedHtml: e.target.value,
+                                                  }))
+                                                }
+                                                placeholder="Ожидаемый HTML-код ответа"
+                                                className="font-mono text-xs bg-white min-h-[100px]"
+                                                rows={5}
+                                              />
+                                            </div>
+                                            <div>
+                                              <Label className="text-xs mb-1 block">Ожидаемый CSS</Label>
+                                              <Textarea
+                                                value={config.expectedCss ?? ''}
+                                                onChange={(e) =>
+                                                  updateCodeTaskConfig(block.id, selectedSubchapter.id, (prev) => ({
+                                                    ...prev,
+                                                    expectedCss: e.target.value,
+                                                  }))
+                                                }
+                                                placeholder="Ожидаемый CSS-код ответа"
+                                                className="font-mono text-xs bg-white min-h-[100px]"
+                                                rows={5}
+                                              />
+                                            </div>
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* C++ specific fields */}
+                                      {config.language === 'cpp' && (
+                                        <div className="space-y-3">
+                                          <div>
+                                            <Label className="text-sm mb-1 block">Стартовый код (C++)</Label>
+                                            <Textarea
+                                              value={config.starterCode ?? ''}
+                                              onChange={(e) =>
+                                                updateCodeTaskConfig(block.id, selectedSubchapter.id, (prev) => ({
+                                                  ...prev,
+                                                  starterCode: e.target.value,
+                                                }))
+                                              }
+                                              placeholder={'#include <iostream>\nusing namespace std;\n\nint main() {\n  return 0;\n}'}
+                                              className="font-mono text-xs bg-white min-h-[140px]"
+                                              rows={7}
+                                            />
+                                          </div>
+                                          <div className="p-3 rounded-lg bg-amber-50 border border-amber-200 text-xs text-amber-800">
+                                            C++ не может быть выполнен в браузере — код ученика сохраняется и отправляется на ручную проверку.
+                                          </div>
+                                        </div>
+                                      )}
+
+                                      {/* Test cases for JS/Python */}
+                                      {config.language !== 'html_css' && config.language !== 'cpp' && (
+                                        <div className="space-y-3">
                                         <div className="flex items-center justify-between">
                                           <Label className="text-sm">Тест‑кейсы</Label>
                                           <span className="text-xs text-muted-foreground">
@@ -1298,6 +1413,7 @@ function SubchapterEditPage() {
                                           Добавить тест‑кейс
                                         </Button>
                                       </div>
+                                      )}
                                     </>
                                   );
                                 })()}

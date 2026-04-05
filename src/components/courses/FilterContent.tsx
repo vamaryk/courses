@@ -51,7 +51,18 @@ const FilterContent: React.FC<FilterContentProps> = ({
   priceMax,
   durationMax,
   categories,
-}) => (
+}) => {
+  /* react-range требует min < max; при отсутствии курсов priceMax/durationMax могут быть 0 */
+  const priceSliderMax = Math.max(1, priceMax);
+  const durationSliderMax = Math.max(1, durationMax);
+  const pa = Math.max(0, Math.min(priceRange[0], priceSliderMax));
+  const pb = Math.max(0, Math.min(priceRange[1], priceSliderMax));
+  const priceSliderValues: [number, number] = pa <= pb ? [pa, pb] : [pb, pa];
+  const da = Math.max(0, Math.min(durationRange[0], durationSliderMax));
+  const db = Math.max(0, Math.min(durationRange[1], durationSliderMax));
+  const durationSliderValues: [number, number] = da <= db ? [da, db] : [db, da];
+
+  return (
   <>
     <h3 className="text-lg sm:text-xl font-semibold mb-4 sm:mb-6 font-Xolonium lg:hidden">
       Фильтры
@@ -200,13 +211,26 @@ const FilterContent: React.FC<FilterContentProps> = ({
           className="text-xs sm:text-sm"
         />
       </div>
-      <div className="flex justify-center flex-wrap mx-2">
+      <div
+        className={`flex justify-center flex-wrap mx-2 ${priceMax <= 0 ? 'pointer-events-none opacity-60' : ''}`}
+        aria-disabled={priceMax <= 0}
+      >
         <Range
           step={100}
           min={0}
-          max={priceMax}
-          values={priceRange}
-          onChange={(values) => setPriceRange(values as [number, number])}
+          max={priceSliderMax}
+          values={priceSliderValues}
+          onChange={(values) => {
+            const [lo, hi] = values as [number, number];
+            if (priceMax <= 0) {
+              setPriceRange([0, 0]);
+              return;
+            }
+            setPriceRange([
+              Math.max(0, Math.min(lo, priceMax)),
+              Math.max(0, Math.min(hi, priceMax)),
+            ]);
+          }}
           renderTrack={({ props, children }) => (
             <div
               onMouseDown={props.onMouseDown}
@@ -225,10 +249,10 @@ const FilterContent: React.FC<FilterContentProps> = ({
                   width: '100%',
                   borderRadius: '4px',
                   background: getTrackBackground({
-                    values: priceRange,
+                    values: priceSliderValues,
                     colors: ['#ccc', '#B291FF', '#ccc'],
                     min: 0,
-                    max: priceMax,
+                    max: priceSliderMax,
                   }),
                   alignSelf: 'center',
                 }}
@@ -292,13 +316,26 @@ const FilterContent: React.FC<FilterContentProps> = ({
           className="text-xs sm:text-sm"
         />
       </div>
-      <div className="flex justify-center flex-wrap mx-2">
+      <div
+        className={`flex justify-center flex-wrap mx-2 ${durationMax <= 0 ? 'pointer-events-none opacity-60' : ''}`}
+        aria-disabled={durationMax <= 0}
+      >
         <Range
           step={1}
           min={0}
-          max={durationMax}
-          values={durationRange}
-          onChange={(values) => setDurationRange(values as [number, number])}
+          max={durationSliderMax}
+          values={durationSliderValues}
+          onChange={(values) => {
+            const [lo, hi] = values as [number, number];
+            if (durationMax <= 0) {
+              setDurationRange([0, 0]);
+              return;
+            }
+            setDurationRange([
+              Math.max(0, Math.min(lo, durationMax)),
+              Math.max(0, Math.min(hi, durationMax)),
+            ]);
+          }}
           renderTrack={({ props, children }) => (
             <div
               onMouseDown={props.onMouseDown}
@@ -317,10 +354,10 @@ const FilterContent: React.FC<FilterContentProps> = ({
                   width: '100%',
                   borderRadius: '4px',
                   background: getTrackBackground({
-                    values: durationRange,
+                    values: durationSliderValues,
                     colors: ['#ccc', '#B291FF', '#ccc'],
                     min: 0,
-                    max: durationMax,
+                    max: durationSliderMax,
                   }),
                   alignSelf: 'center',
                 }}
@@ -358,6 +395,7 @@ const FilterContent: React.FC<FilterContentProps> = ({
       </div>
     </div>
   </>
-);
+  );
+};
 
 export default FilterContent;

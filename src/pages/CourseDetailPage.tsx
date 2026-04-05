@@ -7,12 +7,12 @@ import { useAuth } from "@/app/providers/AuthProvider";
 
 export default function CourseDetailPage() {
   const { id } = useParams<{ id: string }>();
-  const { isLoading: isAuthLoading } = useAuth();
+  const { isAuthenticated, isLoading: isAuthLoading } = useAuth();
   const [status, setStatus] = useState<CourseAccessStatus | null>(null);
   const [loading, setLoading] = useState(true);
 
   const loadAccessStatus = useCallback(async () => {
-    if (!id) return;
+    if (!id || !isAuthenticated) return;
 
     try {
       setLoading(true);
@@ -24,14 +24,20 @@ export default function CourseDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [id, isAuthenticated]);
 
   useEffect(() => {
     if (isAuthLoading) return;
+    // Гость не может быть автором / записанным — режим превью; не ждём access-status (меньше задержка и нет зависания на сети).
+    if (!isAuthenticated) {
+      setStatus(null);
+      setLoading(false);
+      return;
+    }
     loadAccessStatus();
-  }, [isAuthLoading, loadAccessStatus]);
+  }, [isAuthLoading, isAuthenticated, loadAccessStatus]);
 
-  if (loading || isAuthLoading) {
+  if (isAuthLoading || (isAuthenticated && loading)) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-purple-500"></div>

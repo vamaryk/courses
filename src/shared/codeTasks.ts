@@ -1,6 +1,6 @@
 import type { ContentBlock } from '@/shared/api/courses';
 
-export type CodeTaskLanguage = 'javascript' | 'python';
+export type CodeTaskLanguage = 'javascript' | 'python' | 'cpp' | 'html_css';
 
 export interface CodeTaskTestCase {
   id: string;
@@ -14,7 +14,19 @@ export interface CodeTaskConfig {
   language: CodeTaskLanguage;
   testCases: CodeTaskTestCase[];
   starterCode?: string;
+  // HTML+CSS specific fields
+  starterHtml?: string;
+  starterCss?: string;
+  expectedHtml?: string;
+  expectedCss?: string;
 }
+
+export const LANGUAGE_LABELS: Record<CodeTaskLanguage, string> = {
+  javascript: 'JavaScript',
+  python: 'Python',
+  cpp: 'C++',
+  html_css: 'HTML + CSS',
+};
 
 export const isCodeTaskBlock = (block: ContentBlock): boolean =>
   block.type === 'code_task';
@@ -28,7 +40,10 @@ export const parseCodeTaskConfig = (
     if (parsed?.format !== 'code_task_v1') return null;
 
     const language: CodeTaskLanguage =
-      parsed.language === 'python' ? 'python' : 'javascript';
+      parsed.language === 'python' ? 'python' :
+      parsed.language === 'cpp' ? 'cpp' :
+      parsed.language === 'html_css' ? 'html_css' :
+      'javascript';
 
     const rawCases: any[] = Array.isArray(parsed.testCases)
       ? parsed.testCases
@@ -48,11 +63,24 @@ export const parseCodeTaskConfig = (
     const starterCode =
       typeof parsed.starterCode === 'string' ? parsed.starterCode : undefined;
 
+    const starterHtml =
+      typeof parsed.starterHtml === 'string' ? parsed.starterHtml : undefined;
+    const starterCss =
+      typeof parsed.starterCss === 'string' ? parsed.starterCss : undefined;
+    const expectedHtml =
+      typeof parsed.expectedHtml === 'string' ? parsed.expectedHtml : undefined;
+    const expectedCss =
+      typeof parsed.expectedCss === 'string' ? parsed.expectedCss : undefined;
+
     return {
       format: 'code_task_v1',
       language,
       testCases,
       starterCode,
+      starterHtml,
+      starterCss,
+      expectedHtml,
+      expectedCss,
     };
   } catch {
     return null;
@@ -62,18 +90,38 @@ export const parseCodeTaskConfig = (
 export const serializeCodeTaskConfig = (config: CodeTaskConfig): string =>
   JSON.stringify(config);
 
-export const createDefaultCodeTaskConfig = (): CodeTaskConfig => ({
-  format: 'code_task_v1',
-  language: 'javascript',
-  testCases: [
-    {
-      id: 'tc-1',
-      input: '',
-      expectedOutputs: [''],
-      hidden: false,
-    },
-  ],
-  starterCode:
-    'function solve(input) {\n  // TODO: напишите решение\n  return input;\n}\n',
-});
+export const createDefaultCodeTaskConfig = (language: CodeTaskLanguage = 'javascript'): CodeTaskConfig => {
+  if (language === 'html_css') {
+    return {
+      format: 'code_task_v1',
+      language: 'html_css',
+      testCases: [],
+      starterHtml: '<h1>Заголовок</h1>\n<p>Текст страницы</p>\n',
+      starterCss: 'body {\n  font-family: sans-serif;\n}\nh1 {\n  color: #333;\n}\n',
+    };
+  }
+  if (language === 'cpp') {
+    return {
+      format: 'code_task_v1',
+      language: 'cpp',
+      testCases: [],
+      starterCode: '#include <iostream>\nusing namespace std;\n\nint main() {\n  // TODO: напишите решение\n  cout << "Hello, World!" << endl;\n  return 0;\n}\n',
+    };
+  }
+  return {
+    format: 'code_task_v1',
+    language,
+    testCases: [
+      {
+        id: 'tc-1',
+        input: '',
+        expectedOutputs: [''],
+        hidden: false,
+      },
+    ],
+    starterCode: language === 'python'
+      ? 'def solve(data: str) -> str:\n    # TODO: напишите решение\n    return data\n'
+      : 'function solve(input) {\n  // TODO: напишите решение\n  return input;\n}\n',
+  };
+};
 

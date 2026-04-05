@@ -1,16 +1,22 @@
-import { Users, Star, BookOpen, Search, ChevronDown, Palette, Megaphone, Briefcase, Database, MessageSquare, Heart, CreditCard, X, Sparkles } from 'lucide-react';
+import { BookOpen, Search, ChevronDown, X, Sparkles } from 'lucide-react';
 import { useState, useEffect, useRef } from 'react';
 import { coursesApi, type Course } from '@/shared/api/courses';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Link } from 'react-router-dom';
-import heroFallbackCover from '@/assets/course-python-1.jpg';
 import FilterContent from '@/components/courses/FilterContent';
+import { CatalogCourseCard } from '@/components/courses/CatalogCourseCard';
+import { resolveProfileMediaUrl } from '@/shared/utils/media';
 import { useAuth } from '@/app/providers/AuthProvider';
+import {
+  COURSE_DIRECTION_CATEGORIES as CATEGORIES,
+  DURATION_MIN,
+  DURATION_MAX_DEFAULT,
+  roundPriceToTenThousand,
+} from '@/shared/courseCatalogFilters';
 
 const API_URL = import.meta.env.VITE_API_URL || '';
 
-interface CourseWithAuthor extends Omit<Course, 'author_id'> {
+export interface CourseWithAuthor extends Omit<Course, 'author_id'> {
   author_id: string | number;
   is_public: boolean;
   author?: {
@@ -25,31 +31,15 @@ interface CourseWithAuthor extends Omit<Course, 'author_id'> {
   durationHours?: number;
   rating?: number;
   studentsCount?: number;
+  cover_image?: string | null;
+  category?: string;
 }
-
-// Константы для диапазонов
-const DURATION_MIN = 0;
-const DURATION_MAX_DEFAULT = 100;
-
-// Структура для направлений и подкатегорий
-const CATEGORIES = [
-  { id: 'development', label: 'Разработка', icon: BookOpen, keywords: ['разработка', 'программирование', 'код', 'javascript', 'python', 'react', 'go', 'php'], subcategories: ['JavaScript', 'Python', 'React', 'Go', 'PHP'], gradient: 'from-violet-500 to-purple-600', hoverGradient: 'from-purple-600 to-violet-700' },
-  { id: 'design', label: 'Дизайн', icon: Palette, keywords: ['дизайн', 'ui', 'ux', 'figma'], subcategories: [], gradient: 'from-pink-500 to-rose-600', hoverGradient: 'from-rose-600 to-pink-700' },
-  { id: 'marketing', label: 'Маркетинг', icon: Megaphone, keywords: ['маркетинг', 'seo', 'smm', 'реклама'], subcategories: [], gradient: 'from-amber-500 to-orange-600', hoverGradient: 'from-orange-600 to-amber-700' },
-  { id: 'business', label: 'Бизнес', icon: Briefcase, keywords: ['бизнес', 'менеджмент', 'стартап'], subcategories: [], gradient: 'from-emerald-500 to-teal-600', hoverGradient: 'from-teal-600 to-emerald-700' },
-  { id: 'data_science', label: 'Data Science', icon: Database, keywords: ['данные', 'аналитика', 'data science', 'ai', 'ml'], subcategories: [], gradient: 'from-cyan-500 to-blue-600', hoverGradient: 'from-blue-600 to-cyan-700' },
-  { id: 'soft_skills', label: 'Soft Skills', icon: MessageSquare, keywords: ['soft skills', 'общение', 'лидерство'], subcategories: [], gradient: 'from-fuchsia-500 to-indigo-600', hoverGradient: 'from-indigo-600 to-fuchsia-700' },
-];
 
 const sortOptionsList = [
   { value: 'popularity', label: 'По популярности' },
   { value: 'price', label: 'По цене' },
   { value: 'rating', label: 'По рейтингу' },
 ];
-
-const roundPriceToTenThousand = (price: number): number => {
-  return Math.ceil(price / 1000) * 1000;
-};
 
 // Компонент анимированной частицы для фона
 const FloatingParticle = ({ 
@@ -388,16 +378,10 @@ export default function HomePage() {
     return pages;
   };
 
-  const getShortDescription = (text?: string | null, maxLength: number = 90) => {
-    if (!text) return 'Описание отсутствует';
-    if (text.length <= maxLength) return text;
-    return `${text.slice(0, maxLength).trimEnd()}…`;
-  };
-
   const heroRef = useRef<HTMLDivElement>(null);
 
   return (
-    <div className="bg-background">
+    <div className="bg-background w-full min-w-0 overflow-x-clip">
       {/* Глобальные стили для анимаций */}
       <style>{`
         @keyframes float {
@@ -502,8 +486,8 @@ export default function HomePage() {
         `}</style>
 
       {/* ========== HERO SECTION ========== */}
-        <div className="px-4 sm:px-6 lg:px-[20px] pb-4">
-        <div ref={heroRef} className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 rounded-xl px-4 sm:px-6 lg:px-[20px] py-12 sm:py-16 lg:py-20">
+        <div className="px-4 sm:px-6 lg:px-[20px] pb-4 max-w-[1920px] mx-auto w-full">
+        <div ref={heroRef} className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 rounded-xl px-4 sm:px-6 lg:px-[20px] py-12 sm:py-16 lg:py-20 [@media(max-height:720px)]:py-6 [@media(max-height:720px)]:sm:py-8 [@media(max-height:720px)]:lg:py-10">
             {/* Анимированный фон с частицами */}
             <div className="absolute inset-0 overflow-hidden pointer-events-none rounded-xl">
             <div className="absolute top-0 left-1/4 w-64 h-64 sm:w-80 sm:h-80 bg-purple-500/30 rounded-full blur-3xl animate-pulse-glow" />
@@ -566,7 +550,7 @@ export default function HomePage() {
         </div>
 
       {/* ========== КАТЕГОРИИ - С ГРАДИЕНТНОЙ ОБВОДКОЙ ========== */}
-        <div className="relative w-full mt-2 lg:mt-4 px-10">
+        <div className="relative w-full mt-2 min-[1200px]:mt-4 px-4 sm:px-6 min-[1200px]:px-10">
 
         {/* Декоративная полоса на фоне */}
         <div className="absolute top-1/2 left-0 right-0 -translate-y-1/2 pointer-events-none z-0">
@@ -574,7 +558,7 @@ export default function HomePage() {
         </div>
 
         {/* Сетка категорий: 2 колонки на мобильных, 3 на планшетах, 6 на десктопе */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
+        <div className="grid grid-cols-2 min-[480px]:grid-cols-3 min-[1200px]:grid-cols-6 gap-3 sm:gap-4">
             {CATEGORIES.map((item, index) => (
             <div
                 key={index}
@@ -595,94 +579,33 @@ export default function HomePage() {
         </div>
 
       {/* ========== POPULAR COURSES SECTION ========== */}
-      <div className="bg-background py-12 lg:py-16">
-        <div className="px-4 sm:px-6 lg:px-[40px]">
-          <div className="text-center mb-4 lg:mb-8">
+      <div className="bg-background py-10 min-[1200px]:py-16 [@media(max-height:720px)]:py-8">
+        <div className="px-4 sm:px-6 min-[1200px]:px-[40px] max-w-[1920px] mx-auto w-full">
+          <div className="text-center mb-4 min-[1200px]:mb-8">
             <h2 className="text-2xl sm:text-3xl font-semibold font-Xolonium text-gray-900">
               Популярно на этой неделе
             </h2>
             <div className="mt-4 h-1 w-20 bg-gradient-to-r from-purple to-blue mx-auto rounded-full"></div>
           </div>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-4 lg:gap-4">
-            {popularCourses.length > 0 ? popularCourses.map((course) => {
-              const coverUrl = course.cover_image
-                ? `${API_URL}${course.cover_image}`
-                : heroFallbackCover;
-              const rawPrice = Number(course.price || 0);
-              const priceLabel = rawPrice > 0
-                ? `${rawPrice.toLocaleString('ru-RU')} ₽`
-                : 'Бесплатно';
-              return (
-                <Link
-                  key={course.id}
-                  to={`/courses/${course.id}`}
-                  className="bg-background rounded-xl shadow-md overflow-hidden group hover:shadow-lg transition-shadow duration-300 flex flex-col block cursor-pointer"
-                >
-                  <div className="aspect-video relative overflow-hidden">
-                    <img
-                      src={coverUrl}
-                      alt={course.title}
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/10 to-transparent" />
-                    <div className="absolute top-2 left-2">
-                      <span className="px-2 py-1 bg-background/80 backdrop-blur-sm text-purple-600 text-xs font-medium rounded-full">
-                        {course.is_public ? 'Публичный' : 'Приватный'}
-                      </span>
-                    </div>
-                    <button
-                      onClick={(e: React.MouseEvent) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleFavoriteToggle(course.id);
-                      }}
-                      className={`absolute top-2 right-2 p-1 rounded-full transition-all ${
-                        isCourseFavorite(course.id)
-                          ? 'bg-white text-red-500'
-                          : 'bg-white/70 hover:bg-white text-gray-500'
-                      }`}
-                      aria-label={isCourseFavorite(course.id) ? 'Убрать из избранного' : 'Добавить в избранное'}
-                      type="button"
-                    >
-                      <Heart className={`w-4 h-4 ${isCourseFavorite(course.id) ? 'fill-current' : ''}`} />
-                    </button>
-                    <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
-                      <div className="flex items-center gap-1 bg-background/80 backdrop-blur-sm px-2 py-1 rounded-full">
-                        <Star className="w-4 h-4 text-yellow-400 fill-current" />
-                        <span className="text-xs font-medium text-gray-900">
-                          {course.rating != null && Number(course.rating) > 0 ? Number(course.rating).toFixed(1) : '—'}
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-1 bg-purple text-white px-2 py-1 rounded-full text-xs font-semibold">
-                        <CreditCard className="w-3 h-3" />
-                        <span>{priceLabel}</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="p-3 sm:p-4 lg:p-3 flex flex-col flex-1">
-                    <h3 className="font-semibold text-gray-900 mb-2 line-clamp-1">
-                      {course.title}
-                    </h3>
-                    <p className="text-sm text-gray-600 mb-4 line-clamp-2 min-h-[40px]">
-                      {getShortDescription(course.description)}
-                    </p>
-                    <div className="flex items-center justify-between mt-auto pt-1">
-                      <div className="flex items-center">
-                        <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center mr-2">
-                          <Users className="w-4 h-4 text-gray-500" />
-                        </div>
-                        <span className="text-xs text-gray-500 line-clamp-1">
-                          {course.author?.name || 'Автор не указан'}
-                        </span>
-                      </div>
-                    </div>
-                    <span className="inline-flex items-center justify-center w-full mt-4 bg-purple text-white font-medium hover:bg-purple-600 rounded-md px-4 py-2 text-sm">
-                      Подробнее
-                    </span>
-                  </div>
-                </Link>
-              );
-            }) : (
+            {popularCourses.length > 0 ? popularCourses.map((course) => (
+              <CatalogCourseCard
+                key={course.id}
+                courseId={course.id}
+                title={course.title}
+                description={course.description}
+                coverUrl={course.cover_image ? `${API_URL}${course.cover_image}` : undefined}
+                price={Number(course.price || 0)}
+                rating={course.rating}
+                authorName={course.author?.name}
+                authorAvatarUrl={resolveProfileMediaUrl(course.instructor_avatar ?? null) ?? undefined}
+                language={course.language}
+                isFavorite={isCourseFavorite(course.id)}
+                onFavoriteToggle={() => handleFavoriteToggle(course.id)}
+                visibility={course.is_public ? 'public' : 'private'}
+                size="compact"
+              />
+            )) : (
               <div className="col-span-full text-center py-8">
                 <BookOpen className="w-12 h-12 text-gray-300 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-500">Популярные курсы не найдены</h3>
@@ -694,9 +617,9 @@ export default function HomePage() {
       </div>
 
       {/* ========== MAIN COURSES SECTION ========== */}
-      <div className="py-2 sm:py-4 lg:py-6 bg-background">
-        <div className="px-4 sm:px-6 lg:px-[40px]">
-          <div className="text-center mb-4 sm:mb-5 lg:mb-6">
+      <div className="py-2 sm:py-4 min-[1200px]:py-6 bg-background">
+        <div className="px-4 sm:px-6 min-[1200px]:px-[40px] max-w-[1920px] mx-auto w-full">
+          <div className="text-center mb-4 sm:mb-5 min-[1200px]:mb-6">
             <h2 className="text-2xl sm:text-3xl font-semibold font-Xolonium text-gray-900 mb-3 sm:mb-4">Курсы</h2>
             <div className="flex flex-wrap justify-center gap-2 sm:gap-3 mb-6 sm:mb-8">
               {[
@@ -712,19 +635,19 @@ export default function HomePage() {
               ))}
             </div>
           </div>
-          <div className="flex flex-col lg:flex-row gap-6 lg:gap-8">
+          <div className="flex flex-col min-[1200px]:flex-row gap-6 min-[1200px]:gap-8">
             {/* Filters Sidebar (DESKTOP ONLY) */}
-            <div className="w-full lg:w-64 flex-shrink-0 hidden lg:block">
+            <div className="w-full min-[1200px]:w-64 flex-shrink-0 hidden min-[1200px]:block">
               <h3 className="text-lg sm:text-xl font-semibold mb-4 sm:mb-6 font-Xolonium">Фильтры</h3>
               <FilterContent {...filterProps} />
             </div>
             {/* Courses Grid */}
             <div id="courses-grid" className="flex-1">
               {/* Header: Sort, Filter Button (Mobile), Search */}
-              <div className="flex flex-col gap-4 mb-6 sm:mb-8 lg:flex-row lg:items-center lg:justify-between">
-                <div className="flex gap-4 w-full lg:w-auto">
+              <div className="flex flex-col gap-4 mb-6 sm:mb-8 min-[1200px]:flex-row min-[1200px]:items-center min-[1200px]:justify-between">
+                <div className="flex gap-4 w-full min-[1200px]:w-auto">
                   {/* Custom Sort Dropdown */}
-                  <div className="relative flex-1 lg:w-[200px] lg:flex-none">
+                  <div className="relative flex-1 min-[1200px]:w-[200px] min-[1200px]:flex-none">
                     <button
                       type="button"
                       onClick={() => setIsSortDropdownOpen(!isSortDropdownOpen)}
@@ -757,7 +680,7 @@ export default function HomePage() {
                   {/* Mobile Filter Button */}
                   <button
                     type="button"
-                    className="flex-1 lg:hidden appearance-none flex items-center justify-center pl-3 sm:pl-4 pr-3 sm:pr-4 py-2 border border-gray rounded-lg text-xs sm:text-sm w-full"
+                    className="flex-1 min-[1200px]:hidden appearance-none flex items-center justify-center pl-3 sm:pl-4 pr-3 sm:pr-4 py-2 border border-gray rounded-lg text-xs sm:text-sm w-full"
                     onClick={() => setIsMobileFilterOpen(true)}
                   >
                     Фильтры
@@ -776,81 +699,23 @@ export default function HomePage() {
                 </div>
               </div>
               {/* Course Cards Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-3 gap-3 sm:gap-4 lg:gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-2 min-[640px]:grid-cols-3 min-[1200px]:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-3 sm:gap-4 min-[1200px]:gap-4">
                 {paginatedCourses.length > 0 ? paginatedCourses.map((course) => (
-                  <Link
+                  <CatalogCourseCard
                     key={course.id}
-                    to={`/courses/${course.id}`}
-                    className="relative bg-background rounded-xl sm:rounded-2xl shadow-md overflow-hidden group hover:shadow-lg transition-shadow duration-300 flex flex-col block cursor-pointer"
-                  >
-                    <div className="aspect-video relative overflow-hidden">
-                      <img
-                        src={course.cover_image ? `${API_URL}${course.cover_image}` : heroFallbackCover}
-                        alt={course.title}
-                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-black/10 to-transparent" />
-                      <button
-                        onClick={(e: React.MouseEvent) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                          handleFavoriteToggle(course.id);
-                        }}
-                        className={`absolute top-2 right-2 p-1 rounded-full transition-all ${
-                          isCourseFavorite(course.id)
-                            ? 'bg-white text-red-500'
-                            : 'bg-white/70 hover:bg-white text-gray-500'
-                        }`}
-                        aria-label={isCourseFavorite(course.id) ? 'Убрать из избранного' : 'Добавить в избранное'}
-                        type="button"
-                      >
-                        <Heart className={`w-4 h-4 ${isCourseFavorite(course.id) ? 'fill-current' : ''}`} />
-                      </button>
-                      <div className="absolute top-2 left-2 flex gap-2">
-                        {course.language && (
-                          <span className="px-2 py-1 bg-cyan-600 text-white text-xs rounded-full">
-                            {course.language}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex-1 p-3 sm:p-4 lg:p-3 flex flex-col">
-                      <h3 className="lg:text-lg sm:text-xs font-semibold text-gray-900 mb-2 line-clamp-1">
-                        {course.title}
-                      </h3>
-                      <p className="text-sm text-gray-600 mb-2 line-clamp-2 min-h-[40px]">
-                        {getShortDescription(course.description)}
-                      </p>
-                      <div className="border-t border-gray-100 mt-auto pt-1">
-                        <div className="pt-1 flex items-center justify-between flex-wrap gap-2 mb-1">
-                          <div className="flex items-center gap-2 min-w-[120px] flex-1">
-                            <div className="w-8 h-8 bg-gray-100 rounded-full flex items-center justify-center flex-shrink-0">
-                              <Users className="w-4 h-4 text-gray-500" />
-                            </div>
-                            <span className="text-xs text-gray-500 line-clamp-1">
-                              {course.author?.name || 'Автор не указан'}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <div className="flex items-center gap-1 border rounded-full px-2 py-1">
-                              <Star className="w-3.5 h-3.5 text-yellow-500 fill-current" />
-                              <span className="text-xs font-medium text-gray-900">
-                                {course.rating != null && course.rating > 0 ? Number(course.rating).toFixed(1) : '—'}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1 border-2 rounded-full px-2 py-1">
-                              <CreditCard className="w-4 h-4 text-gray-500" />
-                              <span className="text-xs font-bold text-gray-900">
-                                {course.price && course.price > 0
-                                  ? `${Number(course.price).toLocaleString('ru-RU')} ₽`
-                                  : 'Бесплатно'}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </Link>
+                    courseId={course.id}
+                    title={course.title}
+                    description={course.description}
+                    coverUrl={course.cover_image ? `${API_URL}${course.cover_image}` : undefined}
+                    price={Number(course.price || 0)}
+                    rating={course.rating}
+                    authorName={course.author?.name}
+                    authorAvatarUrl={resolveProfileMediaUrl(course.instructor_avatar ?? null) ?? undefined}
+                    language={course.language}
+                    isFavorite={isCourseFavorite(course.id)}
+                    onFavoriteToggle={() => handleFavoriteToggle(course.id)}
+                    size="default"
+                  />
                 )) : (
                   <div className="col-span-full text-center py-12">
                     <BookOpen className="w-12 h-12 text-gray-300 mx-auto mb-4" />
@@ -875,7 +740,7 @@ export default function HomePage() {
                 )}
               </div>
               {totalPages > 1 && (
-                <div className="flex items-center justify-center mt-8 sm:mt-10 lg:mt-12 gap-1 sm:gap-2 flex-wrap">
+                <div className="flex items-center justify-center mt-8 sm:mt-10 min-[1200px]:mt-12 gap-1 sm:gap-2 flex-wrap">
                   <button
                     onClick={prevPage}
                     disabled={currentPage === 1}
@@ -926,7 +791,7 @@ export default function HomePage() {
 
       {/* ========== MOBILE FILTER MODAL ========== */}
       {isMobileFilterOpen && (
-        <div className="fixed inset-0 z-102 flex items-end justify-center lg:hidden">
+        <div className="fixed inset-0 z-102 flex items-end justify-center min-[1200px]:hidden pb-[env(safe-area-inset-bottom,0px)]">
           <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsMobileFilterOpen(false)} />
           <div className="bg-white w-full max-w-lg p-6 rounded-t-xl shadow-2xl transform transition-transform duration-300 ease-out translate-y-0">
             <div className="flex justify-between items-center pb-4 border-b border-gray-200">

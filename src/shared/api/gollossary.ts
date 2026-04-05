@@ -1,6 +1,9 @@
 const GOLLOSSARY_API_URL =
   import.meta.env.VITE_GOLLOSSARY_API_URL || "http://127.0.0.1:8002";
 
+/** Чтение списка и карточек mindmap — через Node (сессия + фильтр по доступным лекциям). */
+const LMS_API_URL = import.meta.env.VITE_API_URL || "";
+
 export interface GollossaryConceptRelations {
   parent?: string | null;
   children?: string[];
@@ -38,7 +41,10 @@ export interface MindMapFull {
 }
 
 export async function fetchMindmaps(): Promise<MindMapSummary[]> {
-  const res = await fetch(`${GOLLOSSARY_API_URL}/api/v1/mindmaps?limit=500`);
+  const res = await fetch(
+    `${LMS_API_URL}/api/courses/glossary/mindmaps?limit=500`,
+    { credentials: "include" },
+  );
   if (!res.ok) {
     throw new Error(`Failed to load mindmaps: ${res.status}`);
   }
@@ -46,7 +52,10 @@ export async function fetchMindmaps(): Promise<MindMapSummary[]> {
 }
 
 export async function fetchMindmapById(id: string): Promise<MindMapFull> {
-  const res = await fetch(`${GOLLOSSARY_API_URL}/api/v1/mindmaps/${id}`);
+  const res = await fetch(
+    `${LMS_API_URL}/api/courses/glossary/mindmaps/${encodeURIComponent(id)}`,
+    { credentials: "include" },
+  );
   if (!res.ok) {
     throw new Error(`Failed to load mindmap ${id}: ${res.status}`);
   }
@@ -147,7 +156,10 @@ export interface CanvasData {
 }
 
 export async function fetchCanvasEdges(mindmapId: string): Promise<CanvasEdgeData[]> {
-  const res = await fetch(`${GOLLOSSARY_API_URL}/api/v1/mindmaps/${mindmapId}/canvas`);
+  const res = await fetch(
+    `${LMS_API_URL}/api/courses/glossary/mindmaps/${encodeURIComponent(mindmapId)}/canvas`,
+    { credentials: "include" },
+  );
   if (!res.ok) return [];
   const data: CanvasData = await res.json();
   return data.edges ?? [];

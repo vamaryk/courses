@@ -83,11 +83,20 @@ export const Router = () => {
           </ProtectedRoute>
         }
       />
-      <Route path="/glossary" element={<AppLayout><GlossaryPage /></AppLayout>} />
+      <Route
+        path="/glossary"
+        element={
+          <ProtectedRoute>
+            <AppLayout>
+              <GlossaryPage />
+            </AppLayout>
+          </ProtectedRoute>
+        }
+      />
       <Route
         path="/virtual-class"
         element={
-          <AppLayout>
+          <AppLayout showFooter={false}>
             <Suspense fallback={<div className="flex h-64 items-center justify-center text-gray-400 text-sm">Загрузка...</div>}>
               <VirtualClassPage />
             </Suspense>
@@ -97,7 +106,7 @@ export const Router = () => {
       <Route
         path="/virtual-class/invite/:token"
         element={
-          <AppLayout>
+          <AppLayout showFooter={false}>
             <Suspense fallback={<div className="flex h-64 items-center justify-center text-gray-400 text-sm">Загрузка...</div>}>
               <InviteAcceptPage />
             </Suspense>
@@ -107,7 +116,7 @@ export const Router = () => {
       <Route
         path="/virtual-class/group/:token"
         element={
-          <AppLayout>
+          <AppLayout showFooter={false}>
             <Suspense fallback={<div className="flex h-64 items-center justify-center text-gray-400 text-sm">Загрузка...</div>}>
               <GroupInvitePage />
             </Suspense>
