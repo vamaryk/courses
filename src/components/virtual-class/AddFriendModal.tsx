@@ -71,7 +71,7 @@ export default function AddFriendModal({ open, onClose, pending, onAccept, onRej
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[101] flex items-center justify-center bg-black/40">
       <div className="relative w-full max-w-md rounded-2xl bg-white shadow-xl">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-100 px-5 py-4">

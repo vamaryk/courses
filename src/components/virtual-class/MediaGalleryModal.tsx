@@ -106,7 +106,7 @@ export default function MediaGalleryModal({ messages, isOpen, onClose }: Props) 
       {/* Backdrop */}
       <div
         ref={backdropRef}
-        className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm"
+        className="fixed inset-0 z-[101] flex items-center justify-center bg-black/40"
         onClick={(e) => {
           if (e.target === backdropRef.current) onClose();
         }}

@@ -95,7 +95,7 @@ function CallOverlay({
   pulsing?: boolean;
 }) {
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-[101] flex items-center justify-center bg-black/70 p-4">
       <div className="w-full max-w-sm overflow-hidden rounded-3xl bg-white shadow-2xl">
         <div className={`flex flex-col items-center gap-4 px-6 py-8 ${accentClassName}`}>
           <CallIdentity name={name} avatar={avatar} ring={pulsing} />
@@ -395,14 +395,14 @@ export default function VirtualClassPage() {
         {/* Mobile menu button */}
         <button
           onClick={() => setIsMobileSidebarOpen(true)}
-          className="rounded-xl p-2 text-gray-600 transition-colors hover:bg-gray-100 active:scale-95 lg:hidden"
+          className="p-3 text-purple transition-colors active:scale-95 lg:hidden"
           aria-label="Открыть меню"
         >
           <PanelLeft className="h-5 w-5" />
         </button>
         
-        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-purple shadow-sm sm:h-11 sm:w-11">
-          <Users className="h-5 w-5 text-white" />
+        <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-purple shadow-sm sm:h-11 sm:w-11">
+          <Users className="h-5 w-5 text-purple" />
         </div>
         <div className="min-w-0">
           <h1 className="truncate text-lg font-bold text-gray-900 sm:text-xl">Виртуальный класс</h1>

@@ -36,7 +36,6 @@ interface CourseWithApiData extends Course {
   };
   rating?: number;
   studentsCount?: number;
-  /** из API, часто null в списке */
   language?: string | null;
 }
 
@@ -79,7 +78,7 @@ export default function CoursesPage() {
   const [error, setError] = useState<string | null>(null);
 
   const [currentPage, setCurrentPage] = useState(1);
-  const COURSES_PER_PAGE = 12;
+  const COURSES_PER_PAGE = 15;
 
   useEffect(() => {
     const onDocClick = (e: MouseEvent) => {
@@ -407,7 +406,39 @@ export default function CoursesPage() {
   ];
 
   const goToPage = (page: number) => {
-    if (page >= 1 && page <= totalPages) setCurrentPage(page);
+    if (page >= 1 && page <= totalPages) {
+      setCurrentPage(page);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
+  // ✅ Новые функции для навигации
+  const prevPage = () => {
+    if (currentPage > 1) setCurrentPage((p) => p - 1);
+  };
+
+  const nextPage = () => {
+    if (currentPage < totalPages) setCurrentPage((p) => p + 1);
+  };
+
+  const getPageNumbers = (): (number | string)[] => {
+    const pages: (number | string)[] = [];
+    if (totalPages <= 7) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+      return pages;
+    }
+
+    pages.push(1);
+    if (currentPage > 3) pages.push("...");
+
+    const start = Math.max(2, currentPage - 1);
+    const end = Math.min(totalPages - 1, currentPage + 1);
+    for (let i = start; i <= end; i++) pages.push(i);
+
+    if (currentPage < totalPages - 2) pages.push("...");
+    if (totalPages > 1) pages.push(totalPages);
+
+    return pages;
   };
 
   return (
@@ -421,7 +452,7 @@ export default function CoursesPage() {
             {isAuthenticated && (
               <Button
                 onClick={() => navigate("/courses/create")}
-                className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground"
+                className="flex items-center gap-2 bg-primary hover:bg-primary/90 text-primary-foreground cursor-pointer"
               >
                 <Plus className="w-4 h-4" />
                 Создать свой курс
@@ -430,19 +461,10 @@ export default function CoursesPage() {
           </div>
 
           <div className="flex flex-col min-[1200px]:flex-row gap-6 min-[1200px]:gap-8">
-            <div className="w-full min-[1200px]:w-64 flex-shrink-0 hidden min-[1200px]:block">
-              <div className="sticky top-[calc(6rem+env(safe-area-inset-top,0px))] rounded-2xl border border-border/60 bg-card/80 backdrop-blur-sm p-5 shadow-soft-xl">
-                <h3 className="text-lg font-semibold mb-4 font-Xolonium text-foreground">
-                  Фильтры
-                </h3>
-                <FilterContent {...filterProps} />
-              </div>
-            </div>
-
             <div className="flex-1 min-w-0">
-              <div className="flex flex-col gap-4 mb-6 sm:flex-row sm:items-center sm:justify-between">
-                <div className="flex gap-3 w-full sm:w-auto">
-                  <div className="relative flex-1 sm:w-[220px]" ref={sortRef}>
+              <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:items-center sm:gap-4">
+                <div className="flex gap-3 w-full sm:w-auto sm:flex-shrink-0">
+                  <div className="relative sm:w-[200px]" ref={sortRef}>
                     <button
                       type="button"
                       onClick={() =>
@@ -456,7 +478,7 @@ export default function CoursesPage() {
                       />
                     </button>
                     {isSortDropdownOpen && (
-                      <div className="absolute z-20 mt-1 w-full bg-popover border border-border shadow-lg rounded-xl overflow-hidden">
+                      <div className="absolute z-20 mt-1 w-full bg-white border border-border shadow-lg rounded-xl overflow-hidden">
                         {sortOptionsList.map((option) => (
                           <button
                             key={option.value}
@@ -481,7 +503,7 @@ export default function CoursesPage() {
                     Фильтры
                   </button>
                 </div>
-                <div className="relative w-full sm:flex-1 sm:max-w-xl">
+                <div className="relative flex-1 min-w-0">
                   <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
                   <Input
                     type="text"
@@ -499,7 +521,7 @@ export default function CoursesPage() {
                     key={pill.id}
                     type="button"
                     onClick={() => setScopeTab(pill.id)}
-                    className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
+                    className={`px-4 py-2 rounded-xl text-sm font-medium border transition-all cursor-pointer ${
                       scopeTab === pill.id
                         ? "bg-primary text-primary-foreground border-primary shadow-soft"
                         : "bg-card border-border text-muted-foreground hover:border-primary/40 hover:text-foreground"
@@ -531,7 +553,7 @@ export default function CoursesPage() {
 
               {!loading && !error && (
                 <>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 min-[1200px]:grid-cols-3 2xl:grid-cols-4 gap-4 sm:gap-6">
+                  <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 2xl:grid-cols-4 gap-3 sm:gap-4">
                     {paginatedCourses.map((course) => (
                       <CourseCard
                         key={course.id}
@@ -553,46 +575,63 @@ export default function CoursesPage() {
                     </div>
                   )}
 
-                  {sortedCourses.length > 0 && totalPages > 1 && (
-                    <div className="flex items-center justify-center mt-10 gap-2 flex-wrap">
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
+                  {/* ✅ Обновлённая пагинация */}
+                  {totalPages > 1 && (
+                    <div className="flex items-center justify-center my-4 sm:mt-4 min-[1200px]:mt-10 gap-1 sm:gap-2 flex-wrap">
+                      <button
+                        onClick={prevPage}
                         disabled={currentPage === 1}
-                        onClick={() => goToPage(currentPage - 1)}
+                        className={`px-2 sm:px-4 py-1.5 sm:py-2 rounded text-sm font-medium transition-all ${
+                          currentPage === 1
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                        }`}
                       >
                         Назад
-                      </Button>
-                      {Array.from({ length: totalPages }, (_, i) => i + 1).map(
-                        (p) => (
+                      </button>
+                      {getPageNumbers().map((page, index) =>
+                        page === '...' ? (
+                          <span key={`ellipsis-${index}`} className="px-2 sm:px-4 py-1.5 sm:py-2 text-gray-500 text-sm">
+                            ...
+                          </span>
+                        ) : (
                           <button
-                            key={p}
-                            type="button"
-                            onClick={() => goToPage(p)}
-                            className={`min-w-[2.25rem] px-3 py-1.5 rounded-lg text-sm font-medium ${
-                              currentPage === p
-                                ? "bg-primary text-primary-foreground"
-                                : "bg-card border border-border hover:bg-muted"
+                            key={page}
+                            onClick={() => goToPage(page as number)}
+                            className={`px-2 sm:px-4 py-1.5 sm:py-2 rounded text-sm font-medium transition-all ${
+                              currentPage === page
+                                ? 'bg-purple text-white'
+                                : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
                             }`}
                           >
-                            {p}
+                            {page}
                           </button>
-                        ),
+                        )
                       )}
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
+                      <button
+                        onClick={nextPage}
                         disabled={currentPage === totalPages}
-                        onClick={() => goToPage(currentPage + 1)}
+                        className={`px-2 sm:px-4 py-1.5 sm:py-2 rounded text-sm font-medium transition-all ${
+                          currentPage === totalPages
+                            ? 'bg-gray-100 text-gray-400 cursor-not-allowed'
+                            : 'bg-white text-gray-700 hover:bg-gray-100 border border-gray-300'
+                        }`}
                       >
                         Далее
-                      </Button>
+                      </button>
                     </div>
                   )}
                 </>
               )}
+            </div>
+
+            <div className="w-full min-[1200px]:w-[300px] flex-shrink-0 hidden min-[1200px]:block">
+              <div className="sticky top-[calc(6rem+env(safe-area-inset-top,0px))] rounded-2xl border border-border/60 bg-card/80 backdrop-blur-sm p-5 shadow-soft-xl">
+                <h3 className="text-lg font-semibold mb-4 font-Xolonium text-foreground">
+                  Фильтры
+                </h3>
+                <FilterContent {...filterProps} />
+              </div>
             </div>
           </div>
         </div>
@@ -605,8 +644,8 @@ export default function CoursesPage() {
             onClick={() => setIsMobileFilterOpen(false)}
             aria-hidden
           />
-          <div className="relative bg-background w-full max-w-lg p-6 rounded-t-2xl shadow-2xl max-h-[90vh] flex flex-col">
-            <div className="flex justify-end items-center pb-2 border-b border-border">
+          <div className="relative bg-background w-full max-w-lg rounded-t-2xl shadow-2xl h-[90vh] flex flex-col overflow-hidden">
+            <div className="flex justify-end items-center px-5 pt-4 pb-2 border-b border-border">
               <button
                 type="button"
                 onClick={() => setIsMobileFilterOpen(false)}
@@ -616,10 +655,10 @@ export default function CoursesPage() {
                 <X className="w-6 h-6" />
               </button>
             </div>
-            <div className="mt-4 overflow-y-auto flex-1 pr-1">
+            <div className="flex-1 overflow-y-auto px-5 py-4">
               <FilterContent {...filterProps} />
             </div>
-            <div className="pt-4 border-t border-border mt-4">
+            <div className="px-5 pt-2 pb-4 border-t border-border bg-background">
               <Button
                 className="w-full bg-primary text-primary-foreground"
                 onClick={() => setIsMobileFilterOpen(false)}

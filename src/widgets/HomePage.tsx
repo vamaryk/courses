@@ -587,7 +587,7 @@ export default function HomePage() {
             </h2>
             <div className="mt-4 h-1 w-20 bg-gradient-to-r from-purple to-blue mx-auto rounded-full"></div>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-5 gap-2 sm:gap-4 lg:gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4 min-[1200px]:gap-4">
             {popularCourses.length > 0 ? popularCourses.map((course) => (
               <CatalogCourseCard
                 key={course.id}
@@ -699,7 +699,7 @@ export default function HomePage() {
                 </div>
               </div>
               {/* Course Cards Grid */}
-              <div className="grid grid-cols-2 sm:grid-cols-2 min-[640px]:grid-cols-3 min-[1200px]:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-3 sm:gap-4 min-[1200px]:gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 min-[640px]:grid-cols-3 min-[1200px]:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-4 gap-3 sm:gap-4 min-[1200px]:gap-4 pb-4">
                 {paginatedCourses.length > 0 ? paginatedCourses.map((course) => (
                   <CatalogCourseCard
                     key={course.id}
@@ -740,7 +740,7 @@ export default function HomePage() {
                 )}
               </div>
               {totalPages > 1 && (
-                <div className="flex items-center justify-center mt-8 sm:mt-10 min-[1200px]:mt-12 gap-1 sm:gap-2 flex-wrap">
+                <div className="flex items-center justify-center my-4 sm:mt-4 min-[1200px]:mt-10 gap-1 sm:gap-2 flex-wrap">
                   <button
                     onClick={prevPage}
                     disabled={currentPage === 1}
@@ -791,20 +791,29 @@ export default function HomePage() {
 
       {/* ========== MOBILE FILTER MODAL ========== */}
       {isMobileFilterOpen && (
-        <div className="fixed inset-0 z-102 flex items-end justify-center min-[1200px]:hidden pb-[env(safe-area-inset-bottom,0px)]">
-          <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={() => setIsMobileFilterOpen(false)} />
-          <div className="bg-white w-full max-w-lg p-6 rounded-t-xl shadow-2xl transform transition-transform duration-300 ease-out translate-y-0">
-            <div className="flex justify-between items-center pb-4 border-b border-gray-200">
-              <button onClick={() => setIsMobileFilterOpen(false)} className="ml-auto text-gray-500 hover:text-gray-800">
+        <div className="fixed inset-0 z-[102] flex items-end justify-center min-[1200px]:hidden pb-[env(safe-area-inset-bottom,0px)]">
+          <div
+            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+            onClick={() => setIsMobileFilterOpen(false)}
+            aria-hidden
+          />
+          <div className="relative bg-background w-full max-w-lg rounded-t-2xl shadow-2xl h-[90vh] flex flex-col overflow-hidden">
+            <div className="flex justify-end items-center px-5 pt-4 pb-2 border-b border-border">
+              <button
+                type="button"
+                onClick={() => setIsMobileFilterOpen(false)}
+                className="text-muted-foreground hover:text-foreground"
+                aria-label="Закрыть"
+              >
                 <X className="w-6 h-6" />
               </button>
             </div>
-            <div className="mt-4 max-h-[70vh] overflow-y-auto pr-2">
+            <div className="flex-1 overflow-y-auto px-5 py-4">
               <FilterContent {...filterProps} />
             </div>
-            <div className="pt-4 border-t border-gray-200 mt-4">
+            <div className="px-5 pt-2 pb-4 border-t border-border bg-background">
               <Button
-                className="w-full bg-purple text-white font-medium hover:bg-purple-600"
+                className="w-full bg-primary text-primary-foreground"
                 onClick={() => setIsMobileFilterOpen(false)}
               >
                 Применить фильтры
